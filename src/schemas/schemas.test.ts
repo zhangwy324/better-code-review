@@ -73,6 +73,7 @@ const changeSet: ChangeSet = {
       hunks: [],
     },
   ],
+  excludedUntrackedPaths: [],
 };
 
 const structural: StructuralChangeSet = {

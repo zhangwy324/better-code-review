@@ -1,5 +1,6 @@
-// Git extractor for `commit` and `range` targets (#10, design reference §8.2, §4.4): resolves the
-// base and head commits, diffs them, and produces the ChangeSet written to changes.json.
+// Git extractor for `commit`, `range` (#10) and `local` (#11) targets (design reference §8.2,
+// §4.4): resolves the base and head, diffs them, and produces the ChangeSet written to
+// changes.json. A `local` head is the working tree captured as a tree object (local.ts).
 //
 // Out of scope here and owned by #13: rename and copy detection (renames show as a delete plus an
 // add), the content size cap, non-UTF-8 text, and richer handling of type changes and
@@ -15,10 +16,12 @@ import {
   type ReviewTarget,
   stableId,
 } from '../schemas/index.ts';
+import { assertSameSnapshot, captureWorkingTree, comparePaths } from './local.ts';
 import { type PatchSection, parsePatch } from './patch.ts';
 import { GitError, gitLine, runGit } from './run.ts';
 
 export type RevisionTarget = Extract<ReviewTarget, { kind: 'commit' | 'range' }>;
+export type LocalTarget = Extract<ReviewTarget, { kind: 'local' }>;
 
 export interface ResolvedRevisions {
   /** Null when the base is the empty tree (the commit has no parent). */
@@ -48,6 +51,7 @@ const DIFF_OPTIONS = [
   '--indent-heuristic',
 ];
 const SNAPSHOT_FORMAT = 'git-revisions/1';
+const LOCAL_SNAPSHOT_FORMAT = 'git-local/1';
 
 /** Resolves a target to the two commits it compares. */
 export async function resolveRevisions(
@@ -109,9 +113,64 @@ export async function resolveRevisions(
   return { base: mergeBases[0] ?? null, head };
 }
 
-/** Extracts the ChangeSet for a `commit` or `range` target in the repository at `repo`. */
-export async function extractChangeSet(repo: string, target: RevisionTarget): Promise<ChangeSet> {
+export interface ExtractOptions {
+  /** Test hook: runs between the two working-tree captures of a `local` target. */
+  beforeRecapture?: () => void | Promise<void>;
+}
+
+/** Extracts the ChangeSet for a `commit`, `range` or `local` target in the repository at `repo`. */
+export async function extractChangeSet(
+  repo: string,
+  target: RevisionTarget | LocalTarget,
+  options: ExtractOptions = {},
+): Promise<ChangeSet> {
+  if (target.kind === 'local') return extractLocal(repo, target, options);
+
   const { base, head } = await resolveRevisions(repo, target);
+  return ChangeSet.parse({
+    schemaVersion: CHANGESET_SCHEMA_VERSION,
+    snapshotId: createHash('sha256')
+      .update(JSON.stringify([SNAPSHOT_FORMAT, base, head]))
+      .digest('hex'),
+    target,
+    baseRevision: base,
+    headRevision: head,
+    files: await diffFiles(repo, base, head),
+    excludedUntrackedPaths: [],
+  });
+}
+
+/**
+ * The working tree is captured twice, before and after the diff. Each capture reads files one
+ * at a time, so an edit during the first could mix old and new files; if the two disagree the
+ * extraction fails rather than review a state that never existed. The diff itself reads only
+ * the immutable tree, so nothing written after the first capture can leak into the result.
+ */
+async function extractLocal(
+  repo: string,
+  target: LocalTarget,
+  options: ExtractOptions,
+): Promise<ChangeSet> {
+  const snapshot = await captureWorkingTree(repo, target.includeUntracked);
+  const files = await diffFiles(repo, snapshot.head, snapshot.tree);
+  await options.beforeRecapture?.();
+  assertSameSnapshot(snapshot, await captureWorkingTree(repo, target.includeUntracked));
+
+  return ChangeSet.parse({
+    schemaVersion: CHANGESET_SCHEMA_VERSION,
+    snapshotId: createHash('sha256')
+      .update(JSON.stringify([LOCAL_SNAPSHOT_FORMAT, snapshot.head, snapshot.tree]))
+      .digest('hex'),
+    target,
+    baseRevision: snapshot.head,
+    headRevision: null,
+    files,
+    excludedUntrackedPaths: snapshot.excludedUntracked,
+  });
+}
+
+/** Diffs two tree-ish objects; a null base is the empty tree. */
+async function diffFiles(repo: string, base: string | null, head: string): Promise<FileChange[]> {
   const baseTree = base ?? (await gitLine(repo, ['hash-object', '-t', 'tree', '--stdin'], ''));
   const range = [baseTree, head];
 
@@ -149,17 +208,7 @@ export async function extractChangeSet(repo: string, target: RevisionTarget): Pr
   await fillContents(repo, changes);
   const files = changes.map((c) => c.file);
   files.sort((a, b) => comparePaths(a.newPath ?? a.oldPath ?? '', b.newPath ?? b.oldPath ?? ''));
-
-  return ChangeSet.parse({
-    schemaVersion: CHANGESET_SCHEMA_VERSION,
-    snapshotId: createHash('sha256')
-      .update(JSON.stringify([SNAPSHOT_FORMAT, base, head]))
-      .digest('hex'),
-    target,
-    baseRevision: base,
-    headRevision: head,
-    files,
-  });
+  return files;
 }
 
 async function resolveCommit(repo: string, revision: string): Promise<string> {
@@ -282,9 +331,4 @@ function parseCatFileBatch(out: Buffer): Map<string, string> {
     pos = end + 1;
   }
   return blobs;
-}
-
-/** Git's order: plain byte order of the UTF-8 paths. */
-function comparePaths(a: string, b: string): number {
-  return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
 }

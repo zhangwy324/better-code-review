@@ -191,7 +191,7 @@ These come from §9.8, and every milestone's tests must keep them:
 | §19.3 Q10 Automatic agent ingestion of feedback | Manual export or copy is enough for v0.1 | #2 |
 | §19.4 Q2 Capability negotiation and UI labels | Per-language tier and LSP status shown (D11) | #16, #32 |
 | §19.4 Q3 Before/after symbol identity across renames | Owned by structural analysis, informed by sem's phases | #15 |
-| §19.4 Q6 Index / working tree / untracked overlay semantics | — | #11 |
+| §19.4 Q6 Index / working tree / untracked overlay semantics | HEAD vs the files on disk: staged and unstaged together, the working tree winning; untracked non-ignored files included or listed as excluded; a change during capture fails the run (`src/git/local.ts`) | #11 |
 | §19.4 Q7 SCIP and whole-repo indexing | Not in v0.1 | #2 |
 | §19.4 Q8 Deterministic cross-language links (OpenAPI, SQL, …) | Agent inference only | #2 |
 | §19.4 Q10 Incremental enrichment and merging plans | Not in v0.1; each run is a fresh snapshot | #2 |

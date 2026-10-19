@@ -61,12 +61,20 @@ export const ChangeSet = z.strictObject({
   snapshotId: SnapshotId,
   /** The target as requested. */
   target: ReviewTarget,
-  /** The resolved base commit. Null when the base is the empty tree (e.g. a root commit). */
+  /**
+   * The resolved base commit: HEAD for `local`. Null when the base is the empty tree (a root
+   * commit, or a `local` target on a branch with no commits yet).
+   */
   baseRevision: GitObjectId.nullable(),
   /** The resolved head commit. Null when the head is the working tree (`local`). */
   headRevision: GitObjectId.nullable(),
   /** Sorted by path (`newPath ?? oldPath`), as Git orders a diff. */
   files: z.array(FileChange),
+  /**
+   * `local` only: untracked, non-ignored files left out because `includeUntracked` was false,
+   * in byte order. Listed so the artifact can say what it does not show. Empty otherwise.
+   */
+  excludedUntrackedPaths: z.array(RepoPath),
 });
 
 export type DiffHunk = z.infer<typeof DiffHunk>;
