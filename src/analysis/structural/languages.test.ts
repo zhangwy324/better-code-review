@@ -51,10 +51,8 @@ describe('grammars/manifest.json', () => {
 
   it('matches the installed engine', () => {
     const engine = JSON.parse(
-      readFileSync(
-        new URL('../../../node_modules/web-tree-sitter/package.json', import.meta.url),
-        'utf8',
-      ),
+      // package.json is not exported, so resolve the entry point and read its sibling.
+      readFileSync(new URL('package.json', import.meta.resolve('web-tree-sitter')), 'utf8'),
     ) as { version: string };
     expect(manifest.engine).toBe(`web-tree-sitter@${engine.version}`);
   });
