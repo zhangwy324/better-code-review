@@ -285,6 +285,35 @@ public class PriceTest {
     ]);
   });
 
+  it('default exports, assignments, object literals and class fields', async () => {
+    const source = `export default function () {}
+obj.f = () => 1;
+module.exports.g = function () {};
+const o = { h: () => 1, i() {} };
+class C { j = () => 1; static k = function () {}; n = 1; }
+`;
+    const expected = [
+      'function default',
+      'function f',
+      'function g',
+      'function h',
+      'method i',
+      'class C',
+      'method j',
+      'method k',
+    ];
+    expect(await summary('a.js', source)).toEqual(expected);
+    expect(await summary('a.ts', source)).toEqual(expected);
+    expect(await summary('b.ts', 'export default class {}\nexport default () => 1;\n')).toEqual([
+      'class default',
+      'function default',
+    ]);
+  });
+
+  it('Python lambdas', async () => {
+    expect(await summary('a.py', 'double = lambda x: x * 2\nn = 1\n')).toEqual(['function double']);
+  });
+
   it('reports 1-based ranges with UTF-16 columns', async () => {
     const file = await parsed('a.ts', 'const é😀 = 1;\nfunction f() {\n}\n');
     const [f] = declarations(file);

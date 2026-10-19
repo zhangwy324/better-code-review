@@ -27,3 +27,9 @@
 
 (abstract_method_signature
   name: (_) @name) @definition.method
+
+; Class fields holding functions: `handle = () => {…}`. JavaScript's equivalent is in
+; javascript-only.scm.
+(public_field_definition
+  name: (property_identifier) @name
+  value: [(arrow_function) (function_expression) (generator_function)]) @definition.method
