@@ -34,11 +34,18 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "configuration": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   }
                 },
                 "required": [
                   "name",
-                  "version"
+                  "version",
+                  "configuration"
                 ],
                 "additionalProperties": false
               },
@@ -51,6 +58,7 @@
             "type": "string",
             "enum": [
               "ok",
+              "unhealthy",
               "not-installed",
               "disabled",
               "needs-opt-in",
@@ -66,7 +74,9 @@
                 "definition",
                 "references",
                 "callHierarchy",
-                "implementation"
+                "implementation",
+                "typeDefinition",
+                "diagnostics"
               ]
             }
           },
@@ -81,7 +91,9 @@
                     "definition",
                     "references",
                     "callHierarchy",
-                    "implementation"
+                    "implementation",
+                    "typeDefinition",
+                    "diagnostics"
                   ]
                 },
                 "message": {

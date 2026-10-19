@@ -13,16 +13,37 @@ export const SEMANTIC_SCHEMA_VERSION = 1;
 
 export const CodeRelation = z.enum(['calls', 'references', 'implements']);
 
-export const LspCapability = z.enum(['definition', 'references', 'callHierarchy', 'implementation']);
+export const LspCapability = z.enum([
+  'definition',
+  'references',
+  'callHierarchy',
+  'implementation',
+  /** Receiver types, to filter calls through an overridden base method (#16). */
+  'typeDefinition',
+  /** Unresolved-import diagnostics, for the project health check (#16). */
+  'diagnostics',
+]);
 
 /** Per-language semantic capability, shown in the artifact (D11). */
 export const LanguageCapability = z.strictObject({
   language: z.string().min(1),
   /** The language server used, or null when none was. */
-  server: z.strictObject({ name: z.string().min(1), version: z.string().nullable() }).nullable(),
+  server: z
+    .strictObject({
+      name: z.string().min(1),
+      version: z.string().nullable(),
+      /** Which setup was used, e.g. "TypeScript 5.9.3 from the project" or "extraPaths: src". */
+      configuration: z.string().nullable(),
+    })
+    .nullable(),
   status: z.enum([
     /** The server answered. */
     'ok',
+    /**
+     * The server answered, but the project does not resolve (e.g. unresolved imports), so a
+     * reference it did not return is not a rejection (#42).
+     */
+    'unhealthy',
     /** No server is installed (D11: never installed for the user). */
     'not-installed',
     /** LSP was turned off for this run. */
