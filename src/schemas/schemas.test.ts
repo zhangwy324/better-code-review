@@ -74,6 +74,7 @@ const changeSet: ChangeSet = {
     },
   ],
   excludedUntrackedPaths: [],
+  pullRequest: null,
 };
 
 const structural: StructuralChangeSet = {
