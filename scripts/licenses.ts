@@ -5,6 +5,7 @@ import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { init, type ModuleInfos } from 'license-checker-rseidelsohn';
+import type { GrammarManifest } from '../src/analysis/structural/languages.ts';
 import { evaluate, type DependencyLicense, type LicensePolicy } from './license-policy.ts';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -36,6 +37,24 @@ const deps: Dependency[] = Object.entries(modules).map(([id, info]) => {
     licenseFile: info.licenseFile,
   };
 });
+
+// Vendored grammar .wasm files (ADR 0001) are distributed too, but are not npm dependencies.
+const grammarsDir = join(root, 'src', 'analysis', 'structural', 'grammars');
+const grammars = JSON.parse(
+  readFileSync(join(grammarsDir, 'manifest.json'), 'utf8'),
+) as GrammarManifest;
+const vendored = new Set<string>();
+for (const g of grammars.grammars) {
+  if (vendored.has(`${g.package}@${g.version}`)) continue;
+  vendored.add(`${g.package}@${g.version}`);
+  deps.push({
+    name: g.package,
+    version: g.version,
+    licenses: g.license ? [g.license] : [],
+    repository: g.repository,
+    licenseFile: g.licenseFile && join(grammarsDir, g.licenseFile),
+  });
+}
 
 const failures = deps.flatMap((dep) => {
   const verdict = evaluate(dep, policy);
