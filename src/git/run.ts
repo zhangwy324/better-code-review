@@ -1,5 +1,6 @@
 // Runs the git CLI. Everything in src/git shells out to git rather than reading the object
-// database itself, so the repository's own Git does the resolving and diffing.
+// database itself, so the repository's own Git does the resolving and diffing. `runCommand` is
+// the process plumbing, shared with the GitHub CLI runner (pr.ts).
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
@@ -35,8 +36,34 @@ export function runGit(
   input?: string,
   env?: Record<string, string>,
 ): Promise<Buffer> {
+  return runCommand('git', cwd, args, {
+    input,
+    env,
+    notFound: (cause) => new GitNotFoundError({ cause }),
+    failed: (exitCode, stderr) => new GitError(args, exitCode, stderr),
+  });
+}
+
+export interface RunCommandOptions {
+  input?: string | undefined;
+  /** Merged over the process environment. */
+  env?: Record<string, string> | undefined;
+  /** The error for a missing executable. */
+  notFound: (cause: Error) => Error;
+  /** The error for a non-zero exit. */
+  failed: (exitCode: number | null, stderr: string) => Error;
+}
+
+/** Runs `command <args>` in `cwd` and resolves with its raw stdout. Shared by git and gh. */
+export function runCommand(
+  command: string,
+  cwd: string,
+  args: readonly string[],
+  options: RunCommandOptions,
+): Promise<Buffer> {
+  const { input, env, notFound, failed } = options;
   return new Promise((resolve, reject) => {
-    const child = spawn('git', args, {
+    const child = spawn(command, args, {
       cwd,
       env: env && { ...process.env, ...env },
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -49,13 +76,13 @@ export function runGit(
     child.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code !== 'ENOENT') reject(err);
       else if (!existsSync(cwd)) reject(new Error(`Repository path does not exist: ${cwd}`));
-      else reject(new GitNotFoundError({ cause: err }));
+      else reject(notFound(err));
     });
     child.on('close', (code) => {
       if (code === 0) resolve(Buffer.concat(stdout));
-      else reject(new GitError(args, code, Buffer.concat(stderr).toString('utf8')));
+      else reject(failed(code, Buffer.concat(stderr).toString('utf8')));
     });
-    // If git exits before reading its input, the failure is reported by the exit code.
+    // If the command exits before reading its input, the failure is reported by the exit code.
     child.stdin.on('error', () => {});
     child.stdin.end(input);
   });

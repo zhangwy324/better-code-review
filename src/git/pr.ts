@@ -10,11 +10,9 @@
 // The base commit is the one GitHub records on the PR, not the current tip of the base branch.
 // For an open PR the two have the same merge base with the head; for a merged PR the branch tip
 // already contains the head, and only the recorded commit gives the diff GitHub still shows.
-import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { z } from 'zod';
 import type { PullRequestInfo } from '../schemas/index.ts';
-import { GitError, gitLine, runGit } from './run.ts';
+import { GitError, gitLine, runCommand, runGit } from './run.ts';
 
 /** Runs `gh <args>` in `cwd` and resolves with its stdout. Injectable so tests need no gh. */
 export type GhRunner = (cwd: string, args: readonly string[]) => Promise<string>;
@@ -43,24 +41,13 @@ export class GhNotFoundError extends Error {
   }
 }
 
-export const runGh: GhRunner = (cwd, args) =>
-  new Promise((resolve, reject) => {
-    const child = spawn('gh', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
-    // Node reports a missing executable and a missing cwd with the same ENOENT error.
-    child.on('error', (err: NodeJS.ErrnoException) => {
-      if (err.code !== 'ENOENT') reject(err);
-      else if (!existsSync(cwd)) reject(new Error(`Repository path does not exist: ${cwd}`));
-      else reject(new GhNotFoundError({ cause: err }));
-    });
-    child.on('close', (code) => {
-      if (code === 0) resolve(Buffer.concat(stdout).toString('utf8'));
-      else reject(new GhError(args, code, Buffer.concat(stderr).toString('utf8')));
-    });
-  });
+export const runGh: GhRunner = async (cwd, args) =>
+  (
+    await runCommand('gh', cwd, args, {
+      notFound: (cause) => new GhNotFoundError({ cause }),
+      failed: (exitCode, stderr) => new GhError(args, exitCode, stderr),
+    })
+  ).toString('utf8');
 
 /** The fields of GitHub's "get a pull request" response that are used here. */
 const PullResponse = z.object({
