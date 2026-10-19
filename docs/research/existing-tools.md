@@ -266,7 +266,7 @@ The edges therefore carry three provenance levels, **verified, inferred and poss
 
 We should still detect and reuse servers that are already installed, and report missing capability per language (e.g. "Java callers: possible only — jdtls not found").
 
-**Validation still needed (follow-up spike):**
+**Validation still needed (follow-up spike):** *Done in #42: see [candidate-adjudication.md](candidate-adjudication.md). Go, with changes, for relationships between changed entities (MVP spec D12).*
 - On 5–10 real open-source PRs in TS, Python and Java (selected by shape: signature changes, cross-file callers, name collisions), measure candidates per changed function and AI-verdict accuracy against LSP ground truth.
 - Check that the language pack's entity spans are good enough to attach hunks to.
 
