@@ -1,2 +1,4 @@
 # LF everywhere, so formatting checks behave the same on Windows CI.
 * text=auto eol=lf
+# Vendored tree-sitter grammars (src/analysis/structural/grammars/).
+*.wasm binary
