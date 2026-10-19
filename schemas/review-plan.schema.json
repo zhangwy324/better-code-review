@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "snapshotId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 hex digest identifying the exact before/after snapshot"
+    },
+    "origin": {
+      "type": "string",
+      "enum": [
+        "agent",
+        "fallback"
+      ]
+    },
+    "fallbackReason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+            "description": "Lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit, max 64"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "nodeIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^n_[0-9a-f]{16}$",
+              "description": "Generated ID: \"n_\" + 16 hex characters"
+            }
+          },
+          "referenceNodeIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^n_[0-9a-f]{16}$",
+              "description": "Generated ID: \"n_\" + 16 hex characters"
+            }
+          },
+          "childGroupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+              "description": "Lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit, max 64"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "nodeIds",
+          "referenceNodeIds",
+          "childGroupIds"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "groupOrder": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+        "description": "Lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit, max 64"
+      }
+    },
+    "edgeVerdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "edgeId": {
+            "type": "string",
+            "pattern": "^e_[0-9a-f]{16}$",
+            "description": "Generated ID: \"e_\" + 16 hex characters"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unsure"
+            ]
+          },
+          "via": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "direct",
+                  "dispatch",
+                  "alias"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "citedLine": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Repository-relative, \"/\"-separated path as Git reports it"
+              },
+              "side": {
+                "type": "string",
+                "enum": [
+                  "old",
+                  "new"
+                ]
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "path",
+              "side",
+              "line"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "edgeId",
+          "verdict",
+          "via",
+          "reason",
+          "citedLine"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "inferredRelationships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+            "description": "Lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit, max 64"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^n_[0-9a-f]{16}$",
+            "description": "Generated ID: \"n_\" + 16 hex characters"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^n_[0-9a-f]{16}$",
+            "description": "Generated ID: \"n_\" + 16 hex characters"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "change-propagation",
+              "architectural",
+              "logically-related"
+            ]
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "citedLines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Repository-relative, \"/\"-separated path as Git reports it"
+                },
+                "side": {
+                  "type": "string",
+                  "enum": [
+                    "old",
+                    "new"
+                  ]
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "path",
+                "side",
+                "line"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "from",
+          "to",
+          "kind",
+          "explanation",
+          "citedLines"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "snapshotId",
+    "origin",
+    "fallbackReason",
+    "summary",
+    "groups",
+    "groupOrder",
+    "edgeVerdicts",
+    "inferredRelationships"
+  ],
+  "additionalProperties": false,
+  "title": "review-plan v1",
+  "$comment": "Generated from src/schemas by `npm run schemas`; do not edit. Refinements that JSON Schema cannot express (repository-relative paths, range order) are checked by the Zod schemas only."
+}

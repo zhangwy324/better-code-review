@@ -1,0 +1,295 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "snapshotId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 hex digest identifying the exact before/after snapshot"
+    },
+    "target": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "pr"
+            },
+            "number": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "kind",
+            "number"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "commit"
+            },
+            "commit": {
+              "type": "string",
+              "minLength": 1
+            },
+            "parent": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "kind",
+            "commit"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "local"
+            },
+            "includeUntracked": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "includeUntracked"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "range"
+            },
+            "base": {
+              "type": "string",
+              "minLength": 1
+            },
+            "head": {
+              "type": "string",
+              "minLength": 1
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "direct",
+                "merge-base"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "base",
+            "head",
+            "mode"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "baseRevision": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "headRevision": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "added",
+              "modified",
+              "deleted",
+              "renamed",
+              "copied",
+              "type-changed"
+            ]
+          },
+          "oldPath": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "description": "Repository-relative, \"/\"-separated path as Git reports it"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "newPath": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "description": "Repository-relative, \"/\"-separated path as Git reports it"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "oldMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-7]{6}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "newMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-7]{6}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "binary": {
+            "type": "boolean"
+          },
+          "oldContent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "newContent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contentOmitted": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "binary",
+                  "too-large"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hunks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^h_[0-9a-f]{16}$",
+                  "description": "Generated ID: \"h_\" + 16 hex characters"
+                },
+                "oldStart": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "oldLines": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "newStart": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "newLines": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "patch": {
+                  "type": "string",
+                  "pattern": "^@@ "
+                }
+              },
+              "required": [
+                "id",
+                "oldStart",
+                "oldLines",
+                "newStart",
+                "newLines",
+                "patch"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "status",
+          "oldPath",
+          "newPath",
+          "oldMode",
+          "newMode",
+          "binary",
+          "oldContent",
+          "newContent",
+          "contentOmitted",
+          "hunks"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "snapshotId",
+    "target",
+    "baseRevision",
+    "headRevision",
+    "files"
+  ],
+  "additionalProperties": false,
+  "title": "change-set v1",
+  "$comment": "Generated from src/schemas by `npm run schemas`; do not edit. Refinements that JSON Schema cannot express (repository-relative paths, range order) are checked by the Zod schemas only."
+}

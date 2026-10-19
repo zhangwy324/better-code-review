@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "snapshotId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 hex digest identifying the exact before/after snapshot"
+    },
+    "comments": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+                "description": "Lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit, max 64"
+              },
+              "kind": {
+                "type": "string",
+                "const": "line"
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Repository-relative, \"/\"-separated path as Git reports it"
+              },
+              "side": {
+                "type": "string",
+                "enum": [
+                  "old",
+                  "new"
+                ]
+              },
+              "range": {
+                "type": "object",
+                "properties": {
+                  "startLine": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "startColumn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "endLine": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "endColumn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "startLine",
+                  "endLine"
+                ],
+                "additionalProperties": false
+              },
+              "hunkId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^h_[0-9a-f]{16}$",
+                    "description": "Generated ID: \"h_\" + 16 hex characters"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "nodeId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^n_[0-9a-f]{16}$",
+                    "description": "Generated ID: \"n_\" + 16 hex characters"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "body": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "path",
+              "side",
+              "range",
+              "hunkId",
+              "nodeId",
+              "body"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+                "description": "Lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit, max 64"
+              },
+              "kind": {
+                "type": "string",
+                "const": "group"
+              },
+              "groupId": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+                "description": "Lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit, max 64"
+              },
+              "body": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "groupId",
+              "body"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "reviewedHunkIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^h_[0-9a-f]{16}$",
+        "description": "Generated ID: \"h_\" + 16 hex characters"
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "snapshotId",
+    "comments",
+    "reviewedHunkIds"
+  ],
+  "additionalProperties": false,
+  "title": "review-feedback v1",
+  "$comment": "Generated from src/schemas by `npm run schemas`; do not edit. Refinements that JSON Schema cannot express (repository-relative paths, range order) are checked by the Zod schemas only."
+}

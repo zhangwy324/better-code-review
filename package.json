@@ -15,6 +15,7 @@
   "files": [
     "dist",
     "!dist/**/*.test.*",
+    "schemas",
     "THIRD_PARTY_NOTICES"
   ],
   "scripts": {
@@ -24,6 +25,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "schemas": "node scripts/schemas.ts",
     "licenses": "node scripts/licenses.ts",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm test",
     "prepack": "npm run build && npm run licenses"
@@ -31,6 +33,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.19.2",
+    "ajv": "^8.20.0",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",
@@ -40,5 +43,8 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.2",
     "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
   }
 }

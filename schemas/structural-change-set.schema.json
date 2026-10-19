@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "snapshotId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 hex digest identifying the exact before/after snapshot"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Repository-relative, \"/\"-separated path as Git reports it"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "supported",
+              "community",
+              "text-only"
+            ]
+          },
+          "test": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "path-convention",
+                  "declared-test-root",
+                  "content"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "binary",
+                  "too-large",
+                  "generated",
+                  "parse-error"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "language",
+          "tier",
+          "test",
+          "skipped"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^ent_[0-9a-f]{16}$",
+            "description": "Generated ID: \"ent_\" + 16 hex characters"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "function",
+              "method",
+              "constructor",
+              "class",
+              "interface",
+              "enum",
+              "type",
+              "module"
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "container": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Repository-relative, \"/\"-separated path as Git reports it"
+          },
+          "oldPath": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "description": "Repository-relative, \"/\"-separated path as Git reports it"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "added",
+              "modified",
+              "deleted",
+              "renamed",
+              "moved"
+            ]
+          },
+          "oldRange": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "startLine": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "startColumn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "endLine": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "endColumn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "startLine",
+                  "endLine"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "newRange": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "startLine": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "startColumn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "endLine": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "endColumn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "startLine",
+                  "endLine"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hunkIds": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^h_[0-9a-f]{16}$",
+              "description": "Generated ID: \"h_\" + 16 hex characters"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "container",
+          "path",
+          "oldPath",
+          "change",
+          "oldRange",
+          "newRange",
+          "hunkIds"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "unattributedHunkIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^h_[0-9a-f]{16}$",
+        "description": "Generated ID: \"h_\" + 16 hex characters"
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "snapshotId",
+    "files",
+    "entities",
+    "unattributedHunkIds"
+  ],
+  "additionalProperties": false,
+  "title": "structural-change-set v1",
+  "$comment": "Generated from src/schemas by `npm run schemas`; do not edit. Refinements that JSON Schema cannot express (repository-relative paths, range order) are checked by the Zod schemas only."
+}
