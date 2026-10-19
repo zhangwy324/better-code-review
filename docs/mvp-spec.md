@@ -148,7 +148,7 @@ These come from §9.8, and every milestone's tests must keep them:
 "Signature fixture" means the #3/#4 fixture: `formatPrice` gains `currency`, 3 of 4 callers are updated (`emailSummary` is missed), plus name collisions, and on the Python side `tax` gains `rate`. #9 adds it to the repository. Under D12, `emailSummary` is unchanged, so v0.1 does not show it; the fixture still checks that it does not appear as a changed node.
 
 ### M0 · Foundations
-- [ ] This spec merged (#6).
+- [x] This spec merged (#6).
 - [ ] Repo scaffold with build, lint, test and CI, including the licence check from ADR 0002 (#7).
 - [ ] Versioned schemas for every contract in D6 and D4, with round-trip tests and the invariants above documented next to the types (#8).
 - [ ] Fixture portfolio from §18.4 committed. At minimum: the signature fixture, multiple independent roots, config-only edits, an unsupported language or binary file, and a rename (#9).
