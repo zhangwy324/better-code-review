@@ -52,6 +52,9 @@ From §17.1, except item 5 (narrowed by D12). A reviewer can do all of the follo
 - **Hunks are the unit of identity and review.** Every hunk has exactly one ID per snapshot. A hunk that overlaps several entities is attached to each of them (#15 defines the split). It still has one review status, and coverage counts it once.
 - **Each node has exactly one home group.** Other groups may show a *reference* to it (a link chip, not a copy). This avoids the CG-Diff problem where duplicated nodes were mistaken for duplicated code.
 - Groups may nest one level (`childGroupIds`) for MVP. Deeper hierarchies are deferred.
+- **Test files relate at file level (#42).** In a test or test-support file, a relationship is one edge per (test file, changed entity), e.g. `checkout.test.ts → formatPrice`, not one per call or per test function. One confirming hit is enough to establish the edge; the individual call sites stay visible in the file's diff. Hunks in test files still get symbol or module-level nodes as above, so coverage is unchanged.
+  - **Why.** A reviewer needs "these tests exercise F", not which of 50 calls do. In #42, 31% of ambiguous in-scope hits were in test files; file-level edges cut the decisions there from 274 hits to 49 pairs, 15 of which import-path resolution settles alone.
+  - **Detection** uses path conventions (`*.test.*`, `*.spec.*`, `__tests__/`, `test_*.py`, `*_test.py`, `tests/`, `src/test/java/`, `*Test.java`) plus test roots declared in config (pytest `testpaths`, jest/vitest `testMatch`/`include`, Maven/Gradle test source directories). Content signals (test-framework imports) only break ties; alone they misfire on production code. A misclassified file only changes edge granularity, never coverage. The artifact shows which files were treated as tests.
 
 ### D3. Diffs open in a wide reading panel (§19.3 Q5)
 
