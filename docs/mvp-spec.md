@@ -149,7 +149,7 @@ These come from §9.8, and every milestone's tests must keep them:
 
 ### M0 · Foundations
 - [x] This spec merged (#6).
-- [ ] Repo scaffold with build, lint, test and CI, including the licence check from ADR 0002 (#7).
+- [x] Repo scaffold with build, lint, test and CI, including the licence check from ADR 0002 (#7).
 - [ ] Versioned schemas for every contract in D6 and D4, with round-trip tests and the invariants above documented next to the types (#8).
 - [ ] Fixture portfolio from §18.4 committed. At minimum: the signature fixture, multiple independent roots, config-only edits, an unsupported language or binary file, and a rename (#9).
 - [x] #42 reports recall, precision and cost for candidate search and AI adjudication between changed entities (D12), with a go/no-go. *Go, with changes: [`candidate-adjudication.md`](research/candidate-adjudication.md).* **If it says no-go, D6 and M1/M2 are revisited before M1 starts.**
