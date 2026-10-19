@@ -110,7 +110,7 @@ A more helpful review representation should let a developer reconstruct the impl
 **Name:** Better Code Review  
 **Proposed skill invocation:** `$better-code-review`  
 **Distribution intent:** Open source  
-**Primary context:** Reviewing code changes created by AI coding agents, while remaining useful for human-authored changes as well.
+**Context:** Any code change, whether human- or agent-written. Agent-written code is the motivating case: as agents write most code, review becomes the bottleneck.
 
 Possible description:
 
@@ -1325,7 +1325,7 @@ This is not automatically established by attractive graph visuals. It requires t
 
 ### 18.2 Proposed study
 
-Collect **5–10 substantial PRs**, ideally including agent-written changes, and compare review with:
+Collect **5–10 real, substantial PRs** and compare review with:
 
 - Standard GitHub/file-ordered diff.
 - CodeRabbit Change Stack or comparable grouped review interface.
@@ -1448,7 +1448,7 @@ Before a public initial release, establish measurable thresholds for:
 3. Prototype cross-language analysis on the signature-propagation fixture, with before/after and unchanged callers.
 4. Finalize a minimal, versioned `ChangeSet` / `ChangeGraph` schema and evidence model.
 5. Build a barebones artifact that reads a fixture graph and shows expandable real diffs.
-6. Test the experience on a handful of real AI-generated PRs before optimizing layout or adding many features.
+6. Test the experience on a handful of real, substantial PRs before optimizing layout or adding many features.
 
 ---
 
