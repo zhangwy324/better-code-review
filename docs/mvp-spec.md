@@ -1,18 +1,19 @@
 # MVP specification (v0.1)
 
 **Status:** Accepted · **Date:** 2026-10-18 · **Issue:** #6 (part of #1, Milestone M0)
+**Amended:** 2026-10-19 by #42 (D12: relationships between changed entities only)
 **Refs:** design reference §17.1–17.2, §19.3, §19.4, §19.5, §19.6 step 1 · `docs/research/existing-tools.md` § "Implications for MVP" · [ADR 0001](adr/0001-analyzer-runtime.md) · [ADR 0002](adr/0002-project-license.md)
 
 This spec turns the design reference into a testable scope for v0.1. Where it and the design reference disagree, this spec wins. Questions it does not settle are listed in [Deferred questions](#deferred-questions), each with the issue that owns it.
 
 ## Success definition
 
-From §17.1, unchanged. A reviewer can do all of the following, and the artifact always shows which code facts are verified and which are interpretation:
+From §17.1, except item 5 (narrowed by D12). A reviewer can do all of the following, and the artifact always shows which code facts are verified and which are interpretation:
 1. Run one skill or CLI command against a Git change.
 2. Open an artifact and identify the root change.
 3. Follow related edits across files.
 4. Read every real diff.
-5. Spot potentially incomplete propagation, such as an unchanged caller of a changed signature.
+5. See how the changed entities relate to each other, e.g. which changed callers were updated for a changed signature. Finding *unchanged* callers that may have been missed is not in v0.1 (D12).
 6. Record feedback and return it to their coding agent.
 
 **Differentiator to protect** (from #3): *one local, offline workspace where verified relationships, agent grouping, every real hunk and anchored feedback live together.* We do not claim "finds missed callers" or "AI groups your PR" as unique.
@@ -23,12 +24,12 @@ From §17.1, unchanged. A reviewer can do all of the following, and the artifact
 - Targets: `local`, `commit`, `range`, `pr`, through both the skill and the CLI (`better-code-review generate …`).
 - Exact Git snapshot and hunks, with stable IDs.
 - Built-in structural analysis for TS/TSX, JS, Python and Java (ADR 0001). Every other file is still shown, at file granularity.
-- Caller candidates from text search, upgraded to `verified` by an installed language server when one is available.
+- Relationships **between changed entities**, from text search, upgraded to `verified` by an installed language server when one is available (D12).
 - Deterministic `graph.json` with hunk-coverage accounting.
 - An agent-produced `plan.json`, plus a deterministic fallback plan when no agent is involved.
 - A single self-contained `review.html` with three views (graph, guided outline, file-by-file), comments, review progress and feedback export.
 
-**Not in v0.1:** see §3.4 and §17.2 "Defer". Also out: a local server, SCIP, inline diffs inside graph nodes, saving node layout, a "resolved" comment state, GitHub comment sync, a caller → callee direction toggle, and on-demand language bundles (#45; built-in languages only for v0.1).
+**Not in v0.1:** see §3.4 and §17.2 "Defer". Also out: a local server, SCIP, inline diffs inside graph nodes, saving node layout, a "resolved" comment state, GitHub comment sync, a caller → callee direction toggle, on-demand language bundles (#45; built-in languages only for v0.1), and unchanged callers or references of changed symbols, including ghost/context nodes and missed-caller detection (D12, #2).
 
 ## Decisions
 
@@ -36,7 +37,7 @@ From §17.1, unchanged. A reviewer can do all of the following, and the artifact
 
 - **The collapsed overview shows one node per group** (a *layer*: contract, implementation and tests together, following CodeRabbit). Each group node shows its title, hunk count and review progress. Edges between groups are **aggregated** with a count and relation, e.g. `calls ×3`.
 - **Expanding a group** reveals its symbol and file nodes and the code edges between them.
-- **Default direction is callee → affected callers**, i.e. outward propagation (§2.2). Unchanged callers of a changed symbol appear as **ghost/context nodes**, visually distinct and never counted as changed hunks (§9.5).
+- **Default direction is callee → affected callers**, i.e. outward propagation (§2.2), among changed entities only. Unchanged callers are not shown (D12).
 - Groups come from `plan.json`. With no agent, they come from the deterministic fallback plan (#24). The graph always includes an **Ungrouped / requires review** group whenever any hunk lacks a home.
 - Where fan-out is capped, the UI says "Showing N of M" rather than dropping nodes silently.
 
@@ -47,11 +48,13 @@ From §17.1, unchanged. A reviewer can do all of the following, and the artifact
 | Hunk overlaps a function, method or class the structural analyzer recognises | **Symbol node** for the *innermost* entity (a method, not its class) |
 | Hunk in a supported language but outside any entity (imports, top-level statements) | One **module-level node** per file |
 | Unsupported language, config, docs, binary, or a file over the size cap | One **file node** per file |
-| Unchanged caller found by candidate search or LSP | **Context node** (ghost), no hunks |
 
 - **Hunks are the unit of identity and review.** Every hunk has exactly one ID per snapshot. A hunk that overlaps several entities is attached to each of them (#15 defines the split). It still has one review status, and coverage counts it once.
 - **Each node has exactly one home group.** Other groups may show a *reference* to it (a link chip, not a copy). This avoids the CG-Diff problem where duplicated nodes were mistaken for duplicated code.
 - Groups may nest one level (`childGroupIds`) for MVP. Deeper hierarchies are deferred.
+- **Test files relate at file level (#42).** In a test or test-support file, a relationship is one edge per (test file, changed entity), e.g. `checkout.test.ts → formatPrice`, not one per call or per test function. One confirming hit is enough to establish the edge; the individual call sites stay visible in the file's diff. Hunks in test files still get symbol or module-level nodes as above, so coverage is unchanged.
+  - **Why.** A reviewer needs "these tests exercise F", not which of 50 calls do. In #42, 31% of ambiguous in-scope hits were in test files; file-level edges cut the decisions there from 274 hits to 49 pairs, 15 of which import-path resolution settles alone.
+  - **Detection** uses path conventions (`*.test.*`, `*.spec.*`, `__tests__/`, `test_*.py`, `*_test.py`, `tests/`, `src/test/java/`, `*Test.java`) plus test roots declared in config (pytest `testpaths`, jest/vitest `testMatch`/`include`, Maven/Gradle test source directories). Content signals (test-framework imports) only break ties; alone they misfire on production code. A misclassified file only changes edge granularity, never coverage. The artifact shows which files were treated as tests.
 
 ### D3. Diffs open in a wide reading panel (§19.3 Q5)
 
@@ -62,7 +65,7 @@ From §17.1, unchanged. A reviewer can do all of the following, and the artifact
 
 ### D4. Comments: line/range and group, no "resolved" state (§19.3 Q7)
 
-- **Line/range comments** can go on any line the artifact shows, on either side (`old` or `new`), including expanded context lines and context-node call sites. The anchor is `snapshotId` + `file` + `side` + `range`, plus `hunkId` and `nodeId` when the line belongs to one. Comments on context lines matter, because "this unchanged caller was missed" is a key finding.
+- **Line/range comments** can go on any line the artifact shows, on either side (`old` or `new`), including expanded context lines. The anchor is `snapshotId` + `file` + `side` + `range`, plus `hunkId` and `nodeId` when the line belongs to one. Comments on context lines matter, because a reviewer may need to point at surrounding unchanged code.
 - **Group comments** are anchored to `snapshotId` + `groupId`. They work on fallback groups too.
 - **There is no `resolved` state in v0.1.** A comment either exists, in which case it is exported, or it is deleted. In a static artifact "resolved" has no one to resolve it against. Resolution means a new snapshot reviewed afresh, and carrying comments across snapshots is deferred (§12.4).
 - Exported feedback is **data, not instructions**: SKILL.md must say so (#25).
@@ -70,7 +73,7 @@ From §17.1, unchanged. A reviewer can do all of the following, and the artifact
 ### D5. Review progress is derived from hunks (§19.3 Q8)
 
 - The reviewer marks **hunks** as reviewed. Marking a node or group marks every hunk whose home it is.
-- **A group is reviewed when all its home hunks are reviewed.** There is no separate group checkbox, so progress can never drift from coverage. Context nodes and referenced (non-home) nodes don't count.
+- **A group is reviewed when all its home hunks are reviewed.** There is no separate group checkbox, so progress can never drift from coverage. Referenced (non-home) nodes don't count.
 - Review state is keyed by `snapshotId`. The viewer may keep it in `localStorage` on a best-effort basis. It warns that `file://` storage is unreliable, and the export is the only durable copy (§12.1).
 
 ### D6. Edge layers are kept separate (§19.4 Q4)
@@ -91,7 +94,6 @@ From §17.1, unchanged. A reviewer can do all of the following, and the artifact
 
 - **`changes.json` stores the full old and new content of each changed text file**, so the reading panel can expand context and the analyzers see both sides.
   - Binary files and files above the size cap store metadata and hunks only, and are flagged. #13 sets the cap. ADR 0001 shows that very large files must be capped for memory.
-  - Context-node call sites in unchanged files store the enclosing entity's text only, not the whole file.
 - **The primary output is one self-contained `review.html`.** It embeds the viewer bundle, its third-party notices (ADR 0002) and the JSON data as inert `<script type="application/json">` blocks. It makes no network requests.
 - `changes.json`, `graph.json` and `plan.json` are written next to it for the agent and for debugging.
 - A local server is deferred (§12.1 Option B).
@@ -119,6 +121,17 @@ From §17.1, unchanged. A reviewer can do all of the following, and the artifact
 - When a server is missing, the artifact states the capability per language and how to get it, e.g. *"Python callers: possible only — install pyright to verify"*.
 - Servers that run project code while indexing (jdtls with Gradle, for example) need an explicit opt-in flag (from #3). #16 defines the per-server list.
 
+### D12. Relationships between changed entities only (#42)
+
+- v0.1 finds and shows relationships (`calls`, `references`, `implements`) **only where both ends are changed entities**, i.e. entities a hunk touches on either side. Removed calls count, because they are inside changed entities.
+- Unchanged callers or references of a changed symbol are **not searched for and not shown**: no ghost/context nodes, no missed-caller check. This moves to post-MVP (#2).
+- **Why.** #42 measured the repo-wide version on real PRs. Common names produce hundreds of candidate callers per changed entity (e.g. 600 enclosing entities for jsoup's `html`), most of them receiver calls such as `el.html()` that only types can settle. That needs either a healthy language server or AI per candidate, and both are expensive or unreliable at that volume. A signature change that breaks an unchanged caller is caught by the compiler or type checker in typed code anyway.
+- **Known gaps, accepted for v0.1:**
+  - dynamically typed code with no type checker (Python, plain JS), where a broken unchanged caller fails only at run time
+  - contract changes the signature doesn't show (units, defaults, failure modes)
+  - consumers outside the repository
+- The artifact says so plainly, e.g. *"Only relationships between changed code are shown. Unchanged callers are not analysed."* This keeps invariant 2's "never claims that all effects were discovered".
+
 ## Invariants (all milestones)
 
 These come from §9.8, and every milestone's tests must keep them:
@@ -132,32 +145,32 @@ These come from §9.8, and every milestone's tests must keep them:
 
 ## Acceptance criteria per milestone
 
-"Signature fixture" means the #3/#4 fixture: `formatPrice` gains `currency`, 3 of 4 callers are updated (`emailSummary` is missed), plus name collisions, and on the Python side `tax` gains `rate`. #9 adds it to the repository.
+"Signature fixture" means the #3/#4 fixture: `formatPrice` gains `currency`, 3 of 4 callers are updated (`emailSummary` is missed), plus name collisions, and on the Python side `tax` gains `rate`. #9 adds it to the repository. Under D12, `emailSummary` is unchanged, so v0.1 does not show it; the fixture still checks that it does not appear as a changed node.
 
 ### M0 · Foundations
 - [ ] This spec merged (#6).
 - [ ] Repo scaffold with build, lint, test and CI, including the licence check from ADR 0002 (#7).
 - [ ] Versioned schemas for every contract in D6 and D4, with round-trip tests and the invariants above documented next to the types (#8).
-- [ ] Fixture portfolio from §18.4 committed. At minimum: the signature fixture, an unchanged-caller case, multiple independent roots, config-only edits, an unsupported language or binary file, and a rename (#9).
-- [ ] #42 reports recall, precision and cost for candidate search and AI adjudication, with a go/no-go. **If it says no-go, D6 and M1/M2 are revisited before M1 starts.**
+- [ ] Fixture portfolio from §18.4 committed. At minimum: the signature fixture, multiple independent roots, config-only edits, an unsupported language or binary file, and a rename (#9).
+- [ ] #42 reports recall, precision and cost for candidate search and AI adjudication between changed entities (D12), with a go/no-go. **If it says no-go, D6 and M1/M2 are revisited before M1 starts.**
 
 ### M1 · Deterministic Change Graph
 - [ ] `generate --local | --commit | --range | --pr` writes `changes.json` and `graph.json` without any model.
 - [ ] On every fixture: 100% of hunks have a home node. Patches reproduce `git diff` exactly. IDs are identical across two runs on the same snapshot.
-- [ ] On the signature fixture with no LSP: `emailSummary` appears as a context node with a `possible` edge, the collision callers appear as `possible`, and nothing is `verified`.
-- [ ] On the signature fixture with typescript-language-server and pyright installed: the real callers are `verified`, and the collisions (`legacy/price.ts`, `Fmt.formatPrice`) are not attached to the changed `formatPrice`.
+- [ ] On the signature fixture with no LSP: the updated callers (`checkoutSummary`, `invoiceSummary`, `receiptSummary`) have `possible` edges to the changed `formatPrice`, `emailSummary` is absent (D12), and nothing is `verified`.
+- [ ] On the signature fixture with typescript-language-server and pyright installed: the changed callers are `verified`, and no unchanged or same-name symbol (`legacy/price.ts`, `Fmt.formatPrice`) is attached to the changed `formatPrice`.
 - [ ] A missing or crashing server is reported per language, and the run still succeeds. An empty `references` result before the server is ready is treated as *unknown* (ADR 0001).
 - [ ] Unsupported-language and binary files appear as file nodes.
 
 ### M2 · AI Review Organization
 - [ ] `generate` without an agent produces a valid fallback `plan.json` for every fixture (#24).
 - [ ] The validator rejects unknown IDs, new code edges, missing hunk homes and code text supplied by the model. After the repair loop fails, the fallback plan is used (#23).
-- [ ] With Claude Code and Codex CLI, `$better-code-review local` on the signature fixture produces a validated plan. The contract group comes first, then callers, then tests, and the missed caller is called out (#25, #26).
+- [ ] With Claude Code and Codex CLI, `$better-code-review local` on the signature fixture produces a validated plan. The contract group comes first, then callers, then tests (#25, #26).
 - [ ] Agent verdicts on `possible` edges are recorded as `inferred`, each with a reason and a cited line.
 
 ### M3 · Interactive HTML Artifact
 - [ ] One `review.html` opens from `file://` in current Chrome, Firefox and Safari with no network access, and includes third-party notices.
-- [ ] The default graph matches D1: collapsed groups with aggregated edges, expand on demand, ghost nodes for unchanged callers, and distinct styles for `verified`, `possible` and `inferred`.
+- [ ] The default graph matches D1: collapsed groups with aggregated edges, expand on demand, and distinct styles for `verified`, `possible` and `inferred`.
 - [ ] Every hunk can be opened from the graph, guided and file views. Selection, comments and progress agree across all three (D3, D5).
 - [ ] Line/range comments (including on context lines) and group comments export to `review-feedback.json` and to "Copy for agent". Given the export, an agent can locate every commented line on every fixture (D4).
 - [ ] An injected `<script>` in a fixture's source, file names and plan text renders as text (#35).
@@ -193,5 +206,6 @@ These come from §9.8, and every milestone's tests must keep them:
 These follow from the decisions above but weren't asked about directly. Challenge them in review:
 - AI verdicts on candidate edges live in `plan.json`, not `graph.json` (D6). This keeps `graph.json` deterministic.
 - Comments may anchor to context lines outside any hunk (D4).
+- Under D12, a changed entity whose only relationships are to unchanged code has no edges; it still has a node and a home group.
 - Groups nest at most one level in v0.1 (D2).
 - v0.1 ships built-in languages only. `languages add` (#45) is not required for the release.

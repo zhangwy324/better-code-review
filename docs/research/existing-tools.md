@@ -216,6 +216,7 @@ Suggested inputs to the MVP spec (#2). Items marked **⚑ decision** need a main
    - **Avoid CG-Diff's duplicate-node problem**: give each hunk one home group and show *references* elsewhere.
    - Always render a visible "outside functions / non-code / ungrouped" bucket.
 6. **Default direction for the MVP fixture should be callee → affected callers**, with unchanged callers shown as ghost nodes, since that is what sem and blast radius show can be computed. Treat flipping to caller → callee (the CG-Diff view) as a planned toggle, not a v1 requirement.
+   > **Amended by #42 ([MVP spec D12](../mvp-spec.md#d12-relationships-between-changed-entities-only-42)):** v0.1 shows relationships between changed entities only. Unchanged callers (ghost nodes, the missed-caller check) move to post-MVP. See `candidate-adjudication.md` for the measurements behind this.
 7. **Feedback export, following visual-explainer and tell.**
    - Use global stable hunk IDs, so "hunk 7" can be referred to in chat.
    - Use a single exported reply payload.
@@ -249,9 +250,11 @@ The options considered for the structural and relationship layer:
    - The AI may only label edges from the candidate set and never add new ones.
    - Rejected candidates stay visible.
    - Results vary between runs and cost grows with candidate count, so the AI is never the completeness authority.
-4. **Before/after matching and the missed-caller check** are written by us, informed by sem's phased matching. This logic is the same for every language.
+4. **Before/after matching and the missed-caller check** are written by us, informed by sem's phased matching. This logic is the same for every language. *(The missed-caller check is post-MVP: MVP spec D12.)*
 
 > **Amended by [ADR 0001](../adr/0001-analyzer-runtime.md):** the parser is `web-tree-sitter` with built-in and on-demand `.wasm` grammar bundles, not tree-sitter-language-pack. The pipeline is unchanged.
+>
+> **Amended by #42 ([MVP spec D12](../mvp-spec.md#d12-relationships-between-changed-entities-only-42)):** in v0.1 the pipeline runs only between changed entities: candidates are hits of a changed name inside other changed entities, not repo-wide.
 
 The edges therefore carry three provenance levels, **verified, inferred and possible**, which makes §13.4 concrete. Without AI and without LSP, the pipeline still works and shows everything as "possible".
 
@@ -263,7 +266,7 @@ The edges therefore carry three provenance levels, **verified, inferred and poss
 
 We should still detect and reuse servers that are already installed, and report missing capability per language (e.g. "Java callers: possible only — jdtls not found").
 
-**Validation still needed (follow-up spike):**
+**Validation still needed (follow-up spike):** *Done in #42: see [candidate-adjudication.md](candidate-adjudication.md). Go, with changes, for relationships between changed entities (MVP spec D12).*
 - On 5–10 real open-source PRs in TS, Python and Java (selected by shape: signature changes, cross-file callers, name collisions), measure candidates per changed function and AI-verdict accuracy against LSP ground truth.
 - Check that the language pack's entity spans are good enough to attach hunks to.
 
