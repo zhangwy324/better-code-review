@@ -1,34 +1,12 @@
 // The semantic analyzer with real language servers on the signature fixture (#17 acceptance:
 // "With LSP"). Each suite runs only when its server is installed, so CI without servers skips
-// them. Servers are found as in servers.integration.test.ts: on PATH, or in the directories
+// them. Servers are found by lsp-servers.test-helper.ts: on PATH, or in the directories
 // listed in BCR_LSP_TEST_PATH (the first one with a server is used), e.g.
 //   BCR_LSP_TEST_PATH=/a/node_modules/.bin npx vitest run analyze.integration
-import { tmpdir } from 'node:os';
-import { delimiter } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { analyse, SIGNATURE_BASE, SIGNATURE_HEAD, summary } from './fixture.test-helper.ts';
-import { serverFor } from './servers.ts';
+import { installedServers } from './lsp-servers.test-helper.ts';
 import { LspSession } from './session.ts';
-
-/** The first search path on which a server for `language` is installed, or null. */
-function searchPathFor(language: string): string | null {
-  const paths = [
-    ...(process.env.BCR_LSP_TEST_PATH ?? '').split(delimiter).filter(Boolean),
-    process.env.PATH ?? '',
-  ];
-  return (
-    paths.find(
-      (searchPath) =>
-        serverFor(language)!.discover({
-          root: tmpdir(),
-          searchPath,
-          allowProjectCode: false,
-          untrustedPackages: null,
-          platform: process.platform,
-        }).launch !== null,
-    ) ?? null
-  );
-}
 
 const TIMEOUT = 180_000;
 const timeouts = { emptyGraceMs: 3000, retryDelayMs: 500 };
@@ -37,7 +15,7 @@ for (const [language, label] of [
   ['typescript', 'TypeScript'],
   ['python', 'Python'],
 ] as const) {
-  const searchPath = searchPathFor(language);
+  const searchPath = installedServers(language)[0]?.searchPath ?? null;
   describe.skipIf(searchPath === null)(`${label} server on the signature fixture`, () => {
     it(
       'verifies the real callers and rejects the same-name collisions',

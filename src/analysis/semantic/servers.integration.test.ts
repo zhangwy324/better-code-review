@@ -5,10 +5,10 @@
 //   BCR_LSP_TEST_PATH=/a/node_modules/.bin:/b/node_modules/.bin npx vitest run servers.integration
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { type ReferencesResult, LspSession } from './session.ts';
-import { type Launch, serverFor } from './servers.ts';
+import { installedServers } from './lsp-servers.test-helper.ts';
 
 const TS_FILES: Record<string, string> = {
   'tsconfig.json':
@@ -61,27 +61,6 @@ function fixture(files: Record<string, string>): string {
   return root;
 }
 
-/** Every distinct installed server for a language, one per search path. */
-function installed(language: string): { searchPath: string; launch: Launch }[] {
-  const paths = [
-    ...(process.env.BCR_LSP_TEST_PATH ?? '').split(delimiter).filter(Boolean),
-    process.env.PATH ?? '',
-  ];
-  const found = new Map<string, { searchPath: string; launch: Launch }>();
-  for (const searchPath of paths) {
-    const { launch } = serverFor(language)!.discover({
-      root: tmpdir(),
-      searchPath,
-      allowProjectCode: false,
-      untrustedPackages: null,
-      platform: process.platform,
-    });
-    const key = launch ? [launch.command, ...launch.args].join(' ') : '';
-    if (launch && !found.has(key)) found.set(key, { searchPath, launch });
-  }
-  return [...found.values()];
-}
-
 function sites(result: ReferencesResult): string[] {
   if (result.status !== 'ok') throw new Error(result.reason);
   return result.references.map((r) => `${r.path}:${r.range.startLine}`).sort();
@@ -90,7 +69,7 @@ function sites(result: ReferencesResult): string[] {
 const TIMEOUT = 120_000;
 const timeouts = { emptyGraceMs: 3000, retryDelayMs: 500 };
 
-const tsServers = installed('typescript');
+const tsServers = installedServers('typescript');
 describe.skipIf(tsServers.length === 0)('TypeScript servers', () => {
   for (const { searchPath, launch } of tsServers) {
     describe(launch.configuration, () => {
@@ -180,7 +159,7 @@ describe.skipIf(tsServers.length === 0)('TypeScript servers', () => {
   }
 });
 
-const pyServers = installed('python');
+const pyServers = installedServers('python');
 describe.skipIf(pyServers.length === 0)('Python servers', () => {
   for (const { searchPath, launch } of pyServers) {
     describe(launch.name, () => {
