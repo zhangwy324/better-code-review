@@ -262,6 +262,29 @@ describe('analyzeStructure', () => {
     expect(structure.entities[0]!.newRange).toMatchObject({ startLine: 1, endLine: 4 });
   });
 
+  it('keeps same-named functions in different namespaces apart (#60)', async () => {
+    const source = (a: number, b: number) =>
+      lines(
+        'export namespace A {',
+        '  export function f() {',
+        `    return ${a};`,
+        '  }',
+        '}',
+        ...FILLER,
+        'export namespace B.C {',
+        '  export function f() {',
+        `    return ${b};`,
+        '  }',
+        '}',
+      );
+    const { structure } = await analyse({ 'ns.ts': source(1, 1) }, { 'ns.ts': source(2, 2) });
+    expect(summary(structure)).toEqual(['modified function A.f', 'modified function B.C.f']);
+    expect(structure.entities.map((e) => e.newRange)).toMatchObject([
+      { startLine: 2, endLine: 4 },
+      { startLine: 15, endLine: 17 },
+    ]);
+  });
+
   it('JavaScript: default exports, assignments, class fields and test blocks', async () => {
     const { structure } = await analyse(
       {

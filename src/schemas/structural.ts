@@ -33,6 +33,8 @@ export const EntityKind = z.enum([
   'class',
   'interface',
   'enum',
+  /** A TS `namespace` or `module` block; it is the container of what it declares. */
+  'namespace',
   'type',
   /** Top-level code outside any other entity: imports, top-level statements (D2). */
   'module',

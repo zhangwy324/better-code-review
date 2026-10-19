@@ -34,7 +34,15 @@ export interface ParsedVersions {
 }
 
 export type DeclarationKind =
-  'function' | 'method' | 'constructor' | 'class' | 'interface' | 'enum' | 'type' | 'import';
+  | 'function'
+  | 'method'
+  | 'constructor'
+  | 'class'
+  | 'interface'
+  | 'enum'
+  | 'namespace'
+  | 'type'
+  | 'import';
 
 export interface Declaration {
   kind: DeclarationKind;

@@ -39,7 +39,7 @@ The `.wasm` grammars are **vendored** in `grammars/`, copied from the official `
 
 ## Query conventions
 
-- `@definition.<kind>` captures the declaration node. Kinds: `function`, `method`, `constructor`, `class`, `interface`, `enum`, `type`, `import`.
+- `@definition.<kind>` captures the declaration node. Kinds: `function`, `method`, `constructor`, `class`, `interface`, `enum`, `namespace` (TS `namespace` and `module` blocks; a container like a class), `type`, `import`.
 - `@name` captures its name. For imports it is the module specifier.
 - `(#set! test "true")` marks a test: JS/TS `describe`/`it`/`test` blocks (kind `function`, named by their title), pytest `test*` functions and methods and `Test*` classes, and JUnit `@Test`-style methods. This is a per-declaration hint; deciding whether a *file* is a test file is #15's job (MVP spec D2).
 - Captures starting with `_` are helpers and are ignored.
@@ -47,7 +47,7 @@ The `.wasm` grammars are **vendored** in `grammars/`, copied from the official `
 - TypeScript and TSX run `javascript.scm` followed by `typescript.scm`, so `javascript.scm` may only use node types that exist in all three grammars. JavaScript-only node types (class `field_definition`) go in `javascript-only.scm`.
 - Anonymous default exports (`export default function () {}`) are named `default`. Assignments (`obj.f = () => …`, `module.exports.f = function …`) are named by the last property.
 
-Known query gaps are tracked in #60. `Declaration.range` covers the node only; entity extents (below) add wrappers, comments and decorators.
+Known query gaps (re-exports, CommonJS `require`) are tracked in #60. `Declaration.range` covers the node only; entity extents (below) add wrappers, comments and decorators.
 
 ## Changed entities (#15)
 

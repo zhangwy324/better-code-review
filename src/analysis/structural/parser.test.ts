@@ -165,6 +165,25 @@ enum Rounding { Up, Down }
     ]);
   });
 
+  it('TypeScript namespaces and modules', async () => {
+    const source = `namespace A { export function f() {} }
+export namespace B.C { function f() {} }
+declare module 'x' { function h(): void; }
+module M {}
+declare global { interface W {} }
+`;
+    expect(await summary('src/ns.ts', source)).toEqual([
+      'namespace A',
+      'function f',
+      'namespace B.C',
+      'function f',
+      'namespace x',
+      'function h',
+      'namespace M',
+      'interface W',
+    ]);
+  });
+
   it('TSX', async () => {
     const source = `import React from 'react';
 export function Price({ amount }: { amount: number }) {

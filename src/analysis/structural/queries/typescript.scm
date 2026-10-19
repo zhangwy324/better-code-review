@@ -12,6 +12,18 @@
 (enum_declaration
   name: (identifier) @name) @definition.enum
 
+; Namespaces are containers, like classes: `namespace A.B {…}`, `module M {…}` and ambient
+; `declare module 'x' {…}`, named without the quotes. `declare global {…}` has no name and is
+; not one.
+(internal_module
+  name: [(identifier) (nested_identifier)] @name) @definition.namespace
+
+(module
+  name: [(identifier) (nested_identifier)] @name) @definition.namespace
+
+(module
+  name: (string (string_fragment) @name)) @definition.namespace
+
 ; Overload signatures: `function f(a: string): void;` and, in classes, `m(a: string): void;`.
 (function_signature
   name: (identifier) @name) @definition.function
