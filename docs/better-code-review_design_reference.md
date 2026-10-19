@@ -250,6 +250,8 @@ Ten caller sites and several tests are adjusted. A natural review order is:
 
 The unchanged-caller capability is significant: the tool should not merely report what changed but should help reviewers investigate potentially missing propagation. However, a static analysis result is evidence, **not a guarantee** that all dynamically reachable callers have been found.
 
+> **v0.1 scope note:** step 5 (unchanged callers, context nodes) is deferred to post-MVP by [MVP spec D12](mvp-spec.md#d12-relationships-between-changed-entities-only-42). The sections below that mention context nodes and unchanged callers describe the longer-term design.
+
 ### 5.2 Example B — New cancellation endpoint
 
 A feature touches routing, validation, business logic, persistence, events, and tests. The most useful order may be:
