@@ -1,0 +1,15 @@
+{
+  "$comment": "Machine-readable copy of the dependency licence policy in docs/adr/0002-project-license.md. Keep the two in sync.",
+  "allowed": [
+    "MIT",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Apache-2.0",
+    "0BSD",
+    "Unlicense",
+    "CC0-1.0",
+    "BlueOak-1.0.0"
+  ],
+  "approvedExceptions": []
+}

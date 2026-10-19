@@ -1,0 +1,2 @@
+# LF everywhere, so formatting checks behave the same on Windows CI.
+* text=auto eol=lf

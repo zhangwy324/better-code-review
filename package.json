@@ -1,0 +1,44 @@
+{
+  "name": "better-code-review",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Interactive, evidence-grounded review workspace for agent-written code changes.",
+  "license": "MIT",
+  "author": "David Zhang",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "better-code-review": "dist/cli/main.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "THIRD_PARTY_NOTICES"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "licenses": "node scripts/licenses.ts",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm test",
+    "prepack": "npm run build && npm run licenses"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "license-checker-rseidelsohn": "^5.0.1",
+    "prettier": "^3.9.10",
+    "spdx-satisfies": "^6.0.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.5"
+  }
+}

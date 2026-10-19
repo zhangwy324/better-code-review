@@ -86,11 +86,13 @@ None yet.
 
 ## Enforcement
 
-CI does not exist yet. #7 will add a CI check that:
-- lists the licences of all production dependencies (e.g. with `license-checker-rseidelsohn` or `license-checker`) and fails on any licence that is neither allowed nor an approved exception;
-- generates `THIRD_PARTY_NOTICES` from the same data.
+Since #7, the `dependency licences` CI job runs `npm run licenses` ([`scripts/licenses.ts`](../../scripts/licenses.ts)). It:
+- lists the licences of all production dependencies with `license-checker-rseidelsohn` and fails on any licence that is neither allowed nor an approved exception. SPDX expressions are evaluated properly: `MIT OR GPL-3.0` passes, `MIT AND GPL-3.0` does not;
+- generates `THIRD_PARTY_NOTICES` from the same data. The file is not committed: `npm pack` regenerates it, and CI uploads it as a build artifact.
 
-Until then, whoever adds a dependency checks its licence against this policy in the PR.
+The machine-readable policy is [`scripts/license-policy.json`](../../scripts/license-policy.json). A test fails if its allowlist drifts from the **Allowed** row above. An approved exception is added to both that file and [Approved exceptions](#approved-exceptions) in the same PR.
+
+Not yet automated: dev-only dependency licences (still checked in the PR by whoever adds them), notices inside `review.html` (#28), and grammar licences in language bundles (#45).
 
 ## Consequences
 
