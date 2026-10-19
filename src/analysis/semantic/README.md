@@ -1,18 +1,88 @@
-# Semantic analysis: LSP tier
+# Semantic analyzer
 
-The optional precision tier of the semantic analyzer (issue #16). It finds language servers that are already installed, asks them for references to changed entities, and reports per language what it could and could not do. It is our own minimal JSON-RPC-over-stdio client with no dependencies ([ADR 0001](../../../docs/adr/0001-analyzer-runtime.md)).
-
-**LSP is optional.** A missing, broken, slow or unhealthy server never fails a review. It becomes a capability gap in `SemanticEvidence.languages` (`LanguageCapability`), and an answer from it is `unknown`, never "no references".
+Answers "how are the changed entities related to each other?" (design reference §8.4, §9.4). `analyzeSemantics(changeSet, structure, options)` in `analyze.ts` turns a `ChangeSet` and its `StructuralChangeSet` into `SemanticEvidence` (issue #17). Candidates come from deterministic search, which owns recall. An installed language server (the LSP tier, issue #16) can then confirm or reject them, but is never required.
 
 | File | Contents |
 |---|---|
+| `analyze.ts` | `analyzeSemantics()`: the candidate pipeline, LSP verification, test-file edges, caps, the output |
+| `hits.ts` | `findHits()`: text search and the tree-sitter filter for one file |
+| `imports.ts` | Import-path resolution: bindings, exports and re-exports, module paths, Java imports |
+| `snapshot-files.ts` | `SnapshotFiles`: read and search the whole snapshot (`gitSnapshotFiles`, `changeSetFiles`) |
 | `jsonrpc.ts` | `Content-Length` framing, requests with timeouts, server-to-client requests |
 | `client.ts` | One server process: `initialize`, capability checks, document sync, `$/progress`, `language/status`, diagnostics, URIs |
 | `servers.ts` | Known servers, discovery, the exact command lines |
 | `normalise.ts` | Text-level rules that make servers agree: import lines, alias names, constructor calls, method declarations, receivers |
 | `session.ts` | `LspSession`: start-up, readiness, crash recovery, references, health check, capability report |
 
-## API
+## Caller candidates (#17)
+
+```ts
+const files = gitSnapshotFiles(repo, changeSet);
+const lsp = await LspSession.start(headWorkingTree, languages, lspOptions); // optional
+const evidence = await analyzeSemantics(changeSet, structure, { files, lsp });
+await lsp.close();
+```
+
+- `files` gives access to unchanged files, for imports, re-exports and definition counts. Without it only the changed files are read, nothing counts as unambiguous, and imports into unchanged files stay unresolved.
+- `lsp` is any `LspSession` (or a `ReferenceProvider`) started on a working tree holding the **new** side. The caller starts and closes it. Without one, every language reports `disabled` and nothing is verified.
+
+**Scope (MVP spec D12).** Only hits inside other changed entities count: entities a hunk touches on either side. Unchanged callers are never searched for. Both sides are searched: old-side names in old-side content, so a removed call is found too. Files without structure (text-only, binary, too large, generated, unparseable) have no entities and are not searched. Hits only relate files of the same language family: TS/TSX/JS, Python, Java.
+
+**Targets.** Every changed entity with a name. Overloads are one entity (#15), so their candidates are shared. Constructors are searched by their class name, and only call sites count (#42): `new C(…)`, `C(…)`, not type annotations, `isinstance(x, C)` or imports. Constructor chaining is searched too: `super(…)` in direct subclasses (TS, Java), `this(…)` in the same class (Java), and `super().__init__(…)` in direct subclasses (Python). These were the only text-search misses in #42.
+
+### The pipeline
+
+In the order #42 settled (`docs/research/candidate-adjudication.md`):
+
+1. **Text search** for each target's name on its side, whole words only. **Aliases:** every import in a changed file is resolved, and one that reaches a target under another name (`import { fmt } from './reexport'` where `reexport.ts` has `export { formatPrice as fmt }`, `from tax import tax as levy`) adds that name to the search in that file.
+2. **The tree-sitter filter** (`hits.ts`). The node under each occurrence decides:
+   - comments and strings are skipped;
+   - declarations of the name are skipped: functions, classes, methods, variables, parameters, fields;
+   - object keys and keyword arguments are skipped;
+   - import and re-export lines (`export { a as b }`, `export default a`) are skipped. They are module-level, not callers, and import resolution uses them instead;
+   - what remains is a code hit: a call or a reference, with its receiver (`t.tax` → `t`), and whether it is in a base-class list or chains a constructor.
+
+   Each hit is mapped to the innermost entity containing it. It is kept only when that entity is changed, or when it is outside every entity and the file's `module` entity is changed. A hit inside the target itself (recursion) is dropped.
+3. **The unambiguous rule.** A plain call (no receiver, not an alias) of a name with exactly one definition on that side, across the whole snapshot, is accepted as `possible` with no further work (100% correct in #42). Definitions are counted by `git grep -w` plus parsing the files it finds, up to 200 files; beyond that, or without `files`, the name counts as ambiguous.
+4. **Import-path resolution** (`imports.ts`), for every other hit except constructor chaining:
+   - **Bare names** (`formatPrice(…)`): a definition in the file, else its import binding, followed through re-exports up to 3 levels (`MAX_REEXPORT_DEPTH`), else `export *` / `from m import *`. Reaching the target is `confirmed`; reaching another definition, or a module, is `rejected`.
+   - **A bare name neither imported nor defined in the file cannot be the target** (TS/JS and Python, #42): `rejected`. Not in a JS script with no imports or exports (its names are global), nor in a file that uses `require(…)` or `import(…)`.
+   - **Module attributes** (`t.tax(…)`, `ns.formatPrice(…)`): the receiver's binding names the module, which is then resolved like a bare name. `Fmt.formatPrice` where `Fmt` resolves to the target's class is `confirmed`.
+   - **Java:** a class name is the file's own type, a single-type import, or else the file's package. A static import names a method. Only a type the file declares or an explicit import says `rejected`; a same-package guess only confirms.
+   - Module paths: relative TS/JS specifiers with the usual extensions and `index` files (`./x.js` also finds `./x.ts`); Python modules under the repository root or `src/`, relative imports, and `from pkg import mod` as a submodule when `pkg` defines no `mod`.
+   - Anything else is unknown and adds no record: package imports, `tsconfig` path aliases, top-level variables, receiver calls (`obj.m()`, which only types settle), scopes and shadowing.
+5. **Test files** (MVP spec D2) keep one edge per (test file, changed entity): the most decided hit (LSP-confirmed, then import-confirmed, then undecided), preferring the new side. Its detail says how many hits it stands for.
+6. **LSP**, when a session is given, for new-side candidates that import resolution did not reject. One `references` query per target, at its name (a constructor's class name), with the readiness and normalisation rules below.
+   - A candidate inside a returned site (`rangeContains`) gets an `lsp` `confirmed` record.
+   - A candidate that is missing gets an `lsp` `rejected` record only when the answer is `ok` and `complete`, the site is not in `unresolved`, `projectHealth` for the files involved is healthy, the hit is not constructor chaining (which `references` does not return), and the target is not a method of a class with bases (calls through an overridden base method are not in its own references, #42).
+   - Otherwise nothing is recorded and the candidate stays `possible`. An `unknown` answer is never a rejection.
+7. **Caps** (D1): at most `maxCandidatesPerEntity` (default 100) source entities per (target, relation), a test file counting as one. The rest are dropped from the records and reported in `caps` as "Showing N of M".
+
+AI adjudication of what is still undecided (#43) is not here; it labels these candidates and never adds one.
+
+### Output
+
+One `text-search` record with outcome `candidate` per kept hit, plus an `import-resolution` and an `lsp` record when those steps decided. Every record has the hit's exact location and side.
+
+| Field | Value |
+|---|---|
+| `relation` | `calls` for a call of a function, method or constructor; `implements` for a class or interface in a base-class list; `references` otherwise |
+| `sourceEntityId` | The changed entity containing the hit (for a test file, the one containing the kept hit) |
+| `targetEntityId` | The changed entity named |
+| `detail` | For text search, the hit's shape and the rules applied, e.g. `call; through the alias fmt` or `call; unambiguous: one definition, plain call`. For the deciding methods, why |
+| `id` | `stableId('ev', [method, relation, source, target, path, side, line, column])` |
+
+How the graph (#18) reads them, as the schema says: an edge is `verified` when a record is `lsp` `confirmed`; it is rejected when a record is `import-resolution` or `lsp` `rejected`; otherwise it is `possible`. Rejected candidates stay in the records (D6).
+
+`languages` is `LspSession.capabilities()` when a session is given: per language, the server, what was attempted, what failed, and the guidance (D11). Without one, every language of the change reports `disabled`.
+
+## LSP tier (#16)
+
+The optional precision tier finds language servers that are already installed, asks them for references to changed entities, and reports per language what it could and could not do. It is our own minimal JSON-RPC-over-stdio client with no dependencies ([ADR 0001](../../../docs/adr/0001-analyzer-runtime.md)).
+
+**LSP is optional.** A missing, broken, slow or unhealthy server never fails a review. It becomes a capability gap in `SemanticEvidence.languages` (`LanguageCapability`), and an answer from it is `unknown`, never "no references".
+
+## LSP API
 
 ```ts
 const lsp = await LspSession.start(snapshotRoot, ['typescript', 'python'], options);
@@ -26,7 +96,7 @@ const languages = lsp.capabilities(); // LanguageCapability[] for SemanticEviden
 await lsp.close();
 ```
 
-How #17 is expected to use it, per candidate edge between changed entities (D12):
+How `analyzeSemantics()` uses it, per candidate edge between changed entities (D12; see "The pipeline" above):
 - A candidate inside a returned reference's range is **confirmed**. Match by range with `rangeContains`, not by start column (jdtls starts `new Gson()` at `new`).
 - A candidate not returned is **rejected** only when the answer is `ok` and `complete`, it is not in `unresolved`, and `projectHealth` for the files involved is `healthy`. Otherwise it stays `possible`.
 - Lines are 1-based and columns 1-based UTF-16, as in `SourceRange`. `line`/`column` is the entity's name.
@@ -137,8 +207,9 @@ Language servers are programs run on the user's machine against code under revie
 
 ## Tests
 
-- `*.test.ts` runs everything against an in-process fake server: protocol, readiness, normalisation, overrides, crashes, health.
-- `servers.integration.test.ts` runs the real servers on the #3/#4 signature fixture. Each suite is **skipped when its server isn't installed**, so CI passes without servers. To run them, put servers on `PATH`, or list directories in `BCR_LSP_TEST_PATH` (each is tried on its own, so tsserver and TS 7 can both run). For example:
+- `analyze.test.ts`, `hits.test.ts` and `snapshot-files.test.ts` run the candidate pipeline on real two-commit repositories through the Git extractor and the structural analyzer, with the signature fixture in `fixture.test-helper.ts`. LSP answers there come from a fake provider.
+- The other `*.test.ts` run the LSP tier against an in-process fake server: protocol, readiness, normalisation, overrides, crashes, health.
+- `servers.integration.test.ts` runs the real servers on the #3/#4 signature fixture, and `analyze.integration.test.ts` runs the whole #17 pipeline with them. Each suite is **skipped when its server isn't installed**, so CI passes without servers. To run them, put servers on `PATH`, or list directories in `BCR_LSP_TEST_PATH`. `servers.integration` tries each directory on its own, so tsserver and TS 7 can both run; `analyze.integration` uses the first one with a server. For example:
 
 ```bash
 BCR_LSP_TEST_PATH=/a/node_modules/.bin:/b/node_modules/.bin npx vitest run servers.integration

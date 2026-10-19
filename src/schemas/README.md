@@ -37,7 +37,7 @@ IDs are unique within a snapshot and identical across runs on the same snapshot 
 | `ent_` | `ChangedEntity` | `path`, `container`, `kind`, `name`. Overloads are one entity, so these are unique; in the rare clash between an added and a deleted entity, `change` is added (`src/analysis/structural/analyze.ts`, #15) |
 | `n_` | `ChangeNode` | node `kind` plus the entity ID, or the file path for `file` nodes (#18) |
 | `e_` | `CodeEdge` | `relation`, `from` (or `fromPath`), `to` (#18) |
-| `ev_` | `EvidenceRecord` | `method`, `relation`, source and target entity IDs, location (#17) |
+| `ev_` | `EvidenceRecord` | `method`, `relation`, source and target entity IDs, and the location: path, side, start line and column (`src/analysis/semantic/analyze.ts`, #17) |
 
 The snapshot ID is a document field, not part of the hashed parts: an ID only has meaning together with its snapshot.
 
