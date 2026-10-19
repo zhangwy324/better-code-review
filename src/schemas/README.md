@@ -32,7 +32,7 @@ IDs are unique within a snapshot and identical across runs on the same snapshot 
 
 | Prefix | Record | Parts (owner may refine, but must keep them deterministic) |
 |---|---|---|
-| — | `snapshotId` | Full SHA-256 hex. What is hashed: #10 (commit/range), #11 (local) |
+| — | `snapshotId` | Full SHA-256 hex. Commit/range: `["git-revisions/1", baseRevision, headRevision]` (`src/git/extract.ts`; the format tag changes when the pinned diff options do). Local: #11 |
 | `h_` | `DiffHunk` | `oldPath`, `newPath`, `oldStart`, `oldLines`, `newStart`, `newLines` (#10) |
 | `ent_` | `ChangedEntity` | `path`, `container`, `kind`, `name`, plus an overload or position discriminator (#15) |
 | `n_` | `ChangeNode` | node `kind` plus the entity ID, or the file path for `file` nodes (#18) |
