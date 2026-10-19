@@ -1,55 +1,18 @@
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { extractChangeSet } from '../../git/extract.ts';
+import { TestRepo } from '../../git/test-repo.test-helper.ts';
 import type { ChangeSet } from '../../schemas/changeset.ts';
 import type { StructuralChangeSet } from '../../schemas/structural.ts';
 import { analyzeStructure, type StructuralOptions } from './analyze.ts';
 
 // Fixtures are real two-commit repositories run through the Git extractor, so hunks are exactly
 // what Git produces. Files are written straight into the index; nothing is checked out.
-const CONFIG_DIR = mkdtempSync(join(tmpdir(), 'bcr-home-'));
-const ENV = {
-  ...process.env,
-  GIT_CONFIG_NOSYSTEM: '1',
-  GIT_CONFIG_GLOBAL: join(CONFIG_DIR, 'gitconfig'),
-  GIT_AUTHOR_NAME: 'Fixture Author',
-  GIT_AUTHOR_EMAIL: 'author@example.com',
-  GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
-  GIT_COMMITTER_NAME: 'Fixture Committer',
-  GIT_COMMITTER_EMAIL: 'committer@example.com',
-  GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
-};
-const dirs: string[] = [CONFIG_DIR];
-afterAll(() => {
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
-});
-
 type Files = Record<string, string | Buffer | null>;
 
 async function changeSetOf(base: Files, head: Files): Promise<ChangeSet> {
-  const repo = mkdtempSync(join(tmpdir(), 'bcr-structural-'));
-  dirs.push(repo);
-  const git = (input: string | Buffer | undefined, ...args: string[]) =>
-    execFileSync('git', args, { cwd: repo, env: ENV, input, encoding: 'utf8' }).trim();
-  git(undefined, 'init', '-q', '-b', 'main');
-  let parent: string | null = null;
-  for (const files of [base, head]) {
-    git(undefined, 'read-tree', ...(parent ? [parent] : ['--empty']));
-    for (const [path, content] of Object.entries(files)) {
-      if (content === null) {
-        git(undefined, 'update-index', '--force-remove', '--', path);
-        continue;
-      }
-      const oid = git(content, 'hash-object', '-w', '--stdin');
-      git(undefined, 'update-index', '--add', '--cacheinfo', `100644,${oid},${path}`);
-    }
-    const tree = git(undefined, 'write-tree');
-    parent = git(undefined, 'commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', 'c');
-  }
-  return extractChangeSet(repo, { kind: 'commit', commit: parent! });
+  const repo = new TestRepo();
+  const commit = repo.commit([repo.commit([], base)], head);
+  return extractChangeSet(repo.path, { kind: 'commit', commit });
 }
 
 async function analyse(base: Files, head: Files, options?: StructuralOptions) {

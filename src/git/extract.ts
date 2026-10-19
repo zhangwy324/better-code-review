@@ -11,6 +11,7 @@ import {
   CHANGESET_SCHEMA_VERSION,
   ChangeSet,
   type FileChange,
+  GITLINK_MODE,
   type ReviewTarget,
   stableId,
 } from '../schemas/index.ts';
@@ -47,8 +48,6 @@ const DIFF_OPTIONS = [
   '--indent-heuristic',
 ];
 const SNAPSHOT_FORMAT = 'git-revisions/1';
-
-const GITLINK_MODE = '160000';
 
 /** Resolves a target to the two commits it compares. */
 export async function resolveRevisions(

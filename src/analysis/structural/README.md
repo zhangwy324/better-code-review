@@ -47,7 +47,7 @@ The `.wasm` grammars are **vendored** in `grammars/`, copied from the official `
 - TypeScript and TSX run `javascript.scm` followed by `typescript.scm`, so `javascript.scm` may only use node types that exist in all three grammars. JavaScript-only node types (class `field_definition`) go in `javascript-only.scm`.
 - Anonymous default exports (`export default function () {}`) are named `default`. Assignments (`obj.f = () => …`, `module.exports.f = function …`) are named by the last property.
 
-Known gaps: re-exports (`export { a as b } from …`), CommonJS `require`, and TS namespaces (their contents are found, but the namespace is not a container). `Declaration.range` covers the node only; entity extents (below) add wrappers, comments and decorators.
+Known query gaps are tracked in #60. `Declaration.range` covers the node only; entity extents (below) add wrappers, comments and decorators.
 
 ## Changed entities (#15)
 

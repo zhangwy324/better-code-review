@@ -33,6 +33,11 @@ export const FileStatus = z.enum([
 
 const FileMode = z.string().regex(/^[0-7]{6}$/);
 
+/** A symlink: its blob is the target path, not file content. */
+export const SYMLINK_MODE = '120000';
+/** A submodule (gitlink): it names a commit in another repository, so there is no blob. */
+export const GITLINK_MODE = '160000';
+
 export const FileChange = z.strictObject({
   status: FileStatus,
   /** Null for added files. */

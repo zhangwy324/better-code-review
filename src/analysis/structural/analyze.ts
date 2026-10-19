@@ -8,7 +8,13 @@
 // go to the file's `module` entity. Files without structure (no grammar, binary, too large,
 // generated, unparseable at a changed line) have no entities: their hunks are listed in
 // `unattributedHunkIds`, and the graph gives them a file node.
-import type { ChangeSet, DiffHunk, FileChange } from '../../schemas/changeset.ts';
+import {
+  GITLINK_MODE,
+  SYMLINK_MODE,
+  type ChangeSet,
+  type DiffHunk,
+  type FileChange,
+} from '../../schemas/changeset.ts';
 import type { SourceRange } from '../../schemas/common.ts';
 import { stableId } from '../../schemas/ids.ts';
 import {
@@ -35,9 +41,6 @@ export interface StructuralOptions {
   testRoots?: TestRoots;
   maxParseBytes?: number;
 }
-
-const SYMLINK_MODE = '120000';
-const GITLINK_MODE = '160000';
 
 interface AnalysedFile {
   index: number;

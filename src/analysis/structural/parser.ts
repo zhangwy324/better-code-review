@@ -1,5 +1,5 @@
 // Parsing with web-tree-sitter (ADR 0001) and declaration extraction with our query files.
-// Entity extraction, hunk attribution and before/after matching build on this in #15.
+// analyze.ts builds changed entities and hunk attribution on top of this.
 import { Parser, type Node, type Tree } from 'web-tree-sitter';
 import type { FileChange } from '../../schemas/changeset.ts';
 import type { SourceRange } from '../../schemas/common.ts';
