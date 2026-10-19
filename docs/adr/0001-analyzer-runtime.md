@@ -153,7 +153,9 @@ A **language bundle** contains a grammar `.wasm`, our query file, and a manifest
 
 ## Input for #42 (candidate adjudication)
 
-#42 has not run yet. This decision does not depend on its outcome: if #42 recommends required LSP, the same client applies. The spike did produce findings #42 should measure:
+> **Outcome (2026-10-19):** #42 ran; see [`candidate-adjudication.md`](../research/candidate-adjudication.md). It recommends **go, with changes**, and keeps LSP optional, so this decision stands. On the three points below: alias following recovered every alias-only reference (8, all in date-fns); empty-before-ready did not occur on the #42 repos, though the guard stays; import lines were mapped to module level as proposed. #42 also ran jdtls (1.62, in Docker), which needs a Java 25 runtime.
+
+#42 had not run when this ADR was written. This decision does not depend on its outcome: if #42 recommends required LSP, the same client applies. The spike did produce findings #42 should measure:
 1. **Text search misses alias callers.** `aliasCaller` calls `formatPrice` through `export { formatPrice as fmt }`, and `git grep -w formatPrice` cannot see it.
    - The re-export line *is* a candidate, so the pipeline can follow it: a candidate that is an `as` alias in an import or export adds the alias name to the search.
    - Also measure how often this happens (re-exports, `import x as y`, Python `import m as t` + `t.f()`).
@@ -163,11 +165,11 @@ A **language bundle** contains a grammar `.wasm`, our query file, and a manifest
 
 ## Gaps
 
-- **Java LSP (jdtls) not run:** no JDK on the test machine (a JDK + jdtls is ~250 MB). The client is protocol-generic; jdtls specifics belong in #16.
+- **Java LSP (jdtls) not run:** no JDK on the test machine (a JDK + jdtls is ~250 MB). The client is protocol-generic; jdtls specifics belong in #16. *(Since run in #42, in Docker: jdtls 1.62 needs Java 25; same client, no changes.)*
 - **Linux only.** macOS and Windows were not run (WASM is platform-independent; path and URI handling is not).
 - **The download, verification and CI build steps for language bundles** are designed, not built.
 - **No large real-repository end-to-end run.** The timings are per file, not per PR.
-- **#42 results not yet available.**
+- ~~#42 results not yet available.~~ Available: [`candidate-adjudication.md`](../research/candidate-adjudication.md).
 
 ## Reproduction
 

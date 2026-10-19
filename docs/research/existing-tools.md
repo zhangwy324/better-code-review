@@ -268,7 +268,7 @@ We should still detect and reuse servers that are already installed, and report 
 
 **Validation still needed (follow-up spike):** *Done in #42: see [candidate-adjudication.md](candidate-adjudication.md). Go, with changes, for relationships between changed entities (MVP spec D12).*
 - On 5–10 real open-source PRs in TS, Python and Java (selected by shape: signature changes, cross-file callers, name collisions), measure candidates per changed function and AI-verdict accuracy against LSP ground truth.
-- Check that the language pack's entity spans are good enough to attach hunks to.
+- Check that the language pack's entity spans are good enough to attach hunks to. *(Run with web-tree-sitter instead, per ADR 0001.)*
 
 ### Gaps in this spike
 
