@@ -54,7 +54,7 @@ In the order #42 settled (`docs/research/candidate-adjudication.md`):
 5. **Test files** (MVP spec D2) keep one edge per (test file, changed entity): the most decided hit (LSP-confirmed, then import-confirmed, then undecided), preferring the new side. Its detail says how many hits it stands for.
 6. **LSP**, when a session is given, for new-side candidates that import resolution did not reject. One `references` query per target, at its name (a constructor's class name), with the readiness and normalisation rules below.
    - A candidate inside a returned site (`rangeContains`) gets an `lsp` `confirmed` record.
-   - A candidate that is missing gets an `lsp` `rejected` record only when the answer is `ok` and `complete`, the site is not in `unresolved`, `projectHealth` for the files involved is healthy, the hit is not constructor chaining (which `references` does not return), and the target is not a method of a class with bases (calls through an overridden base method are not in its own references, #42).
+   - A candidate that is missing gets an `lsp` `rejected` record only when the answer is `ok` and `complete`, the site is not in `unresolved`, `projectHealth` is healthy for both the target's file and the candidate's file (checked once per file, so one file with unresolved imports only stops the rejections that involve it), the hit is not constructor chaining (which `references` does not return), and the target is not a method of a class with bases (calls through an overridden base method are not in its own references, #42).
    - Otherwise nothing is recorded and the candidate stays `possible`. An `unknown` answer is never a rejection.
 7. **Caps** (D1): at most `maxCandidatesPerEntity` (default 100) source entities per (target, relation), a test file counting as one. The rest are dropped from the records and reported in `caps` as "Showing N of M".
 
@@ -140,7 +140,8 @@ pyright returned 4 of 37 references on click with no error, because `src/` was n
 - **Unresolved-import diagnostics** are recognised by code: pyright `reportMissingImports`, TS 2307 and 2792, jdtls 268435846. Stubs-only imports (`reportMissingModuleSource`) count as resolved.
 - **Imports** are counted per statement, approximately, by text.
 - The project is **healthy** when the share is at most `maxUnresolvedImportShare` (default 0).
-- When it isn't, the language reports `unhealthy` with the first unresolved import and what to do. A server that publishes no diagnostics counts as not healthy.
+- When it isn't, the language reports `unhealthy` with the first unresolved import and what to do. It keeps reporting it after later checks of other files pass. A server that publishes no diagnostics counts as not healthy.
+- Health is a property of the files passed in. `analyzeSemantics()` checks each file on its own, so a file with an unresolved import only stops the rejections that involve it.
 
 ## Configuration
 

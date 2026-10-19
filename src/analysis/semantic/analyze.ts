@@ -482,25 +482,22 @@ class DefinitionCounter {
 /**
  * Asks the language server for each new-side target's references (#16). A candidate inside a
  * returned site is confirmed. One that is missing is rejected only when the answer is complete,
- * the project resolves, and nothing could reach the target unseen: not through an overridden
+ * the imports of both the target's and the candidate's file resolve, and nothing could reach
+ * the target unseen: not through an overridden
  * base method, and not by constructor chaining, which `references` does not return.
  */
 async function verify(pairs: Pair[], lsp: ReferenceProvider): Promise<void> {
   const open = pairs.filter(
     (p) => p.file.side === 'new' && p.imports?.verdict !== 'no' && p.target.lsp !== null,
   );
+  // Per file, so one file whose imports do not resolve only stops rejections that involve it.
   const health = new Map<string, Promise<ProjectHealth>>();
-  const healthy = async (language: string) => {
-    let result = health.get(language);
+  const healthy = async (language: string, path: string) => {
+    const key = JSON.stringify([language, path]);
+    let result = health.get(key);
     if (!result) {
-      const paths = new Set<string>();
-      for (const p of open) {
-        if (p.target.lsp!.language !== language) continue;
-        paths.add(p.target.sides.new!.path);
-        paths.add(p.file.path);
-      }
-      result = lsp.projectHealth(language, [...paths].sort());
-      health.set(language, result);
+      result = lsp.projectHealth(language, [path]);
+      health.set(key, result);
     }
     return (await result).healthy;
   };
@@ -530,10 +527,14 @@ async function verify(pairs: Pair[], lsp: ReferenceProvider): Promise<void> {
         continue;
       }
       if (pair.hit.chaining || target.mayOverride || !result.complete) continue;
-      if (result.unresolved.some(isHit) || !(await healthy(at.language))) continue;
+      if (result.unresolved.some(isHit)) continue;
+      const resolves =
+        (await healthy(at.language, target.sides.new!.path)) &&
+        (await healthy(at.language, pair.file.path));
+      if (!resolves) continue;
       pair.lsp = {
         outcome: 'rejected',
-        detail: 'not among textDocument/references, and the project resolves',
+        detail: 'not among textDocument/references, and both files resolve',
       };
     }
   }

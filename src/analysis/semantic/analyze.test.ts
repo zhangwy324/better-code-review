@@ -618,10 +618,10 @@ describe('analyzeSemantics: test files and caps', () => {
 });
 
 describe('analyzeSemantics: language server answers', () => {
-  /** A fake provider: `answer` per target name, healthy unless told otherwise. */
+  /** A fake provider: `answer` per target; files in `broken` (or all) do not resolve. */
   function fakeLsp(
     answer: (target: ReferenceTarget) => ReferencesResult,
-    healthy = true,
+    broken: readonly string[] | 'all' = [],
   ): ReferenceProvider & { asked: ReferenceTarget[] } {
     const asked: ReferenceTarget[] = [];
     return {
@@ -630,8 +630,15 @@ describe('analyzeSemantics: language server answers', () => {
         asked.push(target);
         return Promise.resolve(answer(target));
       },
-      projectHealth: () =>
-        Promise.resolve({ healthy, imports: 1, unresolved: [], reason: healthy ? null : 'broken' }),
+      projectHealth: (_language, paths) => {
+        const healthy = broken !== 'all' && !paths.some((p) => broken.includes(p));
+        return Promise.resolve({
+          healthy,
+          imports: 1,
+          unresolved: [],
+          reason: healthy ? null : 'broken',
+        });
+      },
       capabilities: () => [],
     };
   }
@@ -670,11 +677,40 @@ describe('analyzeSemantics: language server answers', () => {
     );
 
     const unhealthy = await analyse(SIGNATURE_BASE, SIGNATURE_HEAD, {
-      lsp: fakeLsp(() => ok(site('src/checkout.ts', 4, 25)), false),
+      lsp: fakeLsp(() => ok(site('src/checkout.ts', 4, 25)), 'all'),
     });
     expect(
       unhealthy.evidence.records.filter((r) => r.outcome === 'rejected' && r.method === 'lsp'),
     ).toEqual([]);
+  });
+
+  it('only stops rejections that involve a file whose imports do not resolve', async () => {
+    const rejected = async (broken: string[]) => {
+      // No references at all: every open candidate in a resolving file is rejected.
+      const result = await analyse(SIGNATURE_BASE, SIGNATURE_HEAD, {
+        lsp: fakeLsp(() => ok(), broken),
+      });
+      return result.evidence.records
+        .filter((r) => r.method === 'lsp' && r.outcome === 'rejected')
+        .map((r) => r.location.path)
+        .filter((p) => p.endsWith('.ts'));
+    };
+    expect(await rejected([])).toEqual([
+      'src/checkout.ts',
+      'src/fmt.ts',
+      'src/invoice.ts',
+      'src/receipt.ts',
+      'src/viaAlias.ts',
+    ]);
+    // A broken caller file loses its own rejection only.
+    expect(await rejected(['src/invoice.ts'])).toEqual([
+      'src/checkout.ts',
+      'src/fmt.ts',
+      'src/receipt.ts',
+      'src/viaAlias.ts',
+    ]);
+    // A broken target file affects every candidate of that target.
+    expect(await rejected(['src/price.ts'])).toEqual([]);
   });
 
   it('never rejects on an unknown answer, an incomplete one, or for a possible override', async () => {
