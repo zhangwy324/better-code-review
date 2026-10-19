@@ -251,6 +251,8 @@ The options considered for the structural and relationship layer:
    - Results vary between runs and cost grows with candidate count, so the AI is never the completeness authority.
 4. **Before/after matching and the missed-caller check** are written by us, informed by sem's phased matching. This logic is the same for every language.
 
+> **Amended by [ADR 0001](../adr/0001-analyzer-runtime.md):** the parser is `web-tree-sitter` with built-in and on-demand `.wasm` grammar bundles, not tree-sitter-language-pack. The pipeline is unchanged.
+
 The edges therefore carry three provenance levels, **verified, inferred and possible**, which makes §13.4 concrete. Without AI and without LSP, the pipeline still works and shows everything as "possible".
 
 **Why LSP is optional, not required.** Requiring it would mean users must provide:
