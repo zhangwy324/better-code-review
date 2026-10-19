@@ -14,24 +14,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ChangeSet } from '../schemas/index.ts';
 import { extractChangeSet } from './extract.ts';
 import { SnapshotChangedError } from './local.ts';
+import { ENV, ISOLATED_GIT_ENV } from './test-repo.test-helper.ts';
 
-// Real working trees this time: the local target reads files from disk. User and system config
-// are hidden from both the fixtures and the extractor, so excludes and filters are the repo's.
-const CONFIG_DIR = mkdtempSync(join(tmpdir(), 'bcr-home-'));
-const ISOLATED = {
-  GIT_CONFIG_NOSYSTEM: '1',
-  GIT_CONFIG_GLOBAL: join(CONFIG_DIR, 'gitconfig'),
-  GIT_AUTHOR_NAME: 'Fixture Author',
-  GIT_AUTHOR_EMAIL: 'author@example.com',
-  GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
-  GIT_COMMITTER_NAME: 'Fixture Committer',
-  GIT_COMMITTER_EMAIL: 'committer@example.com',
-  GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
-};
-const saved = Object.fromEntries(Object.keys(ISOLATED).map((k) => [k, process.env[k]]));
-beforeAll(() => Object.assign(process.env, ISOLATED));
+// Real working trees this time: the local target reads files from disk. The extractor runs
+// with the process environment, so the isolated config is applied to it as well.
+const saved = Object.fromEntries(Object.keys(ISOLATED_GIT_ENV).map((k) => [k, process.env[k]]));
+beforeAll(() => Object.assign(process.env, ISOLATED_GIT_ENV));
 
-const dirs: string[] = [CONFIG_DIR];
+const dirs: string[] = [];
 afterAll(() => {
   for (const [k, v] of Object.entries(saved)) {
     if (v === undefined) delete process.env[k];
@@ -52,7 +42,7 @@ class WorkTree {
   git(...args: string[]): string {
     return execFileSync('git', args, {
       cwd: this.path,
-      env: { ...process.env, ...ISOLATED },
+      env: ENV,
       encoding: 'utf8',
     });
   }

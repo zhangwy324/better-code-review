@@ -8,8 +8,8 @@ import { join } from 'node:path';
 import { afterAll } from 'vitest';
 
 const CONFIG_DIR = mkdtempSync(join(tmpdir(), 'bcr-home-'));
-export const ENV = {
-  ...process.env,
+/** Hides user and system config and pins identities and dates. */
+export const ISOLATED_GIT_ENV = {
   GIT_CONFIG_NOSYSTEM: '1',
   // A path that does not exist: Git reads it as an empty global config on every OS.
   GIT_CONFIG_GLOBAL: join(CONFIG_DIR, 'gitconfig'),
@@ -20,6 +20,7 @@ export const ENV = {
   GIT_COMMITTER_EMAIL: 'committer@example.com',
   GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
 };
+export const ENV = { ...process.env, ...ISOLATED_GIT_ENV };
 
 export type FileSpec = string | Buffer | null | { mode: '100755' | '120000'; content: string };
 
