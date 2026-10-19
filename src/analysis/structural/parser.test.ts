@@ -165,6 +165,25 @@ enum Rounding { Up, Down }
     ]);
   });
 
+  it('TypeScript namespaces and modules', async () => {
+    const source = `namespace A { export function f() {} }
+export namespace B.C { function f() {} }
+declare module 'x' { function h(): void; }
+module M {}
+declare global { interface W {} }
+`;
+    expect(await summary('src/ns.ts', source)).toEqual([
+      'namespace A',
+      'function f',
+      'namespace B.C',
+      'function f',
+      'namespace x',
+      'function h',
+      'namespace M',
+      'interface W',
+    ]);
+  });
+
   it('TSX', async () => {
     const source = `import React from 'react';
 export function Price({ amount }: { amount: number }) {
@@ -283,6 +302,35 @@ public class PriceTest {
       'constructor Money',
       'interface Marker',
     ]);
+  });
+
+  it('default exports, assignments, object literals and class fields', async () => {
+    const source = `export default function () {}
+obj.f = () => 1;
+module.exports.g = function () {};
+const o = { h: () => 1, i() {} };
+class C { j = () => 1; static k = function () {}; n = 1; }
+`;
+    const expected = [
+      'function default',
+      'function f',
+      'function g',
+      'function h',
+      'method i',
+      'class C',
+      'method j',
+      'method k',
+    ];
+    expect(await summary('a.js', source)).toEqual(expected);
+    expect(await summary('a.ts', source)).toEqual(expected);
+    expect(await summary('b.ts', 'export default class {}\nexport default () => 1;\n')).toEqual([
+      'class default',
+      'function default',
+    ]);
+  });
+
+  it('Python lambdas', async () => {
+    expect(await summary('a.py', 'double = lambda x: x * 2\nn = 1\n')).toEqual(['function double']);
   });
 
   it('reports 1-based ranges with UTF-16 columns', async () => {

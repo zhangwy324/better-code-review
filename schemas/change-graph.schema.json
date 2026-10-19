@@ -237,6 +237,7 @@
                   "class",
                   "interface",
                   "enum",
+                  "namespace",
                   "type",
                   "module"
                 ]

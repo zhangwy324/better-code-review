@@ -38,3 +38,23 @@
   @definition.function
   (#any-of? @_fn "describe" "it" "test")
   (#set! test "true"))
+
+; Anonymous default exports: `export default function () {}`, `export default () => …`,
+; `export default class {}`. The name is the `default` keyword.
+(export_statement
+  "default" @name
+  value: [(function_expression) (arrow_function) (generator_function)]) @definition.function
+
+(export_statement
+  "default" @name
+  value: (class)) @definition.class
+
+; `obj.f = () => …`, `module.exports.f = function () {…}`. The name is the last property.
+(assignment_expression
+  left: (member_expression property: (property_identifier) @name)
+  right: [(arrow_function) (function_expression) (generator_function)]) @definition.function
+
+; Object-literal functions: `{ f: () => …, g: function () {…} }`. `{ h() {} }` is a method.
+(pair
+  key: (property_identifier) @name
+  value: [(arrow_function) (function_expression) (generator_function)]) @definition.function

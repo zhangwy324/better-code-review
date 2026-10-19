@@ -48,12 +48,13 @@ const EXTENSIONS: Record<string, GrammarName> = {
 
 /**
  * Query files per grammar, concatenated in order. TypeScript adds its own declarations to the
- * JavaScript ones, as the upstream tags queries do.
+ * JavaScript ones, as the upstream tags queries do; javascript-only.scm holds the JavaScript
+ * patterns whose node types TypeScript names differently.
  */
 const QUERY_FILES: Record<GrammarName, string[]> = {
   typescript: ['javascript.scm', 'typescript.scm'],
   tsx: ['javascript.scm', 'typescript.scm'],
-  javascript: ['javascript.scm'],
+  javascript: ['javascript.scm', 'javascript-only.scm'],
   python: ['python.scm'],
   java: ['java.scm'],
 };

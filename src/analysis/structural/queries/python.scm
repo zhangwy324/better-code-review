@@ -35,6 +35,11 @@
 (class_definition
   name: (identifier) @name) @definition.class
 
+; `f = lambda x: …`
+(assignment
+  left: (identifier) @name
+  right: (lambda)) @definition.function
+
 ; pytest conventions: `test*` functions and methods, `Test*` classes.
 ((function_definition
   name: (identifier) @name) @definition.function

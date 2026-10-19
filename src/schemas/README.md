@@ -32,9 +32,9 @@ IDs are unique within a snapshot and identical across runs on the same snapshot 
 
 | Prefix | Record | Parts (owner may refine, but must keep them deterministic) |
 |---|---|---|
-| — | `snapshotId` | Full SHA-256 hex. Commit/range: `["git-revisions/1", baseRevision, headRevision]` (`src/git/extract.ts`; the format tag changes when the pinned diff options do). Local: #11 |
+| — | `snapshotId` | Full SHA-256 hex. Commit/range: `["git-revisions/1", baseRevision, headRevision]` (`src/git/extract.ts`; the format tag changes when the pinned diff options do). Local: `["git-local/1", baseRevision, tree]`, where `tree` is the captured working tree (`src/git/local.ts`) |
 | `h_` | `DiffHunk` | `oldPath`, `newPath`, `oldStart`, `oldLines`, `newStart`, `newLines` (#10) |
-| `ent_` | `ChangedEntity` | `path`, `container`, `kind`, `name`, plus an overload or position discriminator (#15) |
+| `ent_` | `ChangedEntity` | `path`, `container`, `kind`, `name`. Overloads are one entity, so these are unique; in the rare clash between an added and a deleted entity, `change` is added (`src/analysis/structural/analyze.ts`, #15) |
 | `n_` | `ChangeNode` | node `kind` plus the entity ID, or the file path for `file` nodes (#18) |
 | `e_` | `CodeEdge` | `relation`, `from` (or `fromPath`), `to` (#18) |
 | `ev_` | `EvidenceRecord` | `method`, `relation`, source and target entity IDs, location (#17) |

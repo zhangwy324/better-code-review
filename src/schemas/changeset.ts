@@ -33,6 +33,11 @@ export const FileStatus = z.enum([
 
 const FileMode = z.string().regex(/^[0-7]{6}$/);
 
+/** A symlink: its blob is the target path, not file content. */
+export const SYMLINK_MODE = '120000';
+/** A submodule (gitlink): it names a commit in another repository, so there is no blob. */
+export const GITLINK_MODE = '160000';
+
 export const FileChange = z.strictObject({
   status: FileStatus,
   /** Null for added files. */
@@ -56,12 +61,20 @@ export const ChangeSet = z.strictObject({
   snapshotId: SnapshotId,
   /** The target as requested. */
   target: ReviewTarget,
-  /** The resolved base commit. Null when the base is the empty tree (e.g. a root commit). */
+  /**
+   * The resolved base commit: HEAD for `local`. Null when the base is the empty tree (a root
+   * commit, or a `local` target on a branch with no commits yet).
+   */
   baseRevision: GitObjectId.nullable(),
   /** The resolved head commit. Null when the head is the working tree (`local`). */
   headRevision: GitObjectId.nullable(),
   /** Sorted by path (`newPath ?? oldPath`), as Git orders a diff. */
   files: z.array(FileChange),
+  /**
+   * `local` only: untracked, non-ignored files left out because `includeUntracked` was false,
+   * in byte order. Listed so the artifact can say what it does not show. Empty otherwise.
+   */
+  excludedUntrackedPaths: z.array(RepoPath),
 });
 
 export type DiffHunk = z.infer<typeof DiffHunk>;
