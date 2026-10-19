@@ -262,7 +262,7 @@ The edges therefore carry three provenance levels, **verified, inferred and poss
 We should still detect and reuse servers that are already installed, and report missing capability per language (e.g. "Java callers: possible only — jdtls not found").
 
 **Validation still needed (follow-up spike):**
-- On 5–10 real AI-generated PRs in TS, Python and Java, measure candidates per changed function and AI-verdict accuracy against LSP ground truth.
+- On 5–10 real open-source PRs in TS, Python and Java (selected by shape: signature changes, cross-file callers, name collisions), measure candidates per changed function and AI-verdict accuracy against LSP ground truth.
 - Check that the language pack's entity spans are good enough to attach hunks to.
 
 ### Gaps in this spike
@@ -270,7 +270,7 @@ We should still detect and reuse servers that are already installed, and report 
 - **CodeRabbit was not used hands-on.** Everything above comes from its docs. Trying it on a real PR (the free trial needs an account installed on a repo) would confirm whether layers show callers and how the layer view handles a PR with 10 callers.
 - **CG-Diff has no runnable implementation** that we could find.
 - tell and visual-explainer were not run end to end.
-- sem was tested only on a toy TS/Python fixture, not on a real AI-generated PR or on Java.
+- sem was tested only on a toy TS/Python fixture, not on real PRs or on Java.
 - tree-sitter-language-pack was assessed from its docs and repo only, not run.
 - The effort figures in the analysis-approach table are estimates from reading code structure, not measurements.
 
