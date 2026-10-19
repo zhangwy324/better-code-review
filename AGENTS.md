@@ -1,0 +1,1 @@
+- Always pull fresh `main` (`git checkout main && git pull`) before creating a new branch.
