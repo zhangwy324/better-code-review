@@ -25,10 +25,22 @@ export class GitNotFoundError extends Error {
   }
 }
 
-/** Runs `git <args>` in `cwd` and resolves with its raw stdout. Rejects on a non-zero exit. */
-export function runGit(cwd: string, args: readonly string[], input?: string): Promise<Buffer> {
+/**
+ * Runs `git <args>` in `cwd` and resolves with its raw stdout. Rejects on a non-zero exit.
+ * `env` is merged over the process environment.
+ */
+export function runGit(
+  cwd: string,
+  args: readonly string[],
+  input?: string,
+  env?: Record<string, string>,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const child = spawn('git', args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('git', args, {
+      cwd,
+      env: env && { ...process.env, ...env },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
@@ -54,6 +66,7 @@ export async function gitLine(
   cwd: string,
   args: readonly string[],
   input?: string,
+  env?: Record<string, string>,
 ): Promise<string> {
-  return (await runGit(cwd, args, input)).toString('utf8').replace(/\n$/, '');
+  return (await runGit(cwd, args, input, env)).toString('utf8').replace(/\n$/, '');
 }
