@@ -1,0 +1,657 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "snapshotId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 hex digest identifying the exact before/after snapshot"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Repository-relative, \"/\"-separated path as Git reports it"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "supported",
+              "community",
+              "text-only"
+            ]
+          },
+          "test": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "path-convention",
+                  "declared-test-root",
+                  "content"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "binary",
+                  "too-large",
+                  "generated",
+                  "parse-error"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "language",
+          "tier",
+          "test",
+          "skipped"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "languages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "language": {
+            "type": "string",
+            "minLength": 1
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "version"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "not-installed",
+              "disabled",
+              "needs-opt-in",
+              "not-ready",
+              "failed"
+            ]
+          },
+          "capabilitiesAttempted": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "definition",
+                "references",
+                "callHierarchy",
+                "implementation"
+              ]
+            }
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "capability": {
+                  "type": "string",
+                  "enum": [
+                    "definition",
+                    "references",
+                    "callHierarchy",
+                    "implementation"
+                  ]
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "capability",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "guidance": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "language",
+          "server",
+          "status",
+          "capabilitiesAttempted",
+          "failures",
+          "guidance"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^n_[0-9a-f]{16}$",
+            "description": "Generated ID: \"n_\" + 16 hex characters"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "symbol",
+              "module",
+              "file"
+            ]
+          },
+          "entityId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^ent_[0-9a-f]{16}$",
+                "description": "Generated ID: \"ent_\" + 16 hex characters"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entityKind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "function",
+                  "method",
+                  "constructor",
+                  "class",
+                  "interface",
+                  "enum",
+                  "type",
+                  "module"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Repository-relative, \"/\"-separated path as Git reports it"
+          },
+          "oldPath": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "description": "Repository-relative, \"/\"-separated path as Git reports it"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "oldRange": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "startLine": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "startColumn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "endLine": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "endColumn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "startLine",
+                  "endLine"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "newRange": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "startLine": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "startColumn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "endLine": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "endColumn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "startLine",
+                  "endLine"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hunkIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^h_[0-9a-f]{16}$",
+              "description": "Generated ID: \"h_\" + 16 hex characters"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "entityId",
+          "entityKind",
+          "displayName",
+          "path",
+          "oldPath",
+          "oldRange",
+          "newRange",
+          "hunkIds"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "codeEdges": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^e_[0-9a-f]{16}$",
+                "description": "Generated ID: \"e_\" + 16 hex characters"
+              },
+              "granularity": {
+                "type": "string",
+                "const": "entity"
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^n_[0-9a-f]{16}$",
+                "description": "Generated ID: \"n_\" + 16 hex characters"
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^n_[0-9a-f]{16}$",
+                "description": "Generated ID: \"n_\" + 16 hex characters"
+              },
+              "relation": {
+                "type": "string",
+                "enum": [
+                  "calls",
+                  "references",
+                  "implements"
+                ]
+              },
+              "provenance": {
+                "type": "string",
+                "enum": [
+                  "verified",
+                  "possible"
+                ]
+              },
+              "evidenceIds": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^ev_[0-9a-f]{16}$",
+                  "description": "Generated ID: \"ev_\" + 16 hex characters"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "granularity",
+              "from",
+              "to",
+              "relation",
+              "provenance",
+              "evidenceIds"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^e_[0-9a-f]{16}$",
+                "description": "Generated ID: \"e_\" + 16 hex characters"
+              },
+              "granularity": {
+                "type": "string",
+                "const": "test-file"
+              },
+              "fromPath": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Repository-relative, \"/\"-separated path as Git reports it"
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^n_[0-9a-f]{16}$",
+                "description": "Generated ID: \"n_\" + 16 hex characters"
+              },
+              "relation": {
+                "type": "string",
+                "enum": [
+                  "calls",
+                  "references",
+                  "implements"
+                ]
+              },
+              "provenance": {
+                "type": "string",
+                "enum": [
+                  "verified",
+                  "possible"
+                ]
+              },
+              "evidenceIds": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^ev_[0-9a-f]{16}$",
+                  "description": "Generated ID: \"ev_\" + 16 hex characters"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "granularity",
+              "fromPath",
+              "to",
+              "relation",
+              "provenance",
+              "evidenceIds"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^ev_[0-9a-f]{16}$",
+            "description": "Generated ID: \"ev_\" + 16 hex characters"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "calls",
+              "references",
+              "implements"
+            ]
+          },
+          "sourceEntityId": {
+            "type": "string",
+            "pattern": "^ent_[0-9a-f]{16}$",
+            "description": "Generated ID: \"ent_\" + 16 hex characters"
+          },
+          "targetEntityId": {
+            "type": "string",
+            "pattern": "^ent_[0-9a-f]{16}$",
+            "description": "Generated ID: \"ent_\" + 16 hex characters"
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Repository-relative, \"/\"-separated path as Git reports it"
+              },
+              "side": {
+                "type": "string",
+                "enum": [
+                  "old",
+                  "new"
+                ]
+              },
+              "range": {
+                "type": "object",
+                "properties": {
+                  "startLine": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "startColumn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "endLine": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "endColumn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "startLine",
+                  "endLine"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "path",
+              "side",
+              "range"
+            ],
+            "additionalProperties": false
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "text-search",
+              "import-resolution",
+              "lsp"
+            ]
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "candidate",
+              "confirmed",
+              "rejected"
+            ]
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "relation",
+          "sourceEntityId",
+          "targetEntityId",
+          "location",
+          "method",
+          "outcome",
+          "detail"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "caps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "entityId": {
+            "type": "string",
+            "pattern": "^ent_[0-9a-f]{16}$",
+            "description": "Generated ID: \"ent_\" + 16 hex characters"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "calls",
+              "references",
+              "implements"
+            ]
+          },
+          "shown": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "entityId",
+          "relation",
+          "shown",
+          "total"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "uncoveredHunkIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^h_[0-9a-f]{16}$",
+        "description": "Generated ID: \"h_\" + 16 hex characters"
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "snapshotId",
+    "files",
+    "languages",
+    "nodes",
+    "codeEdges",
+    "evidence",
+    "caps",
+    "uncoveredHunkIds"
+  ],
+  "additionalProperties": false,
+  "title": "change-graph v1",
+  "$comment": "Generated from src/schemas by `npm run schemas`; do not edit. Refinements that JSON Schema cannot express (repository-relative paths, range order) are checked by the Zod schemas only."
+}

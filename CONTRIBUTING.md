@@ -22,6 +22,7 @@ npm run check   # format check, lint, typecheck, build, tests: the same steps CI
 | `npm run lint` | ESLint with type-aware `typescript-eslint` rules |
 | `npm run format` / `format:check` | Prettier (Markdown is excluded and formatted by hand) |
 | `npm test` | Vitest, once |
+| `npm run schemas` | Regenerates the JSON Schema files in `schemas/` from `src/schemas/` |
 | `npm run licenses` | Checks production dependency licences and writes `THIRD_PARTY_NOTICES` |
 
 ## Layout
@@ -35,10 +36,11 @@ One package, one language (ADR 0001). Modules are folders under `src/`, created 
 | `src/analysis/` | Structural (tree-sitter) and semantic (LSP) analysis |
 | `src/graph/` | Deterministic change graph builder |
 | `src/planning/` | Review plan prompts, validation and fallback plan |
-| `src/schemas/` | Versioned data contracts |
+| `src/schemas/` | Versioned data contracts; conventions and versioning policy in its [`README.md`](src/schemas/README.md) |
 | `src/renderer/` | `review.html` bundling |
 | `src/viewer/` | The React viewer |
 
+- `schemas/` holds the generated JSON Schema files. Don't edit them; change `src/schemas/` and run `npm run schemas`.
 - Unit tests sit next to the code as `*.test.ts`.
 - Relative imports use the `.ts` extension; `tsc` rewrites them to `.js` on build.
 - `scripts/` holds repository tooling. Scripts are TypeScript run directly by Node (`node scripts/x.ts`), so they may only use erasable syntax (no `enum`, no parameter properties).
