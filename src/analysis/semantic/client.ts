@@ -22,13 +22,14 @@ export interface ServerProcess {
 export type Spawner = (
   command: string,
   args: readonly string[],
-  options: { cwd: string; shell: boolean },
+  options: { cwd: string; shell: boolean; env: NodeJS.ProcessEnv },
 ) => ServerProcess;
 
 export const spawnProcess: Spawner = (command, args, options) =>
   spawn(command, args, {
     cwd: options.cwd,
     shell: options.shell,
+    env: options.env,
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
   });

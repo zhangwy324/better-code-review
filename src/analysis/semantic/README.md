@@ -79,18 +79,18 @@ pyright returned 4 of 37 references on click with no error, because `src/` was n
 | Option | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | `false` starts nothing; every language reports `disabled` |
-| `allowProjectCode` | `false` | Allow servers that run project code while indexing (jdtls, rust-analyzer), and a virtualenv interpreter inside the repository (D11) |
+| `allowProjectCode` | `false` | Allow project code (D11): servers that run it while indexing (jdtls, rust-analyzer), a virtualenv interpreter inside the repository, packages from an untrusted project `node_modules`, and relative or in-repository `PATH` entries (see "Security") |
 | `servers` | — | `{ typescript?, python?, java?, rust? }`: `{ command, args?, initializationOptions?, settings? }` replaces discovery for that server. The project-code opt-in still applies to Java and Rust |
 | `timeouts` | see `DEFAULT_TIMEOUTS` | `initializeMs` 60 s, `requestMs` 30 s, `readyMs` 60 s, `emptyGraceMs` 10 s, `retryDelayMs` 1 s, `healthMs` 30 s |
 | `maxRestarts` | `1` | Restarts after a crash; the failed request is retried once per restart. After that the language reports `failed` |
 | `maxUnresolvedImportShare` | `0` | Health threshold |
-| `searchPath` | `PATH` | Where to look for servers |
+| `searchPath` | `PATH` | Where to look for servers. Relative and in-repository entries are dropped without the opt-in |
 
 The CLI options that set these are not defined yet (#20).
 
 ## Discovery and the exact commands run
 
-Discovery **reads files only**: `package.json` files and the search path. It never runs anything to probe a version, and never installs or downloads a server (D11). `node` below is the Node.js running better-code-review (`process.execPath`). Node-based servers are run as `node <script>`, so npm's `.cmd` shims are not needed on Windows. Every server runs with the snapshot root as its working directory, and its workspace is that root.
+Discovery **reads files**: `package.json` files and the search path. The only command it runs is `git ls-files -- node_modules` (see "Security"). It never runs a server to probe a version, and never installs or downloads one (D11). `node` below is the Node.js running better-code-review (`process.execPath`). Node-based servers are run as `node <script>`, so npm's `.cmd` shims are not needed on Windows. Every server runs with the snapshot root as its working directory, and its workspace is that root.
 
 | Language (grammar) | Tried in order | Command |
 |---|---|---|
@@ -108,6 +108,7 @@ On Windows, a `.cmd`/`.bat` found on `PATH` that isn't an npm shim with its pack
 What is reported (`LanguageCapability.server`): the server name, its version (`serverInfo` from `initialize`, else its `package.json`), and `configuration`, e.g. `TypeScript 5.9.3 from the project, via typescript-language-server` or `extraPaths: src (src layout)`.
 
 **Settings we send.**
+- **TypeScript, both servers: automatic type acquisition off.** By default tsserver and TS 7 run `npm install @types/…` from the registry for the project's dependencies (D11). typescript-language-server gets `initializationOptions.disableAutomaticTypingAcquisition`; TS 7 gets `disableAutomaticTypeAcquisition` and `tsserver.automaticTypeAcquisition.enabled: false` under `js/ts`, `typescript` and `javascript`. Checked with TypeScript 5.9.3 and 7.0.2: nothing is installed.
 - **pyright:** `python.analysis.extraPaths = ["src"]` when the root has a `src/` layout (`src/<pkg>/__init__.py` and no `src/__init__.py`).
 - **pyright, with the opt-in only:** `python.pythonPath` = `<root>/.venv` or `<root>/venv` interpreter.
 
@@ -118,7 +119,13 @@ A `pyrightconfig.json` or `[tool.pyright]` in the project takes precedence over 
 Language servers are programs run on the user's machine against code under review (design reference §14.2).
 - **Opt-in servers.** jdtls imports Maven and Gradle builds, which runs build scripts and plugins. rust-analyzer runs `build.rs` and procedural macros. Both need `allowProjectCode`. Without it, the language reports `needs-opt-in` and the server is not started.
 - **pyright** runs a Python interpreter to find import paths. By default that is `python3` or `python` on `PATH`, the user's own. A repository virtualenv interpreter is project-controlled, so we only point pyright at it with the opt-in. A repository `pyrightconfig.json` or `[tool.pyright]` cannot choose the interpreter: `venvPath`/`venv` make pyright read that venv's `site-packages` as files without running it, and `pythonPath` is not a config-file setting (checked with pyright 1.1.414). **Known gap:** that config still chooses what pyright reads (`venv`, `extraPaths`, `stubPath`), so a change can feed it misleading stubs and hide references. That affects accuracy, not code execution.
-- **The project's own `node_modules`** (TypeScript, typescript-language-server, pyright) is preferred, as ADR 0001 decided. Those packages come from the user's own install. **Known gap:** if `node_modules` is committed, a reviewed change could alter them.
+- **The project's own `node_modules`** (TypeScript, typescript-language-server, pyright) is preferred, as ADR 0001 decided, but only when it is the user's own install. Without the opt-in it is passed over, and the configuration says why, when:
+  - Git tracks anything under it (`git ls-files -- node_modules`): a reviewed change could alter it;
+  - it, or a top-level package in it, links into the repository outside `node_modules` (npm, yarn and pnpm workspaces and `file:` dependencies). tsserver loads `tsconfig.json` plugins from the `node_modules` its TypeScript sits in, and the reviewed change controls both `tsconfig.json` and those packages' source;
+  - the check fails (not a Git repository, Git missing): we refuse rather than guess.
+
+  Servers on `PATH` are used instead, if any. A `PATH` TypeScript loads plugins from its own install, not the project.
+- **`PATH`.** Without the opt-in, relative entries and entries inside the repository (e.g. an activated in-repository virtualenv) are dropped, both for discovery and from the servers' environment, so a server that runs a bare command (pyright runs `python3`) cannot pick up one the change added. On Windows, servers also get `NoDefaultCurrentDirectoryInExePath=1`, so a bare command is not looked up in the working directory, the repository, first. **Not verified on Windows**, and whether every server honours it is up to its process library.
 - Servers get the snapshot root as their workspace and nothing else. The client sends no file contents except the files it opens from that root.
 
 ## Setup notes

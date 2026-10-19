@@ -1,11 +1,13 @@
 // Which language servers we know, how we find one already installed (MVP spec D11: never
-// install or download), and the exact command we would run. Discovery only reads files: it
-// never executes anything to probe a version. README.md lists the resulting commands.
+// install or download), and the exact command we would run. Discovery only reads files, plus
+// one `git ls-files` in `checkProjectPackages`: it never executes a server to probe a version.
+// README.md lists the resulting commands.
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, extname, join } from 'node:path';
+import { delimiter, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export type ServerId = 'typescript' | 'python' | 'java' | 'rust';
 
@@ -39,9 +41,11 @@ export interface ServerOverride {
 
 export interface DiscoveryContext {
   root: string;
-  /** The `PATH` to search; defaults to `process.env.PATH`. */
+  /** The `PATH` to search, without the entries `safeSearchPath` drops unless project code is allowed. */
   searchPath: string;
   allowProjectCode: boolean;
+  /** Why the project's `node_modules` may hold project code (`checkProjectPackages`), or null. */
+  untrustedPackages: string | null;
   platform: NodeJS.Platform;
 }
 
@@ -160,7 +164,18 @@ export function overrideLaunch(override: ServerOverride, ctx: DiscoveryContext):
 // typescript-language-server, which fails to start on TS 7.
 
 function discoverTypeScript(ctx: DiscoveryContext): Discovery {
-  const projectTs = readPackage(join(ctx.root, 'node_modules', 'typescript'));
+  return withPackagesNote(ctx, findTypeScript(ctx));
+}
+
+// Automatic type acquisition runs `npm install @types/…` for the project's dependencies, from the
+// registry (D11: never install or download). Both servers do it by default.
+const NO_TYPE_ACQUISITION = {
+  disableAutomaticTypeAcquisition: true,
+  tsserver: { automaticTypeAcquisition: { enabled: false } },
+};
+
+function findTypeScript(ctx: DiscoveryContext): Discovery {
+  const projectTs = projectPackage('typescript', ctx);
   if (projectTs && major(projectTs.version) >= 7) {
     return { launch: tscLsp(projectTs, 'from the project', ctx) };
   }
@@ -177,7 +192,10 @@ function discoverTypeScript(ctx: DiscoveryContext): Discovery {
           name: 'typescript-language-server',
           version: tsls.version,
           ...nodeBin(tsls, 'typescript-language-server', ['--stdio'], ctx),
-          initializationOptions: { tsserver: { path: join(ts.dir, 'lib') } },
+          initializationOptions: {
+            tsserver: { path: join(ts.dir, 'lib') },
+            disableAutomaticTypingAcquisition: true,
+          },
           settings: {},
           configuration: `TypeScript ${ts.version} ${where}, via typescript-language-server`,
         },
@@ -202,7 +220,12 @@ function tscLsp(ts: NodePackage, where: string, ctx: DiscoveryContext): Launch {
     version: ts.version,
     ...nodeBin(ts, 'tsc', ['--lsp', '--stdio'], ctx),
     initializationOptions: {},
-    settings: {},
+    // TS 7 reads this from `js/ts`; older builds from `typescript` and `javascript`.
+    settings: {
+      'js/ts': NO_TYPE_ACQUISITION,
+      typescript: NO_TYPE_ACQUISITION,
+      javascript: NO_TYPE_ACQUISITION,
+    },
     configuration: `TypeScript ${ts.version} ${where}, native \`tsc --lsp\``,
   };
 }
@@ -212,6 +235,10 @@ function tscLsp(ts: NodePackage, where: string, ctx: DiscoveryContext): Launch {
 // or pyright silently returns a fraction of the references (#42: 4 of 37 on click).
 
 function discoverPython(ctx: DiscoveryContext): Discovery {
+  return withPackagesNote(ctx, findPython(ctx));
+}
+
+function findPython(ctx: DiscoveryContext): Discovery {
   const pkg =
     findNodePackage('pyright-langserver', 'pyright', ctx) ??
     findNodePackage('basedpyright-langserver', 'basedpyright', ctx);
@@ -281,6 +308,101 @@ function findVenvPython(root: string, platform: NodeJS.Platform): string | null 
 }
 
 // ---------------------------------------------------------------------------------------------
+// Project code. Without the opt-in (D11), nothing the reviewed change could have written is run:
+// no package from a `node_modules` that Git tracks or that links into the repository, and no
+// command found through a relative or in-repository `PATH` entry. When unsure, we refuse.
+
+/**
+ * Why the project's `node_modules` may hold project code, or null when it is the user's own
+ * install. Tracked files are part of the change under review. So are workspace and `file:`
+ * packages, which package managers link from `node_modules` into the repository; tsserver loads
+ * `tsconfig.json` plugins from the `node_modules` its TypeScript sits in. Any failure counts as
+ * untrusted.
+ */
+export function checkProjectPackages(root: string): string | null {
+  const modules = join(root, 'node_modules');
+  if (!existsSync(modules)) return null;
+  const tracked = spawnSync('git', ['ls-files', '-z', '--', 'node_modules'], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  if (tracked.error || tracked.status !== 0) {
+    return 'could not check with Git whether node_modules is tracked';
+  }
+  if (tracked.stdout) return 'node_modules is tracked by Git';
+  try {
+    const realRoot = realpathSync(root);
+    const realModules = realpathSync(modules);
+    if (isInside(realModules, realRoot) && realModules !== join(realRoot, 'node_modules')) {
+      return `node_modules links to ${relative(realRoot, realModules)} in the repository`;
+    }
+    for (const name of packageEntries(modules)) {
+      const entry = join(modules, name);
+      if (!lstatSync(entry).isSymbolicLink() || !existsSync(entry)) continue;
+      const target = realpathSync(entry);
+      if (isInside(target, realRoot) && !isInside(target, realModules)) {
+        return `node_modules/${name} links to ${relative(realRoot, target)} in the repository`;
+      }
+    }
+  } catch {
+    return 'could not inspect node_modules';
+  }
+  return null;
+}
+
+/** Top-level package names in a `node_modules` directory, including `@scope/name`. */
+function packageEntries(modules: string): string[] {
+  return readdirSync(modules).flatMap((name) =>
+    name.startsWith('@') &&
+    isDirectory(join(modules, name)) &&
+    !lstatSync(join(modules, name)).isSymbolicLink()
+      ? readdirSync(join(modules, name)).map((sub) => `${name}/${sub}`)
+      : [name],
+  );
+}
+
+/**
+ * `path` without entries where project code could stand in for a server or the interpreter a
+ * server runs: relative entries (resolved against whatever the working directory is) and entries
+ * inside the repository, such as an activated in-repository virtualenv.
+ */
+export function safeSearchPath(path: string, root: string): string {
+  const realRoot = realpathOr(root);
+  return path
+    .split(delimiter)
+    .filter((dir) => dir && isAbsolute(dir) && !isInside(realpathOr(dir), realRoot))
+    .join(delimiter);
+}
+
+function projectPackage(packageName: string, ctx: DiscoveryContext): NodePackage | null {
+  if (ctx.untrustedPackages && !ctx.allowProjectCode) return null;
+  return readPackage(join(ctx.root, 'node_modules', packageName), packageName);
+}
+
+/** Says why the project's own packages were passed over, if they were. */
+function withPackagesNote(ctx: DiscoveryContext, found: Discovery): Discovery {
+  if (!ctx.untrustedPackages || ctx.allowProjectCode) return found;
+  if (!existsSync(join(ctx.root, 'node_modules'))) return found;
+  const note = `project node_modules not used: ${ctx.untrustedPackages} (needs the project-code opt-in)`;
+  return found.launch
+    ? { launch: { ...found.launch, configuration: `${found.launch.configuration}; ${note}` } }
+    : { launch: null, why: `${found.why}; ${note}` };
+}
+
+function isInside(path: string, dir: string): boolean {
+  const rel = relative(dir, path);
+  return !isAbsolute(rel) && rel.split(sep)[0] !== '..';
+}
+
+function realpathOr(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Finding commands and Node packages.
 
 interface NodePackage {
@@ -299,7 +421,7 @@ function findNodePackage(
   packageName: string,
   ctx: DiscoveryContext,
 ): NodePackage | null {
-  const local = readPackage(join(ctx.root, 'node_modules', packageName), packageName);
+  const local = projectPackage(packageName, ctx);
   if (local?.bin[binName]) return local;
   const onPath = findOnPath(binName, ctx);
   if (!onPath) return null;

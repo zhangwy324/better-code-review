@@ -29,12 +29,14 @@ import type {
   Range,
 } from './protocol.ts';
 import {
+  checkProjectPackages,
   type DiscoveryContext,
   type Launch,
   overrideLaunch,
   type ServerId,
   type ServerOverride,
   type ServerSpec,
+  safeSearchPath,
   serverFor,
 } from './servers.ts';
 
@@ -165,11 +167,14 @@ export class LspSession {
   readonly #languages: string[] = [];
   readonly #states = new Map<ServerId, ServerState>();
   readonly #lines = new Map<string, string[]>();
+  readonly #env: NodeJS.ProcessEnv;
+  #untrustedPackages: string | null = null;
 
   private constructor(root: string, options: LspOptions) {
     this.#root = root;
     this.#options = options;
     this.#timeouts = { ...DEFAULT_TIMEOUTS, ...options.timeouts };
+    this.#env = serverEnv(root, options.allowProjectCode ?? false);
   }
 
   /**
@@ -184,6 +189,7 @@ export class LspSession {
     options: LspOptions = {},
   ): Promise<LspSession> {
     const session = new LspSession(root, options);
+    if (!options.allowProjectCode) session.#untrustedPackages = checkProjectPackages(root);
     const specs = new Set<ServerSpec>();
     for (const language of languages) {
       if (session.#languages.includes(language)) continue;
@@ -292,10 +298,13 @@ export class LspSession {
       state.guidance = `${gap} — language servers are turned off for this run`;
       return;
     }
+    const allowProjectCode = this.#options.allowProjectCode ?? false;
+    const searchPath = this.#options.searchPath ?? process.env.PATH ?? '';
     const ctx: DiscoveryContext = {
       root: this.#root,
-      searchPath: this.#options.searchPath ?? process.env.PATH ?? '',
-      allowProjectCode: this.#options.allowProjectCode ?? false,
+      searchPath: allowProjectCode ? searchPath : safeSearchPath(searchPath, this.#root),
+      allowProjectCode,
+      untrustedPackages: this.#untrustedPackages,
       platform: process.platform,
     };
     const override = this.#options.servers?.[spec.id];
@@ -323,7 +332,7 @@ export class LspSession {
   async #spawn(launch: Launch): Promise<LspClient> {
     const spawn = this.#options.spawn ?? spawnProcess;
     const client = new LspClient(
-      spawn(launch.command, launch.args, { cwd: this.#root, shell: launch.shell }),
+      spawn(launch.command, launch.args, { cwd: this.#root, shell: launch.shell, env: this.#env }),
     );
     try {
       await client.initialize({
@@ -750,6 +759,21 @@ export class LspSession {
     }
     return lines;
   }
+}
+
+/**
+ * The environment servers run in. Without the opt-in, `PATH` loses relative and in-repository
+ * entries, so a server that runs a bare command (pyright runs `python3`) cannot pick up one the
+ * reviewed change put in the repository.
+ */
+function serverEnv(root: string, allowProjectCode: boolean): NodeJS.ProcessEnv {
+  if (allowProjectCode) return process.env;
+  const env = { ...process.env };
+  const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+  env[key] = safeSearchPath(env[key] ?? '', root);
+  // Windows also searches the working directory, the repository, for a bare command first.
+  if (process.platform === 'win32') env.NoDefaultCurrentDirectoryInExePath = '1';
+  return env;
 }
 
 function unhealthy(reason: string): ProjectHealth {

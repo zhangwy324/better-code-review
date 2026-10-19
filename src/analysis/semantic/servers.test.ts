@@ -1,8 +1,15 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { type DiscoveryContext, type Launch, serverFor } from './servers.ts';
+import {
+  checkProjectPackages,
+  type DiscoveryContext,
+  type Launch,
+  safeSearchPath,
+  serverFor,
+} from './servers.ts';
 
 let dir: string;
 beforeEach(() => {
@@ -27,6 +34,7 @@ function discover(language: string, opts: Partial<DiscoveryContext> = {}): Launc
     root: join(dir, 'project'),
     searchPath: '',
     allowProjectCode: false,
+    untrustedPackages: null,
     platform: process.platform,
     ...opts,
   });
@@ -49,6 +57,11 @@ describe('TypeScript discovery', () => {
       '--stdio',
     ]);
     expect(launch.configuration).toMatch(/TypeScript 7\.0\.2 from the project/);
+    const off = {
+      disableAutomaticTypeAcquisition: true,
+      tsserver: { automaticTypeAcquisition: { enabled: false } },
+    };
+    expect(launch.settings).toEqual({ 'js/ts': off, typescript: off, javascript: off });
   });
 
   it("runs typescript-language-server on the project's TypeScript 5.x", () => {
@@ -61,6 +74,7 @@ describe('TypeScript discovery', () => {
     expect(launch.args.slice(1)).toEqual(['--stdio']);
     expect(launch.initializationOptions).toEqual({
       tsserver: { path: join(dir, 'project/node_modules/typescript/lib') },
+      disableAutomaticTypingAcquisition: true,
     });
     expect(launch.configuration).toMatch(/TypeScript 5\.9\.3 from the project/);
   });
@@ -80,6 +94,27 @@ describe('TypeScript discovery', () => {
 
   it('reports what is missing', () => {
     expect(discover('typescript')).toMatch(/neither typescript-language-server nor TypeScript 7/);
+  });
+
+  it('passes over untrusted project packages unless project code is allowed', () => {
+    pkg('project/node_modules/typescript', 'typescript', '7.0.2', { tsc: 'bin/tsc' });
+    pkg('global/node_modules/typescript', 'typescript', '7.0.1', { tsc: 'bin/tsc' });
+    write(`global/tsc${process.platform === 'win32' ? '.cmd' : ''}`);
+    const untrusted = {
+      searchPath: join(dir, 'global'),
+      untrustedPackages: 'node_modules is tracked by Git',
+    };
+    const launch = discover('typescript', untrusted) as Launch;
+    expect(launch.version).toBe('7.0.1');
+    expect(launch.configuration).toMatch(
+      /on PATH, native `tsc --lsp`; project node_modules not used: node_modules is tracked by Git/,
+    );
+    expect(discover('typescript', { untrustedPackages: 'node_modules is tracked by Git' })).toMatch(
+      /neither .*; project node_modules not used/,
+    );
+    expect(
+      (discover('typescript', { ...untrusted, allowProjectCode: true }) as Launch).version,
+    ).toBe('7.0.2');
   });
 });
 
@@ -115,6 +150,67 @@ describe('Python discovery', () => {
     expect(discover('python')).toBe('pyright not found');
   });
 });
+
+describe('checkProjectPackages', () => {
+  const project = () => join(dir, 'project');
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-c', 'core.autocrlf=false', ...args], { cwd: project(), stdio: 'pipe' });
+  beforeEach(() => {
+    mkdirSync(project());
+    git('init', '-q');
+  });
+
+  it('trusts no node_modules, or an untracked one with no links into the repository', () => {
+    expect(checkProjectPackages(project())).toBeNull();
+    pkg('project/node_modules/typescript', 'typescript', '5.9.3', {});
+    pkg('project/node_modules/@types/node', '@types/node', '24.0.0', {});
+    expect(checkProjectPackages(project())).toBeNull();
+  });
+
+  it('distrusts a node_modules that Git tracks', () => {
+    pkg('project/node_modules/typescript', 'typescript', '5.9.3', {});
+    git('add', '-f', 'node_modules/typescript/package.json');
+    expect(checkProjectPackages(project())).toBe('node_modules is tracked by Git');
+  });
+
+  it.skipIf(process.platform === 'win32')('distrusts a package linked into the repository', () => {
+    pkg('project/packages/plugin', '@acme/plugin', '1.0.0', {});
+    mkdirSync(join(project(), 'node_modules/@acme'), { recursive: true });
+    symlinkSync(join(project(), 'packages/plugin'), join(project(), 'node_modules/@acme/plugin'));
+    expect(checkProjectPackages(project())).toBe(
+      `node_modules/@acme/plugin links to ${join('packages', 'plugin')} in the repository`,
+    );
+  });
+
+  it('distrusts what it cannot check', () => {
+    rmSync(join(project(), '.git'), { recursive: true });
+    pkg('project/node_modules/typescript', 'typescript', '5.9.3', {});
+    const ceiling = { ...process.env, GIT_CEILING_DIRECTORIES: dir };
+    const result = withEnv(ceiling, () => checkProjectPackages(project()));
+    expect(result).toBe('could not check with Git whether node_modules is tracked');
+  });
+});
+
+describe('safeSearchPath', () => {
+  it('drops relative entries and entries inside the repository', () => {
+    const root = join(dir, 'project');
+    const outside = join(dir, 'bin');
+    const path = ['.', 'node_modules/.bin', join(root, '.venv', 'bin'), root, '', outside].join(
+      delimiter,
+    );
+    expect(safeSearchPath(path, root)).toBe(outside);
+  });
+});
+
+function withEnv<T>(env: NodeJS.ProcessEnv, run: () => T): T {
+  const saved = process.env;
+  process.env = env;
+  try {
+    return run();
+  } finally {
+    process.env = saved;
+  }
+}
 
 describe('servers that run project code', () => {
   it('marks jdtls and rust-analyzer as needing the opt-in', () => {

@@ -73,6 +73,7 @@ function installed(language: string): { searchPath: string; launch: Launch }[] {
       root: tmpdir(),
       searchPath,
       allowProjectCode: false,
+      untrustedPackages: null,
       platform: process.platform,
     });
     const key = launch ? [launch.command, ...launch.args].join(' ') : '';
