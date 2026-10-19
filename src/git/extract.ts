@@ -89,9 +89,25 @@ export async function resolveRevisions(
   const base = await resolveCommit(repo, target.base);
   const head = await resolveCommit(repo, target.head);
   if (target.mode === 'direct') return { base, head };
+  const ends = `${target.base} and ${target.head}`;
+  return {
+    base: await mergeBase(repo, base, head, ends, 'use a direct range from the one you want'),
+    head,
+  };
+}
 
-  // merge-base mode is `git diff base...head`. With several merge bases (criss-cross merges)
-  // Git would pick one arbitrarily; ask the user to choose rather than guess.
+/**
+ * The single merge base of two commits: merge-base mode is `git diff base...head`. With several
+ * merge bases (criss-cross merges) Git would pick one arbitrarily; ask the user to choose rather
+ * than guess. `ends` names the two commits and `choose` says how to pick one, in error messages.
+ */
+async function mergeBase(
+  repo: string,
+  base: string,
+  head: string,
+  ends: string,
+  choose: string,
+): Promise<string> {
   const mergeBases = await runGit(repo, ['merge-base', '--all', base, head]).then(
     (out) => out.toString('utf8').split('\n').filter(Boolean),
     (err: unknown) => {
@@ -103,17 +119,17 @@ export async function resolveRevisions(
   if (mergeBases.length === 0) {
     const shallow = (await gitLine(repo, ['rev-parse', '--is-shallow-repository'])) === 'true';
     throw new Error(
-      `${target.base} and ${target.head} have no common ancestor` +
+      `${ends} have no common ancestor` +
         (shallow ? ' in this shallow clone; fetch more history and try again' : ''),
     );
   }
-  if (mergeBases.length > 1) {
+  const [only] = mergeBases;
+  if (mergeBases.length > 1 || only === undefined) {
     throw new Error(
-      `${target.base} and ${target.head} have ${mergeBases.length} merge bases ` +
-        `(${mergeBases.join(', ')}); use a direct range from the one you want`,
+      `${ends} have ${mergeBases.length} merge bases (${mergeBases.join(', ')}); ${choose}`,
     );
   }
-  return { base: mergeBases[0] ?? null, head };
+  return only;
 }
 
 export interface ExtractOptions {
@@ -131,16 +147,22 @@ export async function extractChangeSet(
 ): Promise<ChangeSet> {
   if (target.kind === 'local') return extractLocal(repo, target, options);
 
-  let revisions: RevisionTarget;
+  let base: string | null;
+  let head: string;
   let pullRequest: PullRequestInfo | null = null;
   if (target.kind === 'pr') {
     const pr = await resolvePullRequest(repo, target.number, options.gh);
-    revisions = { kind: 'range', base: pr.base, head: pr.head, mode: 'merge-base' };
+    const { baseRefName, headRefName } = pr.info;
+    const ends =
+      `Pull request #${target.number}'s base ${baseRefName} (${pr.base.slice(0, 7)}) ` +
+      `and head ${headRefName} (${pr.head.slice(0, 7)})`;
+    const choose = `review it as a direct range from the one you want to ${pr.head}`;
+    base = await mergeBase(repo, pr.base, pr.head, ends, choose);
+    head = pr.head;
     pullRequest = pr.info;
   } else {
-    revisions = target;
+    ({ base, head } = await resolveRevisions(repo, target));
   }
-  const { base, head } = await resolveRevisions(repo, revisions);
   return ChangeSet.parse({
     schemaVersion: CHANGESET_SCHEMA_VERSION,
     snapshotId: createHash('sha256')

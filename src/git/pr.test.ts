@@ -113,6 +113,29 @@ describe('extractChangeSet: pr target', () => {
     expect(changes.pullRequest?.description).toBe('');
   });
 
+  it('names the PR and its branches when the merge base is ambiguous or missing', async () => {
+    const m1 = repo.commit([base, head], {});
+    const m2 = repo.commit([head, base], {});
+    const criss = fakeGh(pullResponse(m1, m2)).gh;
+    await expect(
+      extractChangeSet(repo.path, { kind: 'pr', number: 7 }, { gh: criss }),
+    ).rejects.toThrow(
+      `Pull request #7's base main (${m1.slice(0, 7)}) and head feature (${m2.slice(0, 7)}) ` +
+        `have 2 merge bases`,
+    );
+    await expect(
+      extractChangeSet(repo.path, { kind: 'pr', number: 7 }, { gh: criss }),
+    ).rejects.toThrow(`review it as a direct range from the one you want to ${m2}`);
+
+    const orphan = repo.commit([], { 'x.txt': 'x\n' });
+    const unrelated = fakeGh(pullResponse(base, orphan)).gh;
+    await expect(
+      extractChangeSet(repo.path, { kind: 'pr', number: 7 }, { gh: unrelated }),
+    ).rejects.toThrow(
+      /^Pull request #7's base main \(.{7}\) and head feature \(.{7}\) have no common/,
+    );
+  });
+
   it("fetches missing commits from the base repository's remote, writing no refs", async () => {
     // As GitHub does, the "server" serves any commit reachable from its refs by ID.
     repo.git('config', 'uploadpack.allowReachableSHA1InWant', 'true');
