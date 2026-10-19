@@ -39,6 +39,9 @@ class TestRepo {
   constructor() {
     repos.push(this);
     this.git('init', '-q', '-b', 'main');
+    // Git for Windows rejects NTFS-invalid paths (quotes, tabs) even in the index; nothing is
+    // checked out here, so the check only gets in the way.
+    this.git('config', 'core.protectNTFS', 'false');
   }
 
   git(...args: string[]): string {
