@@ -1,12 +1,13 @@
-# Planner input
+# Planner
 
-What the agent sees when it writes `plan.json` (issue #22; design reference §8.6, §11.2, §14.2–14.3). `generate` writes it as `planner-input.md` next to `changes.json` and `graph.json`. `better-code-review show` fetches anything it leaves out. The CLI still makes no model calls (MVP spec D8): these are files and commands the agent reads.
+What the agent sees when it writes `plan.json` (issue #22; design reference §8.6, §11.2, §14.2–14.3), and how that plan is checked (#23, [below](#plan-validation-validate)). `generate` writes the input as `planner-input.md` next to `changes.json` and `graph.json`. `better-code-review show` fetches anything it leaves out, and `better-code-review validate` checks the plan. The CLI still makes no model calls (MVP spec D8): these are files and commands the agent reads.
 
 | File | Contents |
 |---|---|
 | `input.ts` | `plannerInput()`: the Markdown input, its selection policy and size budget |
 | `show.ts` | `show()`: a hunk, node or edge by ID, or lines of any snapshot file |
 | `secrets.ts` | `sensitiveFile()` and `redactSecrets()`, used by both |
+| `validate.ts` | `validatePlan()`: the plan's rules, and the `ungrouped` group for nodes with no home |
 
 ## Format of `planner-input.md`
 
@@ -78,6 +79,47 @@ better-code-review show --dir <review dir> --file <path> [--side old|new] [--lin
 - **File:** numbered lines of any file in the snapshot, changed or not. By default it prints the first 400 lines, then points at the next range.
 
 Everything comes from the snapshot. Changed files come from `changes.json`, and unchanged ones from Git at the snapshot's revision (`gitSnapshotFiles`), never from the working tree as it is now. So `show` must run inside the repository; elsewhere only changed files can be read. Unknown IDs, missing files and out-of-range lines exit 1 with a message the agent can act on.
+
+## Plan validation: `validate`
+
+```text
+better-code-review validate --dir <review dir> [--plan <file>]
+```
+
+The repair loop: the agent writes `plan.json`, runs `validate`, fixes what it reports, and runs it again. SKILL.md (#25) sets how many rounds to try; after that the fallback plan is used (D8, #24). `validate` reads `plan.json` and never rewrites it.
+
+It prints JSON and exits 0 when the plan is valid, 1 when it isn't:
+
+```json
+{ "valid": true, "ungroupedNodeIds": ["n_…"] }
+{ "valid": false, "errors": [
+  { "path": "/groups/1/nodeIds/0", "code": "multiple-homes",
+    "message": "node n_… already has its home in group g0; move it to this group's referenceNodeIds" }
+] }
+```
+
+`path` is a JSON Pointer into the plan (`""` for the whole file). `code` is one of:
+
+| Code | Meaning |
+|---|---|
+| `json` | Not valid JSON |
+| `schema` | Wrong shape. Unknown fields are rejected, so the plan can't carry code text or a `provenance` |
+| `snapshot` | `snapshotId` is not the graph's |
+| `origin` | An agent plan with a `fallbackReason` |
+| `duplicate-id` | A group or inferred relationship ID used twice |
+| `reserved-id` | `ungrouped` used as a child group |
+| `unknown-id` | A node, group or edge that does not exist. Verdicts can't add edges |
+| `multiple-homes` | A node in more than one group's `nodeIds`, or listed twice in one group |
+| `nesting` | A group inside itself, two levels deep, or with two parents |
+| `group-order` | `groupOrder` misses a top-level group, repeats one or lists a child |
+| `verdict` | A verdict on a `verified` edge, a second verdict on one edge, or a `via` on anything but `yes` |
+| `citation` | A cited line that isn't in the snapshot |
+
+All errors are reported at once. Schema errors come alone, since the other rules need a well-formed plan.
+
+**Ungrouped.** Nodes the plan gives no home are not an error. `validatePlan()` puts them in the `ungrouped` group ("Ungrouped / requires review", D1), making it last in `groupOrder` if the plan has none, and `validate` lists them so the agent can place them. Since the graph puts every hunk on a node, every hunk is then visible. A valid plan with every node placed comes back unchanged.
+
+**Citations** may point at unchanged files, because `show --file` lets the agent read them. The line must exist on that side of the snapshot. Files with omitted content (binary, too large, not UTF-8) can't be cited.
 
 ## Secret avoidance
 
