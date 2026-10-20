@@ -56,14 +56,28 @@ export const FileChange = z.strictObject({
   hunks: z.array(DiffHunk),
 });
 
+/**
+ * The pull request a `pr` target names, as GitHub reports it, for the planner (§8.6). Its text is
+ * written by the PR author: untrusted input, never instructions (§14.2).
+ */
+export const PullRequestInfo = z.strictObject({
+  url: z.string().min(1),
+  title: z.string(),
+  /** The PR body in Markdown; empty when it has none. */
+  description: z.string(),
+  baseRefName: z.string().min(1),
+  headRefName: z.string().min(1),
+});
+
 export const ChangeSet = z.strictObject({
   schemaVersion: z.literal(CHANGESET_SCHEMA_VERSION),
   snapshotId: SnapshotId,
   /** The target as requested. */
   target: ReviewTarget,
   /**
-   * The resolved base commit: HEAD for `local`. Null when the base is the empty tree (a root
-   * commit, or a `local` target on a branch with no commits yet).
+   * The resolved base commit: HEAD for `local`, and for `pr` the merge base of the PR's base and
+   * head commits. Null when the base is the empty tree (a root commit, or a `local` target on a
+   * branch with no commits yet).
    */
   baseRevision: GitObjectId.nullable(),
   /** The resolved head commit. Null when the head is the working tree (`local`). */
@@ -75,8 +89,11 @@ export const ChangeSet = z.strictObject({
    * in byte order. Listed so the artifact can say what it does not show. Empty otherwise.
    */
   excludedUntrackedPaths: z.array(RepoPath),
+  /** `pr` only: the pull request's metadata. Null otherwise. */
+  pullRequest: PullRequestInfo.nullable(),
 });
 
 export type DiffHunk = z.infer<typeof DiffHunk>;
 export type FileChange = z.infer<typeof FileChange>;
+export type PullRequestInfo = z.infer<typeof PullRequestInfo>;
 export type ChangeSet = z.infer<typeof ChangeSet>;

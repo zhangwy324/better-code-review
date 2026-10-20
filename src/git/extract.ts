@@ -1,6 +1,7 @@
-// Git extractor for `commit`, `range` (#10) and `local` (#11) targets (design reference §8.2,
-// §4.4): resolves the base and head, diffs them, and produces the ChangeSet written to
-// changes.json. A `local` head is the working tree captured as a tree object (local.ts).
+// Git extractor for `commit`, `range` (#10), `local` (#11) and `pr` (#12) targets (design
+// reference §8.2, §4.4): resolves the base and head, diffs them, and produces the ChangeSet
+// written to changes.json. A `local` head is the working tree captured as a tree object
+// (local.ts). A `pr` is looked up with the GitHub CLI and diffed as a merge-base range (pr.ts).
 //
 // Out of scope here and owned by #13: rename and copy detection (renames show as a delete plus an
 // add), the content size cap, non-UTF-8 text, and richer handling of type changes and
@@ -13,11 +14,13 @@ import {
   ChangeSet,
   type FileChange,
   GITLINK_MODE,
+  type PullRequestInfo,
   type ReviewTarget,
   stableId,
 } from '../schemas/index.ts';
 import { assertSameSnapshot, captureWorkingTree, comparePaths } from './local.ts';
 import { type PatchSection, parsePatch } from './patch.ts';
+import { type GhRunner, resolvePullRequest } from './pr.ts';
 import { GitError, gitLine, runGit } from './run.ts';
 
 export type RevisionTarget = Extract<ReviewTarget, { kind: 'commit' | 'range' }>;
@@ -86,9 +89,25 @@ export async function resolveRevisions(
   const base = await resolveCommit(repo, target.base);
   const head = await resolveCommit(repo, target.head);
   if (target.mode === 'direct') return { base, head };
+  const ends = `${target.base} and ${target.head}`;
+  return {
+    base: await mergeBase(repo, base, head, ends, 'use a direct range from the one you want'),
+    head,
+  };
+}
 
-  // merge-base mode is `git diff base...head`. With several merge bases (criss-cross merges)
-  // Git would pick one arbitrarily; ask the user to choose rather than guess.
+/**
+ * The single merge base of two commits: merge-base mode is `git diff base...head`. With several
+ * merge bases (criss-cross merges) Git would pick one arbitrarily; ask the user to choose rather
+ * than guess. `ends` names the two commits and `choose` says how to pick one, in error messages.
+ */
+async function mergeBase(
+  repo: string,
+  base: string,
+  head: string,
+  ends: string,
+  choose: string,
+): Promise<string> {
   const mergeBases = await runGit(repo, ['merge-base', '--all', base, head]).then(
     (out) => out.toString('utf8').split('\n').filter(Boolean),
     (err: unknown) => {
@@ -100,33 +119,50 @@ export async function resolveRevisions(
   if (mergeBases.length === 0) {
     const shallow = (await gitLine(repo, ['rev-parse', '--is-shallow-repository'])) === 'true';
     throw new Error(
-      `${target.base} and ${target.head} have no common ancestor` +
+      `${ends} have no common ancestor` +
         (shallow ? ' in this shallow clone; fetch more history and try again' : ''),
     );
   }
-  if (mergeBases.length > 1) {
+  const [only] = mergeBases;
+  if (mergeBases.length > 1 || only === undefined) {
     throw new Error(
-      `${target.base} and ${target.head} have ${mergeBases.length} merge bases ` +
-        `(${mergeBases.join(', ')}); use a direct range from the one you want`,
+      `${ends} have ${mergeBases.length} merge bases (${mergeBases.join(', ')}); ${choose}`,
     );
   }
-  return { base: mergeBases[0] ?? null, head };
+  return only;
 }
 
 export interface ExtractOptions {
   /** Test hook: runs between the two working-tree captures of a `local` target. */
   beforeRecapture?: () => void | Promise<void>;
+  /** Test hook: runs the GitHub CLI for a `pr` target. Defaults to the real `gh`. */
+  gh?: GhRunner;
 }
 
-/** Extracts the ChangeSet for a `commit`, `range` or `local` target in the repository at `repo`. */
+/** Extracts the ChangeSet for a target in the repository at `repo`. */
 export async function extractChangeSet(
   repo: string,
-  target: RevisionTarget | LocalTarget,
+  target: ReviewTarget,
   options: ExtractOptions = {},
 ): Promise<ChangeSet> {
   if (target.kind === 'local') return extractLocal(repo, target, options);
 
-  const { base, head } = await resolveRevisions(repo, target);
+  let base: string | null;
+  let head: string;
+  let pullRequest: PullRequestInfo | null = null;
+  if (target.kind === 'pr') {
+    const pr = await resolvePullRequest(repo, target.number, options.gh);
+    const { baseRefName, headRefName } = pr.info;
+    const ends =
+      `Pull request #${target.number}'s base ${baseRefName} (${pr.base.slice(0, 7)}) ` +
+      `and head ${headRefName} (${pr.head.slice(0, 7)})`;
+    const choose = `review it as a direct range from the one you want to ${pr.head}`;
+    base = await mergeBase(repo, pr.base, pr.head, ends, choose);
+    head = pr.head;
+    pullRequest = pr.info;
+  } else {
+    ({ base, head } = await resolveRevisions(repo, target));
+  }
   return ChangeSet.parse({
     schemaVersion: CHANGESET_SCHEMA_VERSION,
     snapshotId: createHash('sha256')
@@ -137,6 +173,7 @@ export async function extractChangeSet(
     headRevision: head,
     files: await diffFiles(repo, base, head),
     excludedUntrackedPaths: [],
+    pullRequest,
   });
 }
 
@@ -166,6 +203,7 @@ async function extractLocal(
     headRevision: null,
     files,
     excludedUntrackedPaths: snapshot.excludedUntracked,
+    pullRequest: null,
   });
 }
 

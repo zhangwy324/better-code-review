@@ -287,6 +287,44 @@
         "minLength": 1,
         "description": "Repository-relative, \"/\"-separated path as Git reports it"
       }
+    },
+    "pullRequest": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1
+            },
+            "title": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "baseRefName": {
+              "type": "string",
+              "minLength": 1
+            },
+            "headRefName": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "url",
+            "title",
+            "description",
+            "baseRefName",
+            "headRefName"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [
@@ -296,7 +334,8 @@
     "baseRevision",
     "headRevision",
     "files",
-    "excludedUntrackedPaths"
+    "excludedUntrackedPaths",
+    "pullRequest"
   ],
   "additionalProperties": false,
   "title": "change-set v1",
