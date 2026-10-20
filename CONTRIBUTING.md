@@ -45,6 +45,7 @@ One package, one language (ADR 0001). Modules are folders under `src/`, created 
 | `src/renderer/` | `review.html` bundling |
 | `src/viewer/` | The React viewer |
 
+- `skills/better-code-review/` is the Agent Skill (#25): `SKILL.md` and its `references/`. It drives the CLI and writes `plan.json`. `test/skill/` checks that the flags it names exist and that it explains every validator error code.
 - `schemas/` holds the generated JSON Schema files. Don't edit them; change `src/schemas/` and run `npm run schemas`.
 - Unit tests sit next to the code as `*.test.ts`. The fixture portfolio, Git changes that tests across milestones share, is in `test/fixtures/` ([`README.md`](test/fixtures/README.md)).
 - Relative imports use the `.ts` extension; `tsc` rewrites them to `.js` on build.
