@@ -13,7 +13,7 @@ For v0.1 the portfolio is **TypeScript only**. The signature fixture also keeps 
 | `rename-move` | Renames and moves | A renamed function in a moved file (one edge on both sides), and a pure move with a hunk-less file node |
 | `independent-roots` | Multiple independent change roots | Three unrelated changes, no edges |
 | `feature-flow` | API route → service → persistence → tests | One edge per layer, and a test-file edge from a `describe` titled like the function under test |
-| `interface-impl` | Interface implementation changes | `implements` edges from a changed and a new class; a call through the interface stays `possible` to both implementations |
+| `interface-impl` | Interface implementation changes | `implements` edges from a changed and a new class; calls through the interface and through each implementation's own type, all `possible` to both implementations |
 | `same-name` | Static reference vs same-name unrelated symbol | Three changed `validate`s: import resolution keeps each plain call to its own, while the receiver call stays `possible` to all three |
 | `tests-and-config` | Test- and config-only edits | File nodes for `package.json`, `tsconfig.json` and a workflow; a test file; no edges, since the code under test is unchanged |
 | `dynamic-calls` | Dynamic calls / reflection | Calls through computed properties and `Reflect.apply` make no edge |
