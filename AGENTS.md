@@ -1,1 +1,2 @@
 - Always pull fresh `main` (`git checkout main && git pull`) before creating a new branch.
+- Every issue goes in the GitHub project linked to this repo, [Better Code Review](https://github.com/users/zhangwy324/projects/5) (`gh project item-add 5 --owner zhangwy324 --url <issue-url>`). Set its fields: **Status** (`Backlog` when new), **Area** matching the `area:` label and **Kind** matching the `type:` label. Give the issue those labels and its milestone too. Before filing, search existing issues (open and closed) for duplicates.
