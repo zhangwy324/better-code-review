@@ -2,7 +2,7 @@
 
 Reproducible Git changes for testing every milestone, from design reference §18.4 (issue #9). Each fixture is a TypeScript module holding a base snapshot, the changes on top of it, and the facts the deterministic graph must show. Repositories are built from these by code, never committed as `.git` directories.
 
-For v0.1 the portfolio is **TypeScript only**. The signature fixture also keeps its Python half. Python, Java, Go and a mixed-language HTTP/API change are #77.
+For v0.1 the portfolio is **TypeScript only**. The signature fixture also keeps its Python half, and `override-dispatch-python` is the Python twin of `override-dispatch`. Python, Java, Go and a mixed-language HTTP/API change are #77.
 
 | Fixture | §18.4 case | What it shows |
 |---|---|---|
@@ -14,6 +14,8 @@ For v0.1 the portfolio is **TypeScript only**. The signature fixture also keeps 
 | `independent-roots` | Multiple independent change roots | Three unrelated changes, no edges |
 | `feature-flow` | API route → service → persistence → tests | One edge per layer, and a test-file edge from a `describe` titled like the function under test |
 | `interface-impl` | Interface implementation changes | `implements` edges from a changed and a new class; calls through the interface and through each implementation's own type, all `possible` to both implementations |
+| `override-dispatch` | Interface implementation changes (class overrides) | A changed override called only through its base type (`s.area()` with `s: Shape` → `Square.area`): `possible` without a server, `verified` with one (#81) |
+| `override-dispatch-python` | The same, in Python | `a.interest()` with `a: Account` → `Savings.interest`. pyright's references to the override miss it, so it is verified only through the overridden base method (`baseMethods`, #81) |
 | `same-name` | Static reference vs same-name unrelated symbol | Three changed `validate`s: import resolution keeps each plain call to its own, while the receiver call stays `possible` to all three |
 | `tests-and-config` | Test- and config-only edits | File nodes for `package.json`, `tsconfig.json` and a workflow; a test file; no edges, since the code under test is unchanged |
 | `dynamic-calls` | Dynamic calls / reflection | Calls through computed properties and `Reflect.apply` make no edge |

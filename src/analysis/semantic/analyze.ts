@@ -18,6 +18,7 @@
 //
 // Every hit is a `text-search` candidate record. Import resolution and LSP add their own record
 // with outcome `confirmed` or `rejected`; only LSP's can make an edge `verified` (invariant 4).
+import type { Node } from 'web-tree-sitter';
 import type { ChangeSet, FileChange } from '../../schemas/changeset.ts';
 import type { Side, SourceRange } from '../../schemas/common.ts';
 import { stableId } from '../../schemas/ids.ts';
@@ -50,7 +51,7 @@ import {
   type TargetKey,
 } from './imports.ts';
 import { rangeContains } from './normalise.ts';
-import type { LspSession, ProjectHealth, SessionCapability } from './session.ts';
+import type { FilePosition, LspSession, ProjectHealth, SessionCapability } from './session.ts';
 import { changeSetFiles, type SnapshotFiles } from './snapshot-files.ts';
 
 /** Source entities kept per (changed entity, relation); the rest is reported as a cap (D1). */
@@ -112,6 +113,8 @@ interface TargetSide {
    * call is kept only when its receiver's static type is one of these. Null otherwise.
    */
   receiverTypes: string[] | null;
+  /** For a method: the same-named methods of its class's direct bases, asked about too (#81). */
+  baseMethods: FilePosition[];
 }
 
 interface Pair {
@@ -134,7 +137,7 @@ export async function analyzeSemantics(
   const parser = new StructuralParser();
   try {
     const resolver = new Resolver(files, parser);
-    const { sideFiles, targets } = await prepare(changeSet, structure, parser, resolver);
+    const { sideFiles, targets } = await prepare(changeSet, structure, parser, resolver, files);
     const definitions = new DefinitionCounter(files, parser, sideFiles);
 
     let pairs: Pair[] = [];
@@ -188,6 +191,7 @@ async function prepare(
   structure: StructuralChangeSet,
   parser: StructuralParser,
   resolver: Resolver,
+  files: SnapshotFiles,
 ): Promise<{ sideFiles: SideFile[]; targets: Target[] }> {
   const sideFiles: SideFile[] = [];
   const targets = new Map<string, Target>();
@@ -242,7 +246,7 @@ async function prepare(
             path,
             search,
             key: targetKey(file, facts),
-            ...lspTarget(parsed, facts, search, grammar),
+            ...(await lspTarget(file, parsed, facts, search, { parser, resolver, files })),
           };
         }
         sideFiles.push(file);
@@ -301,41 +305,97 @@ function targetKey(file: SideFile, facts: Entity): TargetKey {
 
 /**
  * Where to ask a language server about a target: its name, or for a constructor its class name
- * (#16). Also, for a method of a class with bases, the types a receiver can have to reach it.
+ * (#16). Also, for a method of a class with bases, the types a receiver can have to reach it, and
+ * the base methods it overrides.
  */
-function lspTarget(
+async function lspTarget(
+  file: SideFile,
   parsed: ParsedFile,
   facts: Entity,
   search: string,
-  grammar: GrammarName,
-): Pick<TargetSide, 'lsp' | 'receiverTypes'> {
+  snapshot: { parser: StructuralParser; resolver: Resolver; files: SnapshotFiles },
+): Promise<Pick<TargetSide, 'lsp' | 'receiverTypes' | 'baseMethods'>> {
   const constructor = facts.kind === 'constructor';
   const inside = (d: Declaration) =>
     constructor
       ? d.kind === 'class' && d.name === search && startsIn(d.range, facts.range)
       : d.kind === facts.kind && d.name === facts.name && within(d.range, facts.range);
   const declaration = declarations(parsed).find(inside);
-  if (!declaration) return { lsp: null, receiverTypes: null };
+  if (!declaration) return { lsp: null, receiverTypes: null, baseMethods: [] };
   let receiverTypes: string[] | null = null;
+  const baseMethods: FilePosition[] = [];
   if (facts.kind === 'method') {
-    for (let n = declaration.node.parent; n; n = n.parent) {
-      if (CLASS_NODES.has(n.type)) {
-        const bases = baseNames(n);
-        // Subclasses and further ancestors are not listed: a call on one is dropped from the
-        // answer and stays possible, since a method of a class with bases is never rejected.
-        if (bases.length > 0) {
-          const name = n.childForFieldName('name')?.text;
-          receiverTypes = name === undefined ? bases : [name, ...bases];
-        }
-        break;
-      }
+    const cls = enclosingClass(declaration.node);
+    const bases = cls === null ? [] : baseNames(cls);
+    // Subclasses and further ancestors are not listed: a call on one is dropped from the
+    // answer and stays possible, since a method of a class with bases is never rejected.
+    if (cls !== null && bases.length > 0) {
+      const name = cls.childForFieldName('name')?.text;
+      receiverTypes = name === undefined ? bases : [name, ...bases];
+    }
+    for (const base of bases) {
+      const found = await baseMethod(file, parsed, base, declaration.name, snapshot);
+      if (found) baseMethods.push(found);
     }
   }
   const at = declaration.nameRange;
   return {
-    lsp: { language: grammar, line: at.startLine, column: at.startColumn ?? 1 },
+    lsp: { language: file.grammar, line: at.startLine, column: at.startColumn ?? 1 },
     receiverTypes,
+    baseMethods,
   };
+}
+
+/**
+ * The method named `method` of the base `base` of a class in `file` (#81): the base is resolved
+ * like a bare name (its own definitions, then imports), and must be a top-level class or
+ * interface in the snapshot declaring that method. Null otherwise: a package, a nested class,
+ * `a.B` (only `B` is known), or an inherited method the base does not declare itself.
+ */
+async function baseMethod(
+  file: SideFile,
+  parsed: ParsedFile,
+  base: string,
+  method: string,
+  snapshot: { parser: StructuralParser; resolver: Resolver; files: SnapshotFiles },
+): Promise<FilePosition | null> {
+  const resolved = await snapshot.resolver.resolveLocal(file.side, file.path, file.info, base);
+  if (resolved?.kind !== 'definition') return null;
+  const find = (tree: ParsedFile): FilePosition | null => {
+    const all = declarations(tree);
+    const isBase = (n: Node) =>
+      n.childForFieldName('name')?.text === resolved.name && enclosingClass(n) === null;
+    let name = all.find((d) => {
+      const cls = d.kind === 'method' && d.name === method ? enclosingClass(d.node) : null;
+      return cls !== null && isBase(cls);
+    })?.nameNode;
+    // TypeScript interface members are no declarations (nor entities): look in the body.
+    name ??=
+      all
+        .filter((d) => d.kind === 'interface' && isBase(d.node))
+        .flatMap((d) => d.node.childForFieldName('body')?.namedChildren ?? [])
+        .find((n) => n?.type === 'method_signature' && n.childForFieldName('name')?.text === method)
+        ?.childForFieldName('name') ?? undefined;
+    if (!name) return null;
+    const at = name.startPosition;
+    return { path: resolved.path, line: at.row + 1, column: at.column + 1 };
+  };
+  if (resolved.path === file.path) return find(parsed);
+  const content = await snapshot.files.read(file.side, resolved.path);
+  if (content === null) return null;
+  const other = await snapshot.parser.parse(resolved.path, content);
+  if (other.status !== 'parsed') return null;
+  try {
+    return find(other);
+  } finally {
+    freeTrees(other);
+  }
+}
+
+/** The innermost class, interface, enum or record a node is in. */
+function enclosingClass(node: Node): Node | null {
+  for (let n = node.parent; n; n = n.parent) if (CLASS_NODES.has(n.type)) return n;
+  return null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -551,6 +611,7 @@ async function verify(pairs: Pair[], side: Side, lsp: ReferenceProvider): Promis
       column: at.column,
       kind: target.entity.kind,
       ...(own.receiverTypes === null ? {} : { receiverTypes: own.receiverTypes }),
+      ...(own.baseMethods.length === 0 ? {} : { baseMethods: own.baseMethods }),
     });
     if (result.status !== 'ok') continue;
     for (const pair of open.filter((p) => p.target === target)) {
