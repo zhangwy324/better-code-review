@@ -20,6 +20,13 @@
             "type": "string",
             "minLength": 1
           },
+          "side": {
+            "type": "string",
+            "enum": [
+              "old",
+              "new"
+            ]
+          },
           "server": {
             "anyOf": [
               {
@@ -116,6 +123,7 @@
         },
         "required": [
           "language",
+          "side",
           "server",
           "status",
           "capabilitiesAttempted",

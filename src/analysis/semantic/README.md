@@ -19,12 +19,19 @@ Answers "how are the changed entities related to each other?" (design reference 
 ```ts
 const files = gitSnapshotFiles(repo, changeSet);
 const lsp = await LspSession.start(headWorkingTree, languages, lspOptions); // optional
-const evidence = await analyzeSemantics(changeSet, structure, { files, lsp });
+let old: LspSession | undefined;
+const oldLsp = async (needed: string[]) => {
+  await checkoutRevision(repo, changeSet.baseRevision, baseWorkingTree); // src/git/checkout.ts
+  return (old = await LspSession.start(baseWorkingTree, needed, lspOptions));
+}; // optional, needs `lsp`
+const evidence = await analyzeSemantics(changeSet, structure, { files, lsp, oldLsp });
 await lsp.close();
+await old?.close();
 ```
 
 - `files` gives access to unchanged files, for imports, re-exports and definition counts. Without it only the changed files are read, nothing counts as unambiguous, and imports into unchanged files stay unresolved.
 - `lsp` is any `LspSession` (or a `ReferenceProvider`) started on a working tree holding the **new** side. The caller starts and closes it. Without one, every language reports `disabled` and nothing is verified.
+- `oldLsp` starts a session on a working tree holding the **old** side, for the languages it is given. The analyzer calls it at most once, and only when old-side candidates need it (step 6 below); the caller closes what it returned.
 
 **Scope (MVP spec D12).** Only hits inside other changed entities count: entities a hunk touches on either side. Unchanged callers are never searched for. Both sides are searched: old-side names in old-side content, so a removed call is found too. Files without structure (text-only, binary, too large, generated, unparseable) have no entities and are not searched. Hits only relate files of the same language family: TS/TSX/JS, Python, Java.
 
@@ -51,12 +58,16 @@ In the order #42 settled (`docs/research/candidate-adjudication.md`):
    - **Java:** a class name is the file's own type, a single-type import, or else the file's package. A static import names a method. Only a type the file declares or an explicit import says `rejected`; a same-package guess only confirms.
    - Module paths: relative TS/JS specifiers with the usual extensions and `index` files (`./x.js` also finds `./x.ts`); Python modules under the repository root or `src/`, relative imports, and `from pkg import mod` as a submodule when `pkg` defines no `mod`.
    - Anything else is unknown and adds no record: package imports, `tsconfig` path aliases, top-level variables, receiver calls (`obj.m()`, which only types settle), scopes and shadowing.
-5. **Test files** (MVP spec D2) keep one edge per (test file, changed entity): the most decided hit (LSP-confirmed, then import-confirmed, then undecided), preferring the new side. Its detail says how many hits it stands for.
-6. **LSP**, when a session is given, for new-side candidates that import resolution did not reject. One `references` query per target, at its name (a constructor's class name), with the readiness and normalisation rules below.
+5. **LSP**, when a session is given, for new-side candidates that import resolution did not reject. One `references` query per target, at its name (a constructor's class name), with the readiness and normalisation rules below.
    - A candidate inside a returned site (`rangeContains`) gets an `lsp` `confirmed` record.
    - A candidate that is missing gets an `lsp` `rejected` record only when the answer is `ok` and `complete`, the site is not in `unresolved`, `projectHealth` is healthy for both the target's file and the candidate's file (checked once per file, so one file with unresolved imports only stops the rejections that involve it), the hit is not constructor chaining (which `references` does not return), and the target is not a method of a class with bases (calls through an overridden base method are not in its own references, #42).
    - Otherwise nothing is recorded and the candidate stays `possible`. An `unknown` answer is never a rejection.
-7. **Caps** (D1): at most `maxCandidatesPerEntity` (default 100) source entities per (target, relation), a test file counting as one. The rest are dropped from the records and reported in `caps` as "Showing N of M".
+6. **The old side** (#66), when a new-side session is given. A removed call is a useful review signal (both ends are changed, D12), and an old-side candidate left undecided keeps its edge `possible` even when the new-side server rejected the same call.
+   - **Base-side server.** Old-side candidates go to a session on the old side (`oldLsp`), with the same rules as step 5, only when their edge has no new-side hit left: the new side has none (a removed call), or every new-side hit was rejected. An edge a new-side hit already carries never starts it, and only the languages that need it are started. A confirmation verifies the edge even when its new-side hit was rejected.
+   - **Carried-over rejections.** A new-side `lsp` rejection is carried over to the matching old-side hit when no server decided that hit and import resolution did not either: the same source, target, relation, name and receiver text (`f.formatPrice(1)` → `f.formatPrice(2)`), and the same position among the hits sharing those, when both sides have equally many. It is an `lsp` `rejected` record whose detail names the new-side hit. It never verifies anything (invariant 4), but if the receiver's type changed between the sides (`f: Fmt` → `f: Price`) it can drop a real removed call.
+   - **Known limitation.** The base tree has no installed dependencies (`node_modules`, virtualenvs), so the health check usually stops the base-side server from rejecting; its confirmations still count, which covers removed calls. The carried-over rejections cover the rest.
+7. **Test files** (MVP spec D2) keep one edge per (test file, changed entity), with one hit per side: the most decided (LSP-confirmed, then import-confirmed, then undecided), so the edge still says whether the call was added, removed or kept. Its detail says how many hits it stands for.
+8. **Caps** (D1): at most `maxCandidatesPerEntity` (default 100) source entities per (target, relation), a test file counting as one. The rest are dropped from the records and reported in `caps` as "Showing N of M".
 
 AI adjudication of what is still undecided (#43) is not here; it labels these candidates and never adds one.
 
@@ -72,9 +83,9 @@ One `text-search` record with outcome `candidate` per kept hit, plus an `import-
 | `detail` | For text search, the hit's shape and the rules applied, e.g. `call; through the alias fmt` or `call; unambiguous: one definition, plain call`. For the deciding methods, why |
 | `id` | `stableId('ev', [method, relation, source, target, path, side, line, column])` |
 
-How the graph (#18) reads them, as the schema says: an edge is `verified` when a record is `lsp` `confirmed`; it is rejected when a record is `import-resolution` or `lsp` `rejected`; otherwise it is `possible`. Rejected candidates stay in the records (D6).
+How the graph (#18) reads them, as the schema says: an edge is `verified` when a record is `lsp` `confirmed`; it is rejected when a record is `import-resolution` or `lsp` `rejected`; otherwise it is `possible`. Its `sides` are those of the hits it keeps, so a removed call is `old`. Rejected candidates stay in the records (D6).
 
-`languages` is `LspSession.capabilities()` when a session is given: per language, the server, what was attempted, what failed, and the guidance (D11). Without one, every language of the change reports `disabled`.
+`languages` is `LspSession.capabilities()` when a session is given: per language, the server, what was attempted, what failed, and the guidance (D11), with `side: 'new'`. A base-side session adds its own entries with `side: 'old'`. Without a session, every language of the change reports `disabled`.
 
 ## LSP tier (#16)
 

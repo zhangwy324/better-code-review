@@ -154,10 +154,11 @@ describe('buildGraph on the signature fixture (M1 acceptance)', () => {
     expect(fileTiers(graph)).toMatchObject({ 'src/price.ts': 'semantic', 'tax.py': 'structural' });
     const ts = edgeSummary(graph).filter((e) => e.includes('-> formatPrice'));
     // The server returned checkoutSummary only, so it rejected the other new-side candidates.
-    // Their old-side hits are not asked about and keep the edges possible.
+    // viaMethod's old-side twin gets that rejection carried over (#66). The other old-side hits
+    // were confirmed by import resolution, which a carried-over rejection does not overrule, so
+    // only those hits keep their edges possible.
     expect(ts).toEqual([
       'verified calls checkoutSummary -> formatPrice (5)',
-      'possible calls viaMethod -> formatPrice (1)',
       'possible calls invoiceSummary -> formatPrice (2)',
       'possible calls receiptSummary -> formatPrice (2)',
       'possible calls aliasCaller -> formatPrice (2)',
@@ -165,8 +166,64 @@ describe('buildGraph on the signature fixture (M1 acceptance)', () => {
     const verified = graph.codeEdges.find((e) => e.provenance === 'verified')!;
     const cited = graph.evidence.filter((r) => verified.evidenceIds.includes(r.id));
     expect(cited).toContainEqual(expect.objectContaining({ method: 'lsp', outcome: 'confirmed' }));
+    expect(verified.sides).toBe('both');
+    expect(graph.codeEdges.find((e) => e.id !== verified.id)?.sides).toBe('old');
+  });
+
+  it('a removed call confirmed on the old side is a verified edge on the old side (#66)', async () => {
+    const caller = (call: string) =>
+      lines(
+        "import { formatPrice } from './price';",
+        'export function total() {',
+        `  return ${call};`,
+        '}',
+      );
+    const result = await analyse(
+      {
+        'src/price.ts': lines(
+          'export function formatPrice(n: number) {',
+          '  return String(n);',
+          '}',
+        ),
+        'src/total.ts': caller('formatPrice(1)'),
+      },
+      {
+        'src/price.ts': lines('export function formatPrice(n: number) {', "  return n + '';", '}'),
+        'src/total.ts': caller('1'),
+      },
+      {
+        lsp: fakeLsp(() => ({ status: 'ok', references: [], unresolved: [], complete: true })),
+        oldLsp: () =>
+          Promise.resolve(
+            fakeLsp(() => ({
+              status: 'ok',
+              references: [
+                {
+                  path: 'src/total.ts',
+                  range: { startLine: 3, startColumn: 10, endLine: 3, endColumn: 21 },
+                  via: 'direct',
+                },
+              ],
+              unresolved: [],
+              complete: true,
+            })),
+          ),
+      },
+    );
+    const graph = full(result);
+    expect(edgeSummary(graph)).toEqual(['verified calls total -> formatPrice (2)']);
+    expect(graph.codeEdges[0]!.sides).toBe('old');
   });
 });
+
+function fakeLsp(references: () => ReferencesResult): ReferenceProvider {
+  return {
+    references: () => Promise.resolve(references()),
+    projectHealth: () =>
+      Promise.resolve({ healthy: true, imports: 1, unresolved: [], reason: null }),
+    capabilities: () => [],
+  };
+}
 
 describe('buildGraph: capability tiers', () => {
   it('git-only: one file node per file and no edges', async () => {
@@ -295,10 +352,11 @@ describe('buildGraph: nodes', () => {
       { 'src/price.ts': price("amount + ''"), 'test/price.test.ts': test(2) },
     );
     const graph = full(result);
-    // The analyzer keeps one hit per (test file, entity), so the edge cites one record.
+    // The analyzer keeps one hit per (test file, entity) and side, so the edge cites two records.
     expect(edgeSummary(graph)).toEqual([
-      'possible calls file test/price.test.ts -> formatPrice (1)',
+      'possible calls file test/price.test.ts -> formatPrice (2)',
     ]);
+    expect(graph.codeEdges[0]!.sides).toBe('both');
     // The test still has its own node, so its hunk is covered.
     expect(nodeSummary(graph)).toContain('symbol formats (1)');
   });

@@ -116,6 +116,13 @@
             "type": "string",
             "minLength": 1
           },
+          "side": {
+            "type": "string",
+            "enum": [
+              "old",
+              "new"
+            ]
+          },
           "server": {
             "anyOf": [
               {
@@ -212,6 +219,7 @@
         },
         "required": [
           "language",
+          "side",
           "server",
           "status",
           "capabilitiesAttempted",
@@ -432,6 +440,14 @@
                   "possible"
                 ]
               },
+              "sides": {
+                "type": "string",
+                "enum": [
+                  "old",
+                  "new",
+                  "both"
+                ]
+              },
               "evidenceIds": {
                 "minItems": 1,
                 "type": "array",
@@ -449,6 +465,7 @@
               "to",
               "relation",
               "provenance",
+              "sides",
               "evidenceIds"
             ],
             "additionalProperties": false
@@ -490,6 +507,14 @@
                   "possible"
                 ]
               },
+              "sides": {
+                "type": "string",
+                "enum": [
+                  "old",
+                  "new",
+                  "both"
+                ]
+              },
               "evidenceIds": {
                 "minItems": 1,
                 "type": "array",
@@ -507,6 +532,7 @@
               "to",
               "relation",
               "provenance",
+              "sides",
               "evidenceIds"
             ],
             "additionalProperties": false

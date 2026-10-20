@@ -322,6 +322,9 @@ function findVenvPython(root: string, platform: NodeJS.Platform): string | null 
 export function checkProjectPackages(root: string): string | null {
   const modules = join(root, 'node_modules');
   if (!existsSync(modules)) return null;
+  // A checkout without `.git` (src/git/checkout.ts) only holds tracked files, and Git run there
+  // would answer for whatever repository encloses the directory, if any.
+  if (!existsSync(join(root, '.git'))) return 'node_modules was checked out from Git';
   const tracked = spawnSync('git', ['ls-files', '-z', '--', 'node_modules'], {
     cwd: root,
     encoding: 'utf8',

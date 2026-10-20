@@ -50,6 +50,11 @@ const edgeFields = {
   relation: CodeRelation,
   /** `verified` needs LSP evidence; everything else is `possible` (D6). */
   provenance: z.enum(['verified', 'possible']),
+  /**
+   * Where the relationship is, from the hits the edge keeps: `new` for one only in the head (an
+   * added call), `old` for one only in the base (a removed call, #66), `both` for one in both.
+   */
+  sides: z.enum(['old', 'new', 'both']),
   evidenceIds: z.array(EvidenceId).min(1),
 };
 

@@ -183,14 +183,15 @@ export interface Analysed {
 
 /**
  * Commits `base`, then `head` on top, and runs the extractor and both analyzers. `options` may
- * be a function of the repository, whose working tree then holds `head` (for a language server).
+ * be a function of the repository, whose working tree then holds `head` (for a language server),
+ * and of the change set.
  */
 export async function analyse(
   base: Files,
   head: Files,
   options:
     | Omit<SemanticOptions, 'files'>
-    | ((repo: TestRepo) => Promise<Omit<SemanticOptions, 'files'>>) = {},
+    | ((repo: TestRepo, changes: ChangeSet) => Promise<Omit<SemanticOptions, 'files'>>) = {},
 ): Promise<Analysed> {
   const repo = new TestRepo();
   const commit = repo.commit([repo.commit([], base)], head);
@@ -200,7 +201,7 @@ export async function analyse(
   if (typeof options === 'function') {
     // `commit()` leaves `head` in the index; write it out as the working tree.
     repo.git('checkout-index', '--all', '--force');
-    semanticOptions = await options(repo);
+    semanticOptions = await options(repo, changes);
   } else {
     semanticOptions = options;
   }

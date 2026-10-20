@@ -591,7 +591,11 @@ describe('analyzeSemantics: test files and caps', () => {
       'new calls formats -> formatPrice @test/price.test.ts:4 text-search:candidate import-resolution:confirmed',
     ]);
     const first = result.evidence.records.find((r) => r.location.side === 'new')!;
-    expect(first.detail).toBe('call; test file: one edge for 3 new-side and 3 old-side hits');
+    expect(first.detail).toBe('call; test file: one hit for 3 new-side hits');
+    // One hit per side, so the edge still shows the call was there before the change too.
+    expect(oldSide(summary(result))).toEqual([
+      'old calls formats -> formatPrice @test/price.test.ts:4 text-search:candidate import-resolution:confirmed',
+    ]);
   });
 
   it('caps the candidates per changed entity and says so', async () => {
@@ -691,7 +695,7 @@ describe('analyzeSemantics: language server answers', () => {
         lsp: fakeLsp(() => ok(), broken),
       });
       return result.evidence.records
-        .filter((r) => r.method === 'lsp' && r.outcome === 'rejected')
+        .filter((r) => r.method === 'lsp' && r.outcome === 'rejected' && r.location.side === 'new')
         .map((r) => r.location.path)
         .filter((p) => p.endsWith('.ts'));
     };
@@ -756,6 +760,118 @@ describe('analyzeSemantics: language server answers', () => {
     // Square.area may be reached through Shape: its own references miss that call (#42).
     expect(newSide(summary(override))).toEqual([
       'new calls total -> Square.area @src/shapes.ts:8 text-search:candidate',
+    ]);
+  });
+
+  it('asks a base-side server only about old-side hits no new-side hit stands for (#66)', async () => {
+    // The new side confirms checkoutSummary only, so every other new-side hit is rejected.
+    const lsp = fakeLsp(() => ok(site('src/checkout.ts', 4, 25)));
+    let started: string[] | null = null;
+    const oldLsp = {
+      ...fakeLsp(() => ok(site('src/invoice.ts', 4, 24))),
+      capabilities: () => [
+        {
+          language: 'typescript',
+          server: { name: 'fake', version: null, configuration: null },
+          status: 'ok' as const,
+          capabilitiesAttempted: ['references' as const],
+          failures: [],
+          guidance: null,
+        },
+      ],
+    };
+    const result = await analyse(SIGNATURE_BASE, SIGNATURE_HEAD, {
+      lsp,
+      oldLsp: (languages) => {
+        started = languages;
+        return Promise.resolve(oldLsp);
+      },
+    });
+    expect(started).toEqual(['typescript', 'python']);
+    expect(oldLsp.asked.map((t) => [t.path, t.line])).toEqual([
+      ['src/price.ts', 1],
+      ['tax.py', 1],
+    ]);
+    expect(oldSide(summary(result)).filter((l) => l.includes('formatPrice'))).toEqual([
+      // Its new-side hit was confirmed: the old side is not asked.
+      'old calls checkoutSummary -> formatPrice @src/checkout.ts:4 text-search:candidate import-resolution:confirmed',
+      'old calls viaMethod -> formatPrice @src/fmt.ts:8 text-search:candidate lsp:rejected',
+      'old calls invoiceSummary -> formatPrice @src/invoice.ts:4 text-search:candidate import-resolution:confirmed lsp:confirmed',
+      'old calls legacyLabel -> formatPrice @src/legacyLabel.ts:4 text-search:candidate import-resolution:rejected',
+      'old calls receiptSummary -> formatPrice @src/receipt.ts:4 text-search:candidate import-resolution:confirmed lsp:rejected',
+      'old calls aliasCaller -> formatPrice @src/viaAlias.ts:4 text-search:candidate import-resolution:confirmed lsp:rejected',
+    ]);
+    expect(result.evidence.languages).toEqual([
+      expect.objectContaining({ language: 'typescript', side: 'old', status: 'ok' }),
+    ]);
+  });
+
+  it('starts no base-side server when every edge has a new-side hit', async () => {
+    let started = false;
+    await analyse(SIGNATURE_BASE, SIGNATURE_HEAD, {
+      lsp: fakeLsp(() => ({ status: 'unknown', reason: 'not ready' })),
+      oldLsp: () => {
+        started = true;
+        return Promise.resolve(fakeLsp(() => ok()));
+      },
+    });
+    expect(started).toBe(false);
+  });
+
+  it('carries a new-side rejection over to the matching old-side hit (#66)', async () => {
+    const result = await analyse(SIGNATURE_BASE, SIGNATURE_HEAD, { lsp: fakeLsp(() => ok()) });
+    const carried = result.evidence.records.find(
+      (r) => r.method === 'lsp' && r.location.side === 'old' && r.location.path === 'src/fmt.ts',
+    );
+    expect(carried).toMatchObject({
+      outcome: 'rejected',
+      detail:
+        'carried over from the new-side hit at src/fmt.ts:8, which the new-side server rejected ' +
+        '(not among textDocument/references, and both files resolve)',
+    });
+    // Import resolution confirmed the other old-side hits; a carried rejection does not overrule it.
+    expect(
+      result.evidence.records
+        .filter((r) => r.method === 'lsp' && r.location.side === 'old')
+        .map((r) => r.location.path),
+    ).toEqual(['src/fmt.ts', 'calc.py']);
+
+    // A base-side answer wins over a carried rejection.
+    const decided = await analyse(SIGNATURE_BASE, SIGNATURE_HEAD, {
+      lsp: fakeLsp(() => ok()),
+      oldLsp: () => Promise.resolve(fakeLsp(() => ok(site('src/fmt.ts', 8, 12)))),
+    });
+    expect(oldSide(summary(decided))).toContain(
+      'old calls viaMethod -> formatPrice @src/fmt.ts:8 text-search:candidate lsp:confirmed',
+    );
+
+    // Unmatched counts: which old-side hit is which is unclear, so nothing is carried over.
+    const fmt = (...calls: string[]) =>
+      lines(
+        'export class Fmt {',
+        '  formatPrice(n: number): string {',
+        '    return String(n);',
+        '  }',
+        '}',
+        'export function formatPrice(n: number) {',
+        '  return n;',
+        '}',
+        'export function viaMethod(f: Fmt): string {',
+        ...calls,
+        '}',
+      );
+    const unmatched = await analyse(
+      { 'src/fmt.ts': fmt('  return f.formatPrice(1);') },
+      {
+        'src/fmt.ts': fmt('  f.formatPrice(2);', '  return f.formatPrice(3);').replace(
+          'n;',
+          'n + 1;',
+        ),
+      },
+      { lsp: fakeLsp(() => ok()) },
+    );
+    expect(oldSide(summary(unmatched))).toEqual([
+      'old calls viaMethod -> formatPrice @src/fmt.ts:10 text-search:candidate',
     ]);
   });
 });

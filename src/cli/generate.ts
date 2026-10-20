@@ -9,12 +9,14 @@
 // `.git/info/exclude`, never to a tracked `.gitignore`.
 //
 // Language servers (D11) need the new side on disk. For `local` that is the working tree itself.
-// For `commit`, `range` and `pr` the head commit is checked out into a temporary worktree,
-// removed afterwards; it has no `node_modules`, so servers come from PATH and the project's
-// dependencies may not resolve, which only stops rejections (the health check). No hooks run on
-// that checkout, and Git LFS does not download objects for it.
+// For `commit`, `range` and `pr` the head commit is written to a temporary directory
+// (src/git/checkout.ts), removed afterwards. When old-side candidates need a server too (#66),
+// the base revision is written the same way, for every target including `local`. A checkout has
+// no installed `node_modules`, so servers come from PATH and the project's dependencies may not
+// resolve, which only stops rejections (the health check). No hooks run, and Git LFS does not
+// download objects.
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { devNull, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
   analyzeSemantics,
@@ -25,8 +27,9 @@ import {
 } from '../analysis/semantic/index.ts';
 import { analyzeStructure } from '../analysis/structural/analyze.ts';
 import { declaredTestRoots, type TestRoots } from '../analysis/structural/test-files.ts';
+import { checkoutRevision } from '../git/checkout.ts';
 import { extractChangeSet, type ExtractOptions } from '../git/extract.ts';
-import { gitLine, runGit } from '../git/run.ts';
+import { gitLine } from '../git/run.ts';
 import { buildGraph, hunkCoverage } from '../graph/index.ts';
 import type { ChangeGraph, ChangeSet, ReviewRequest, ReviewTarget } from '../schemas/index.ts';
 
@@ -73,16 +76,33 @@ export async function generate(
   let evidence;
   if (request.analysis.useLsp && languages.length > 0) {
     progress(`Starting language servers for ${languages.join(', ')}`);
+    const lspOptions = {
+      ...options.lsp,
+      allowProjectCode: request.analysis.allowProjectCodeExecution,
+    };
+    const base = changeSet.baseRevision;
+    const old: { dir?: string; session?: LspSession } = {};
+    const oldLsp = async (needed: string[]) => {
+      progress(`Starting language servers on the base side for ${needed.join(', ')}`);
+      old.dir = mkdtempSync(join(tmpdir(), 'bcr-base-'));
+      const root = join(old.dir, 'tree');
+      await checkoutRevision(repo, base!, root);
+      old.session = await LspSession.start(root, needed, lspOptions);
+      return old.session;
+    };
     evidence = await withNewSide(repo, changeSet, async (root) => {
-      const lsp = await LspSession.start(root, languages, {
-        ...options.lsp,
-        allowProjectCode: request.analysis.allowProjectCodeExecution,
-      });
+      const lsp = await LspSession.start(root, languages, lspOptions);
       try {
         progress('Searching for relationships between changed entities');
-        return await analyzeSemantics(changeSet, structure, { files, lsp });
+        return await analyzeSemantics(changeSet, structure, {
+          files,
+          lsp,
+          ...(base === null ? {} : { oldLsp }),
+        });
       } finally {
         await lsp.close();
+        await old.session?.close();
+        if (old.dir !== undefined) rmSync(old.dir, { recursive: true, force: true });
       }
     });
   } else {
@@ -143,28 +163,11 @@ async function withNewSide<T>(
 ): Promise<T> {
   if (changeSet.headRevision === null) return use(repo);
   const dir = mkdtempSync(join(tmpdir(), 'bcr-head-'));
-  const tree = join(dir, 'tree');
   try {
-    await runGit(
-      repo,
-      [
-        '-c',
-        `core.hooksPath=${devNull}`,
-        'worktree',
-        'add',
-        '--detach',
-        '--quiet',
-        tree,
-        changeSet.headRevision,
-      ],
-      '',
-      { GIT_LFS_SKIP_SMUDGE: '1' },
-    );
+    const tree = join(dir, 'tree');
+    await checkoutRevision(repo, changeSet.headRevision, tree);
     return await use(tree);
   } finally {
-    // Only this worktree: `git worktree prune` would also drop the user's own stale ones. If the
-    // add failed there is nothing to remove; if the removal fails, Git prunes it in a later gc.
-    await runGit(repo, ['worktree', 'remove', '--force', tree]).catch(() => {});
     rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -231,14 +234,17 @@ export function summarise(changeSet: ChangeSet, graph: ChangeGraph): string {
 
   if (graph.languages.length > 0) {
     lines.push('', 'Language servers');
-    const width = Math.max(...graph.languages.map((l) => l.language.length));
+    // A base-side session (#66) gets its own entries.
+    const label = (l: ChangeGraph['languages'][number]) =>
+      l.side === 'old' ? `${l.language} (old side)` : l.language;
+    const width = Math.max(...graph.languages.map((l) => label(l).length));
     for (const l of graph.languages) {
       const server = l.server
         ? `${l.server.name}${l.server.version ? ` ${l.server.version}` : ''}` +
           (l.server.configuration ? ` (${l.server.configuration})` : '')
         : null;
       const detail = [server, l.guidance].filter(Boolean).join('; ');
-      lines.push(`  ${l.language.padEnd(width)}  ${l.status}${detail ? `  ${detail}` : ''}`);
+      lines.push(`  ${label(l).padEnd(width)}  ${l.status}${detail ? `  ${detail}` : ''}`);
     }
   }
 

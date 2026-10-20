@@ -36,32 +36,33 @@ describe.skipIf(ts === undefined || py === undefined)('generate with language se
     expect(exitCode).toBe(0);
 
     const graph = ChangeGraph.parse(JSON.parse(readFileSync(join(out, 'graph.json'), 'utf8')));
-    expect(graph.languages.map((l) => [l.language, l.status])).toEqual([
-      ['python', 'ok'],
-      ['typescript', 'ok'],
+    // The base side gets its own servers, for the old-side twins of the rejected collisions.
+    expect(graph.languages.map((l) => [l.language, l.side, l.status])).toEqual([
+      ['python', 'new', 'ok'],
+      ['typescript', 'new', 'ok'],
+      ['typescript', 'old', 'ok'],
+      ['python', 'old', 'ok'],
     ]);
+    expect(readFileSync(join(out, 'summary.txt'), 'utf8')).toMatch(/typescript \(old side\) +ok/);
     const name = new Map(graph.nodes.map((n) => [n.id, n.displayName]));
     const edges = graph.codeEdges
       .map((e) =>
         e.granularity === 'entity'
-          ? `${name.get(e.to)} <- ${name.get(e.from)} ${e.provenance}`
-          : `${name.get(e.to)} <- ${e.fromPath} ${e.provenance}`,
+          ? `${name.get(e.to)} <- ${name.get(e.from)} ${e.provenance} ${e.sides}`
+          : `${name.get(e.to)} <- ${e.fromPath} ${e.provenance} ${e.sides}`,
       )
       .sort();
+    // The calls to Fmt.formatPrice and Calc.tax are rejected on both sides, and legacyLabel by
+    // import resolution, so no same-name symbol is attached to the changed ones (M1).
     expect(edges).toEqual([
-      'formatPrice <- aliasCaller verified',
-      'formatPrice <- checkoutSummary verified',
-      'formatPrice <- invoiceSummary verified',
-      'formatPrice <- receiptSummary verified',
-      // The servers reject the new-side calls to Fmt.formatPrice and Calc.tax, but only see the
-      // new side: the same calls on the old side stay undecided and keep these edges possible
-      // (src/graph/build.ts). legacyLabel is rejected by import resolution on both sides.
-      'formatPrice <- viaMethod possible',
-      'tax <- order_total verified',
-      'tax <- refund verified',
-      'tax <- use_calc possible',
+      'formatPrice <- aliasCaller verified both',
+      'formatPrice <- checkoutSummary verified both',
+      'formatPrice <- invoiceSummary verified both',
+      'formatPrice <- receiptSummary verified both',
+      'tax <- order_total verified both',
+      'tax <- refund verified both',
     ]);
-    // A temporary worktree held the head for the servers; it is gone.
+    // The servers' checkouts are not worktrees.
     expect(repo.git('worktree', 'list').trim().split('\n')).toHaveLength(1);
   }, 180_000);
 });
