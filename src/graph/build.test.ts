@@ -35,6 +35,10 @@ function edgeSummary(graph: ChangeGraph): string[] {
   });
 }
 
+const tiers = (g: ChangeGraph) => [g.weakestTier, g.strongestTier];
+const fileTiers = (g: ChangeGraph) =>
+  Object.fromEntries(g.files.map((f) => [f.path, f.capabilityTier]));
+
 function allHunkIds(a: Analysed): string[] {
   return a.changes.files.flatMap((f) => f.hunks.map((h) => h.id));
 }
@@ -43,7 +47,11 @@ describe('buildGraph on the signature fixture (M1 acceptance)', () => {
   it('without LSP: possible edges from the changed callers, nothing verified', async () => {
     const result = await analyse(SIGNATURE_BASE, SIGNATURE_HEAD);
     const graph = full(result);
-    expect(graph.capabilityTier).toBe('structural');
+    expect(tiers(graph)).toEqual(['git-only', 'structural']);
+    expect(fileTiers(graph)).toMatchObject({
+      'config.json': 'git-only',
+      'src/price.ts': 'structural',
+    });
     expect(nodeSummary(graph)).toEqual([
       'symbol use_calc (1)',
       'file config.json (1)',
@@ -140,7 +148,9 @@ describe('buildGraph on the signature fixture (M1 acceptance)', () => {
     };
     const result = await analyse(SIGNATURE_BASE, SIGNATURE_HEAD, { lsp });
     const graph = full(result);
-    expect(graph.capabilityTier).toBe('semantic');
+    expect(tiers(graph)).toEqual(['git-only', 'semantic']);
+    // The fake server answered for TypeScript only.
+    expect(fileTiers(graph)).toMatchObject({ 'src/price.ts': 'semantic', 'tax.py': 'structural' });
     const ts = edgeSummary(graph).filter((e) => e.includes('-> formatPrice'));
     // The server returned checkoutSummary only, so it rejected the other new-side candidates.
     // Their old-side hits are not asked about and keep the edges possible.
@@ -161,7 +171,7 @@ describe('buildGraph: capability tiers', () => {
   it('git-only: one file node per file and no edges', async () => {
     const result = await analyse(SIGNATURE_BASE, SIGNATURE_HEAD);
     const graph = buildGraph(result.changes);
-    expect(graph.capabilityTier).toBe('git-only');
+    expect(tiers(graph)).toEqual(['git-only', 'git-only']);
     expect(graph.nodes.map((n) => n.kind)).toEqual(result.changes.files.map(() => 'file'));
     expect(graph.nodes.map((n) => n.displayName)).toEqual(
       result.changes.files.map((f) => f.newPath ?? f.oldPath),
@@ -175,10 +185,22 @@ describe('buildGraph: capability tiers', () => {
   it('structural: entity nodes, no edges', async () => {
     const result = await analyse(SIGNATURE_BASE, SIGNATURE_HEAD);
     const graph = buildGraph(result.changes, { structure: result.structure });
-    expect(graph.capabilityTier).toBe('structural');
+    expect(tiers(graph)).toEqual(['git-only', 'structural']);
     expect(nodeSummary(graph)).toEqual(nodeSummary(full(result)));
     expect(graph.codeEdges).toEqual([]);
     expect(graph.evidence).toEqual([]);
+  });
+
+  it('an empty change claims nothing: git-only at both ends', async () => {
+    const repo = new TestRepo();
+    const base = repo.commit([], { 'a.txt': 'a\n' });
+    const changes = await extractChangeSet(repo.path, {
+      kind: 'commit',
+      commit: repo.commit([base], {}),
+    });
+    const graph = buildGraph(changes, { structure: await analyzeStructure(changes) });
+    expect(graph.files).toEqual([]);
+    expect(tiers(graph)).toEqual(['git-only', 'git-only']);
   });
 
   it('refuses evidence without its structure, or analysis of another snapshot', async () => {

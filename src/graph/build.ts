@@ -14,15 +14,20 @@
 // `test-file` edge from that file instead (D2). Rejected hits make no edge and are not copied.
 // The builder only reports code relationships; it never adds propagation or causal links (D6).
 //
+// Capability (design reference §10.8): each file gets a tier, `git-only` without entities,
+// `structural` with them, `semantic` when a language server answered for its language, and the
+// graph records the weakest and the strongest of them.
+//
 // Determinism: IDs come from `stableId()`, and every list follows the order of its inputs (files
 // in ChangeSet order, entities and records in analyzer order), which are deterministic.
 import type { ChangeSet, FileChange } from '../schemas/changeset.ts';
 import {
   GRAPH_SCHEMA_VERSION,
+  CapabilityTier,
   ChangeGraph,
-  type CapabilityTier,
   type ChangeNode,
   type CodeEdge,
+  type GraphFile,
 } from '../schemas/graph.ts';
 import { stableId } from '../schemas/ids.ts';
 import type { EvidenceRecord, SemanticEvidence } from '../schemas/semantic.ts';
@@ -71,7 +76,10 @@ export function buildGraph(changeSet: ChangeSet, inputs: GraphInputs = {}): Chan
     .filter((h) => !onNodes.has(h.id))
     .map((h) => h.id);
 
-  const files = structure?.files ?? changeSet.files.map(unanalysedFile);
+  const files: GraphFile[] = (structure?.files ?? changeSet.files.map(unanalysedFile)).map((f) => ({
+    ...f,
+    capabilityTier: fileTier(f, evidence),
+  }));
   const testFileOf = (entity: string): string | null => {
     const node = nodeOfEntity.get(entity);
     if (node === undefined) throw new Error(`evidence cites ${entity}, which is not changed`);
@@ -85,7 +93,7 @@ export function buildGraph(changeSet: ChangeSet, inputs: GraphInputs = {}): Chan
   return ChangeGraph.parse({
     schemaVersion: GRAPH_SCHEMA_VERSION,
     snapshotId: changeSet.snapshotId,
-    capabilityTier: tier(structure, evidence),
+    ...tierRange(files),
     files,
     languages: evidence?.languages ?? [],
     nodes,
@@ -144,13 +152,25 @@ function unanalysedFile(file: FileChange): AnalyzedFile {
   };
 }
 
-function tier(
-  structure: StructuralChangeSet | null,
-  evidence: SemanticEvidence | null,
-): CapabilityTier {
-  if (structure === null) return 'git-only';
-  const answered = evidence?.languages.some((l) => l.status === 'ok' || l.status === 'unhealthy');
+const TIERS = CapabilityTier.options;
+
+/** A file without entities is `git-only`; with them, `semantic` once a server answered. */
+function fileTier(file: AnalyzedFile, evidence: SemanticEvidence | null): CapabilityTier {
+  if (file.tier === 'text-only' || file.skipped !== null) return 'git-only';
+  const answered = evidence?.languages.some(
+    (l) => l.language === file.language && (l.status === 'ok' || l.status === 'unhealthy'),
+  );
   return answered ? 'semantic' : 'structural';
+}
+
+/** The weakest and strongest tier of the files; `git-only` for an empty change claims nothing. */
+function tierRange(files: GraphFile[]): {
+  weakestTier: CapabilityTier;
+  strongestTier: CapabilityTier;
+} {
+  const ranks = files.map((f) => TIERS.indexOf(f.capabilityTier));
+  if (ranks.length === 0) return { weakestTier: 'git-only', strongestTier: 'git-only' };
+  return { weakestTier: TIERS[Math.min(...ranks)]!, strongestTier: TIERS[Math.max(...ranks)]! };
 }
 
 function edges(

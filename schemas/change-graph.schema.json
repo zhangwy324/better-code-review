@@ -11,7 +11,15 @@
       "pattern": "^[0-9a-f]{64}$",
       "description": "SHA-256 hex digest identifying the exact before/after snapshot"
     },
-    "capabilityTier": {
+    "weakestTier": {
+      "type": "string",
+      "enum": [
+        "git-only",
+        "structural",
+        "semantic"
+      ]
+    },
+    "strongestTier": {
       "type": "string",
       "enum": [
         "git-only",
@@ -78,6 +86,14 @@
                 "type": "null"
               }
             ]
+          },
+          "capabilityTier": {
+            "type": "string",
+            "enum": [
+              "git-only",
+              "structural",
+              "semantic"
+            ]
           }
         },
         "required": [
@@ -85,7 +101,8 @@
           "language",
           "tier",
           "test",
-          "skipped"
+          "skipped",
+          "capabilityTier"
         ],
         "additionalProperties": false
       }
@@ -664,7 +681,8 @@
   "required": [
     "schemaVersion",
     "snapshotId",
-    "capabilityTier",
+    "weakestTier",
+    "strongestTier",
     "files",
     "languages",
     "nodes",
