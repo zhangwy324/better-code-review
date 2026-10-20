@@ -58,7 +58,7 @@ The schemas check each document on its own: shape, types, ID formats, enums, pat
 
 | Rule | Where |
 |---|---|
-| Unique hunk IDs; every hunk on a node or in `uncoveredHunkIds`; every referenced ID exists; `verified` edges cite confirmed LSP evidence | Graph invariant validator (#19) |
+| Unique IDs; every hunk on a node or in `uncoveredHunkIds`; every referenced ID exists; edges cite records about themselves, and `verified` ones a confirmed LSP record; evidence sits on a real line of the snapshot | Graph invariant validator (`src/graph/validate.ts`, #19), run by the builder |
 | Every node has one home group; IDs in the plan exist in the graph; verdicts only on existing `possible` edges; cited lines exist; no code text | Plan validator (#23) |
 | Feedback anchors exist in the snapshot | Viewer (#33) and the agent workflow (#25) |
 

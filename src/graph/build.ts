@@ -19,6 +19,9 @@
 // `structural` with them, `semantic` when a language server answered for its language, and the
 // graph records the weakest and the strongest of them.
 //
+// Invariants (§9.8): every graph is checked by `assertValidGraph()` (validate.ts) before it is
+// returned.
+//
 // Determinism: IDs come from `stableId()`, and every list follows the order of its inputs (files
 // in ChangeSet order, entities and records in analyzer order), which are deterministic.
 import type { ChangeSet, FileChange } from '../schemas/changeset.ts';
@@ -33,6 +36,7 @@ import {
 import { stableId } from '../schemas/ids.ts';
 import type { EvidenceRecord, SemanticEvidence } from '../schemas/semantic.ts';
 import type { AnalyzedFile, ChangedEntity, StructuralChangeSet } from '../schemas/structural.ts';
+import { assertValidGraph } from './validate.ts';
 
 export interface GraphInputs {
   /** From `analyzeStructure()`. Without it the graph is `git-only`: one file node per file. */
@@ -91,7 +95,7 @@ export function buildGraph(changeSet: ChangeSet, inputs: GraphInputs = {}): Chan
   };
   const { codeEdges, cited } = edges(evidence?.records ?? [], nodeOfEntity, testFileOf);
 
-  return ChangeGraph.parse({
+  const graph = ChangeGraph.parse({
     schemaVersion: GRAPH_SCHEMA_VERSION,
     snapshotId: changeSet.snapshotId,
     ...tierRange(files),
@@ -103,6 +107,8 @@ export function buildGraph(changeSet: ChangeSet, inputs: GraphInputs = {}): Chan
     caps: evidence?.caps ?? [],
     uncoveredHunkIds,
   });
+  assertValidGraph(graph, changeSet);
+  return graph;
 }
 
 function entityNode(entity: ChangedEntity): ChangeNode {
