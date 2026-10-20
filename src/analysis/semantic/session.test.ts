@@ -543,6 +543,11 @@ describe('project health', () => {
     const [cap] = session.capabilities();
     expect(cap!.status).toBe('unhealthy');
     expect(cap!.guidance).toMatch(/1 of 3 imports .* do not resolve.*npm ci/);
+    // A later check of files that resolve does not hide it.
+    expect(await session.projectHealth('typescript', ['src/checkout.ts'])).toMatchObject({
+      healthy: true,
+    });
+    expect(session.capabilities()[0]!.status).toBe('unhealthy');
     await session.close();
   });
 

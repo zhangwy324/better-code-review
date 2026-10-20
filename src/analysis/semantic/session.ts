@@ -660,7 +660,8 @@ export class LspSession {
     const reason = healthy
       ? null
       : `${unresolved.length} of ${imports} imports in the files involved do not resolve (first: ${unresolved[0]!.path}:${unresolved[0]!.line} ${unresolved[0]!.message})`;
-    state.unhealthy = reason;
+    // A later healthy check of other files does not clear it: those files are fine, these not.
+    state.unhealthy ??= reason;
     return { healthy, imports, unresolved, reason };
   }
 
@@ -709,7 +710,7 @@ export class LspSession {
     if (state.unhealthy) {
       return {
         status: 'unhealthy',
-        guidance: `${state.spec.label}: references the server did not return are not rejections — ${state.unhealthy}. ${state.spec.healthHint}`,
+        guidance: `${state.spec.label}: in files whose imports do not resolve, references the server did not return are not rejections — ${state.unhealthy}. ${state.spec.healthHint}`,
       };
     }
     return { status: 'ok', guidance: null };
