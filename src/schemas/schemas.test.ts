@@ -136,7 +136,12 @@ const semantic: SemanticEvidence = {
 const graph: ChangeGraph = {
   schemaVersion: 1,
   snapshotId,
-  files: structural.files,
+  weakestTier: 'git-only',
+  strongestTier: 'structural',
+  files: [
+    { ...structural.files[0]!, capabilityTier: 'structural' },
+    { ...structural.files[1]!, capabilityTier: 'git-only' },
+  ],
   languages: semantic.languages,
   nodes: [
     {

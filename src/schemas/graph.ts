@@ -64,11 +64,25 @@ export const CodeEdge = z.discriminatedUnion('granularity', [
   }),
 ]);
 
+/**
+ * Which analysis a file got (design reference §10.8), weakest first: `git-only` with no grammar
+ * or no structural result (a file node), `structural` with entities but no language server
+ * answering for its language (edges `possible` at best), `semantic` when one answered, so its
+ * edges can be `verified`.
+ */
+export const CapabilityTier = z.enum(['git-only', 'structural', 'semantic']);
+
+/** A changed file as the analyzers saw it, plus the capability tier it got. */
+export const GraphFile = AnalyzedFile.extend({ capabilityTier: CapabilityTier });
+
 export const ChangeGraph = z.strictObject({
   schemaVersion: z.literal(GRAPH_SCHEMA_VERSION),
   snapshotId: SnapshotId,
-  /** Every changed file, with its language tier and test classification (D2, D11). */
-  files: z.array(AnalyzedFile),
+  /** The weakest and strongest `capabilityTier` of `files`; both `git-only` when there are none. */
+  weakestTier: CapabilityTier,
+  strongestTier: CapabilityTier,
+  /** Every changed file, with its language, tiers and test classification (D2, D11). */
+  files: z.array(GraphFile),
   /** Per-language semantic capability (D11). */
   languages: z.array(LanguageCapability),
   nodes: z.array(ChangeNode),
@@ -80,6 +94,8 @@ export const ChangeGraph = z.strictObject({
   uncoveredHunkIds: z.array(HunkId),
 });
 
+export type CapabilityTier = z.infer<typeof CapabilityTier>;
+export type GraphFile = z.infer<typeof GraphFile>;
 export type ChangeNode = z.infer<typeof ChangeNode>;
 export type CodeEdge = z.infer<typeof CodeEdge>;
 export type ChangeGraph = z.infer<typeof ChangeGraph>;
