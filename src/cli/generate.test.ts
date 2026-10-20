@@ -84,7 +84,7 @@ describe('generate', () => {
     expect(summary).toContain(`${hunks}/${hunks} hunks mapped`);
     expect(summary).toContain('Unchanged callers are not analysed.');
     expect(result.stdout).toBe(
-      `${summary}\nWritten to .better-code-review/reviews/commit-${head.slice(0, 7)}\n`,
+      `${summary}\nWritten to ${join('.better-code-review', 'reviews', `commit-${head.slice(0, 7)}`)}\n`,
     );
     expect(readFileSync(join(repo.path, '.git', 'info', 'exclude'), 'utf8')).toMatch(
       /^\/\.better-code-review\/$/m,

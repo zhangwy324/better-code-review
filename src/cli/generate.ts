@@ -13,9 +13,9 @@
 // removed afterwards; it has no `node_modules`, so servers come from PATH and the project's
 // dependencies may not resolve, which only stops rejections (the health check). No hooks run on
 // that checkout, and Git LFS does not download objects for it.
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { devNull, tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
   analyzeSemantics,
   gitSnapshotFiles,
@@ -282,8 +282,12 @@ function describeTarget(changeSet: ChangeSet): string {
   }
 }
 
-/** `path` relative to `from` when it is inside it, for display. */
+/**
+ * `path` relative to `from` when it is inside it, for display. Both are compared as real paths:
+ * Git reports the repository root with symlinks resolved (`/private/var` on macOS) and with `/`
+ * on Windows, so it need not match the working directory as typed.
+ */
 export function displayPath(from: string, path: string): string {
-  const rel = relative(from, path);
-  return rel === '' || rel.startsWith('..') || resolve(from, rel) !== path ? path : rel;
+  const rel = relative(realpathSync.native(from), realpathSync.native(path));
+  return rel === '' || rel.startsWith('..') || isAbsolute(rel) ? path : rel;
 }
