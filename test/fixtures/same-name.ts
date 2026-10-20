@@ -115,7 +115,11 @@ export const sameName: Fixture = {
       'submitForm calls validate [src/orders/validate.ts] (both)',
     ],
   },
-  later: [
-    'With a TypeScript server: the signup, submit and Form.validate edges are verified, and the two submitForm edges to the validate functions are rejected.',
-  ],
+  withLsp: {
+    rejected: [
+      'submitForm calls validate [src/users/validate.ts] (both)',
+      'submitForm calls validate [src/orders/validate.ts] (both)',
+    ],
+  },
+  later: [],
 };

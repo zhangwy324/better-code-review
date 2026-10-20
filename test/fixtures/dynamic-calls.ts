@@ -67,8 +67,6 @@ export const dynamicCalls: Fixture = {
     // of static analysis, shown as unrelated roots.
     edges: [],
   },
-  later: [
-    'With a TypeScript server: still no edges; the server cannot see through the computed access either.',
-    'M2: an agent may link them as an inferred relationship, never as a code edge (D6).',
-  ],
+  // A language server cannot see through the computed access either, so there are no edges.
+  later: ['M2: an agent may link them as an inferred relationship, never as a code edge (D6).'],
 };

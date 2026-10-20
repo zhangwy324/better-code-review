@@ -121,8 +121,5 @@ export const featureFlow: Fixture = {
       'test/orders.test.ts calls createOrder [src/services/orders.ts] (new)',
     ],
   },
-  later: [
-    'With a TypeScript server: every edge is verified.',
-    'M2: the plan reads the flow in order, route → service → persistence → test (#26).',
-  ],
+  later: ['M2: the plan reads the flow in order, route → service → persistence → test (#26).'],
 };

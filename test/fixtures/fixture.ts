@@ -26,6 +26,17 @@ export interface ExpectedFacts {
   caps?: string[];
 }
 
+/**
+ * How the edges change with a language server for every parsed language: each edge in
+ * `ExpectedFacts.edges` is verified, except those it rejects, which are gone, and those it
+ * cannot settle, which stay possible. Files in those languages become `semantic`; nothing else
+ * changes.
+ */
+export interface WithLsp {
+  rejected?: string[];
+  possible?: string[];
+}
+
 export interface Fixture {
   /** Kebab-case; `npm run fixtures -- <name> <dir>`. */
   name: string;
@@ -35,10 +46,9 @@ export interface Fixture {
   /** Changes on top of `base`; null deletes a file. */
   head: Files;
   expected: ExpectedFacts;
-  /**
-   * Facts that need more than `generate --no-lsp`: a language server, or a later milestone. Not
-   * checked yet; #21 and #26 turn them into assertions.
-   */
+  /** With a language server; every edge is verified when omitted. */
+  withLsp?: WithLsp;
+  /** Facts for a later milestone or issue, not checked yet; #26 turns the planner ones into assertions. */
   later: string[];
 }
 

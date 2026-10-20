@@ -215,8 +215,7 @@ export const signature: Fixture = {
       'use_calc calls tax (both)',
     ],
   },
-  later: [
-    'With typescript-language-server and pyright: the checkoutSummary, invoiceSummary, receiptSummary, aliasCaller, order_total and refund edges are verified, and the viaMethod and use_calc edges are rejected (MVP spec M1).',
-    'M2: the plan puts the formatPrice contract group first, then its callers (#26).',
-  ],
+  // MVP spec M1, with typescript-language-server and pyright.
+  withLsp: { rejected: ['viaMethod calls formatPrice (both)', 'use_calc calls tax (both)'] },
+  later: ['M2: the plan puts the formatPrice contract group first, then its callers (#26).'],
 };

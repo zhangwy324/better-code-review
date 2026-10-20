@@ -45,8 +45,5 @@ export const tenCallers: Fixture = {
     // parseDate has one definition, so each plain call is accepted as possible.
     edges: CALLERS.map((n) => `${n} calls parseDate (both)`),
   },
-  later: [
-    'With a TypeScript server: all ten edges are verified.',
-    'M2: one contract group (parseDate) and its ten callers, contract first (#26).',
-  ],
+  later: ['M2: one contract group (parseDate) and its ten callers, contract first (#26).'],
 };

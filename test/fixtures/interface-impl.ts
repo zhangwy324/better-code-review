@@ -126,8 +126,16 @@ export const interfaceImpl: Fixture = {
       'refundPaypal calls PaypalGateway.refund (new)',
     ],
   },
+  // cancel's call through the interface can reach either implementation, so both are verified.
+  // An implementation-typed call is verified to its own class only; the receiver's type rules
+  // the other out, but a method of a class with bases is never rejected, so it stays possible.
+  withLsp: {
+    possible: [
+      'refundStripe calls PaypalGateway.refund (new)',
+      'refundPaypal calls StripeGateway.refund (new)',
+    ],
+  },
   later: [
-    "With a TypeScript server: the implements edges and type references are verified, and so are cancel's calls, since a call through the interface can reach either implementation. Each implementation-typed call is verified to its own class only; the other stays possible (#21).",
     'M2: the plan groups the interface with its implementations, and an agent judges the two refund candidates (#43).',
   ],
 };
