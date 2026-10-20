@@ -210,7 +210,9 @@ Language servers are programs run on the user's machine against code under revie
 
 - `analyze.test.ts`, `hits.test.ts` and `snapshot-files.test.ts` run the candidate pipeline on real two-commit repositories through the Git extractor and the structural analyzer, with the signature fixture in `fixture.test-helper.ts`. LSP answers there come from a fake provider.
 - The other `*.test.ts` run the LSP tier against an in-process fake server: protocol, readiness, normalisation, overrides, crashes, health.
-- `servers.integration.test.ts` runs the real servers on the #3/#4 signature fixture, and `analyze.integration.test.ts` runs the whole #17 pipeline with them. Each suite is **skipped when its server isn't installed**, so CI passes without servers. To run them, put servers on `PATH`, or list directories in `BCR_LSP_TEST_PATH`. `servers.integration` tries each directory on its own, so tsserver and TS 7 can both run; `analyze.integration` uses the first one with a server. For example:
+- `servers.integration.test.ts` runs the real servers on the #3/#4 signature fixture, and `analyze.integration.test.ts` runs the whole #17 pipeline with them. Each suite is **skipped when its server isn't installed**, so the main CI job passes without servers.
+- **`npm run test:lsp`** installs pinned servers from `test/lsp-servers/` (typescript-language-server 6.0.2 with TypeScript 5.9.3, pyright 1.1.414, and TypeScript 7.0.2 on its own) and runs both suites against them. It sets `BCR_LSP_REQUIRED`, so a server that didn't install fails the run rather than skipping it. The `lsp` CI job runs it on every push and PR. To change a version, edit that directory's `package.json` and run `npm install` there to update its lockfile.
+- To use other servers, put them on `PATH`, or list directories in `BCR_LSP_TEST_PATH`. `servers.integration` tries each directory on its own, so tsserver and TS 7 can both run; `analyze.integration` uses the first one with a server. For example:
 
 ```bash
 BCR_LSP_TEST_PATH=/a/node_modules/.bin:/b/node_modules/.bin npx vitest run servers.integration

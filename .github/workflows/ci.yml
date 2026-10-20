@@ -33,6 +33,23 @@ jobs:
       - run: npm run build
       - run: npm test
 
+  lsp:
+    # The LSP tier against real, pinned language servers (test/lsp-servers/). The check job has
+    # none, so there these suites skip; here BCR_LSP_REQUIRED makes a missing server a failure.
+    name: language-server integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            test/lsp-servers/*/package-lock.json
+      - run: npm ci
+      - run: npm run test:lsp
+
   licenses:
     name: dependency licences
     runs-on: ubuntu-latest

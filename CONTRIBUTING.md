@@ -21,7 +21,8 @@ npm run check   # format check, lint, typecheck, build, tests: the same steps CI
 | `npm run typecheck` | Type-checks `src/` and `scripts/` without emitting |
 | `npm run lint` | ESLint with type-aware `typescript-eslint` rules |
 | `npm run format` / `format:check` | Prettier (Markdown is excluded and formatted by hand) |
-| `npm test` | Vitest, once |
+| `npm test` | Vitest, once. The language-server integration suites skip when no server is installed |
+| `npm run test:lsp` | Installs pinned language servers from `test/lsp-servers/` and runs the integration suites against them; fails if a server is missing ([`src/analysis/semantic/README.md`](src/analysis/semantic/README.md#tests)) |
 | `npm run schemas` | Regenerates the JSON Schema files in `schemas/` from `src/schemas/` |
 | `npm run licenses` | Checks production dependency and vendored grammar licences and writes `THIRD_PARTY_NOTICES` |
 | `npm run grammars` | Re-vendors the built-in tree-sitter grammars from their pins ([`src/analysis/structural/README.md`](src/analysis/structural/README.md)) |
