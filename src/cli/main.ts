@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 import { readFileSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import type { ReviewTarget } from '../schemas/index.ts';
+import { changeSetFiles, gitSnapshotFiles } from '../analysis/semantic/index.ts';
+import { gitLine } from '../git/run.ts';
+import { show, ShowError, type ShowQuery } from '../planner/index.ts';
+import { ChangeGraph, ChangeSet, RepoPath, type ReviewTarget } from '../schemas/index.ts';
 import { displayPath, generate, type GenerateOptions } from './generate.ts';
 
 /** Where `run` writes, and the directory it runs in. */
@@ -17,8 +21,11 @@ export const EXIT = { ok: 0, failed: 1, usage: 2 } as const;
 
 const USAGE = `Usage: better-code-review [--help] [--version]
        better-code-review generate <target> [options]
+       better-code-review show --dir <dir> (<id> | --file <path> [--side old|new] [--lines a-b])
 
-Writes changes.json, graph.json and summary.txt for a Git change, with no AI involved.
+generate writes changes.json, graph.json, planner-input.md and summary.txt for a Git change,
+with no AI involved. show prints more context from a generated review for the planner: a hunk,
+node or edge by ID, or lines of any file in the snapshot. Secrets are redacted in both.
 
 Targets (exactly one):
   --local              The working tree (staged, unstaged and untracked) against HEAD
@@ -33,6 +40,12 @@ Options:
   --no-lsp             Do not use installed language servers; nothing is verified
   --allow-project-code Allow language servers that run project code (e.g. jdtls with Gradle)
   --out <dir>          Output directory (default .better-code-review/reviews/<target>/)
+
+show options:
+  --dir <dir>          The directory generate wrote
+  --file <path>        A repository-relative file, changed or not
+  --side old|new       The side of the snapshot to read (default new)
+  --lines <a>-<b>      The lines to print (default the first 400)
 
 Exit codes: 0 success, 1 the run failed, 2 bad usage.
 `;
@@ -50,6 +63,7 @@ export async function run(argv: string[], io: Io, options: GenerateOptions = {})
   try {
     const [command, ...rest] = argv;
     if (command === 'generate') return await runGenerate(rest, io, options);
+    if (command === 'show') return await runShow(rest, io);
     const { values } = parseArgs({
       args: argv,
       options: {
@@ -136,6 +150,76 @@ async function runGenerate(argv: string[], io: Io, options: GenerateOptions): Pr
     { progress: (message) => io.err(`${message}…\n`), ...options },
   );
   io.out(`${result.summary}\nWritten to ${displayPath(io.cwd, result.outputDirectory)}\n`);
+  return EXIT.ok;
+}
+
+async function runShow(argv: string[], io: Io): Promise<number> {
+  const { values, positionals } = parseArgs({
+    args: argv,
+    options: {
+      help: { type: 'boolean', short: 'h' },
+      dir: { type: 'string' },
+      file: { type: 'string' },
+      side: { type: 'string', default: 'new' },
+      lines: { type: 'string' },
+    },
+    allowPositionals: true,
+    strict: true,
+  });
+  if (values.help) {
+    io.out(USAGE);
+    return EXIT.ok;
+  }
+  if (values.dir === undefined)
+    throw new UsageError('show needs --dir, the directory generate wrote');
+  if ((values.file === undefined) === (positionals.length !== 1)) {
+    throw new UsageError('show needs exactly one ID, or --file <path>');
+  }
+  if (values.file === undefined && (values.lines !== undefined || argv.includes('--side'))) {
+    throw new UsageError('--side and --lines only apply to --file');
+  }
+  if (values.side !== 'new' && values.side !== 'old') {
+    throw new UsageError(`--side must be old or new, got ${values.side}`);
+  }
+
+  let query: ShowQuery;
+  if (values.file !== undefined) {
+    if (!RepoPath.safeParse(values.file).success) {
+      throw new UsageError(`--file must be a repository-relative path, got ${values.file}`);
+    }
+    query = { file: values.file, side: values.side, lines: null };
+    if (values.lines !== undefined) {
+      const match = /^([1-9]\d*)-([1-9]\d*)$/.exec(values.lines);
+      if (!match || Number(match[2]) < Number(match[1])) {
+        throw new UsageError(`--lines must look like 10-40, got ${values.lines}`);
+      }
+      query.lines = { start: Number(match[1]), end: Number(match[2]) };
+    }
+  } else {
+    query = { id: positionals[0]! };
+  }
+
+  const read = (name: string): unknown => JSON.parse(readFileSync(join(values.dir!, name), 'utf8'));
+  const changeSet = ChangeSet.parse(read('changes.json'));
+  const graph = ChangeGraph.parse(read('graph.json'));
+  if (graph.snapshotId !== changeSet.snapshotId) {
+    throw new Error(`graph.json and changes.json in ${values.dir} are from different snapshots`);
+  }
+  // Unchanged files come from Git at the snapshot's revision, so this must run in the repository;
+  // elsewhere only changed files can be read.
+  let files;
+  try {
+    files = gitSnapshotFiles(await gitLine(io.cwd, ['rev-parse', '--show-toplevel']), changeSet);
+  } catch {
+    files = changeSetFiles(changeSet);
+  }
+  try {
+    io.out(await show(changeSet, graph, files, query));
+  } catch (err) {
+    if (!(err instanceof ShowError)) throw err;
+    io.err(`${err.message}\n`);
+    return EXIT.failed;
+  }
   return EXIT.ok;
 }
 

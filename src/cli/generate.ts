@@ -3,8 +3,9 @@
 // outputs, with no model involved (D8).
 //
 // Output (D9): `.better-code-review/reviews/<target>/` at the repository root, unless
-// `outputDirectory` is given. It holds `changes.json`, `graph.json` and `summary.txt`, the
-// capability and coverage summary that is also printed. A rerun on the same target overwrites
+// `outputDirectory` is given. It holds `changes.json`, `graph.json`, `planner-input.md` (the
+// planner's model input, #22) and `summary.txt`, the capability and coverage summary that is
+// also printed. A rerun on the same target overwrites
 // them. The first run with the default location adds `.better-code-review/` to
 // `.git/info/exclude`, never to a tracked `.gitignore`.
 //
@@ -29,8 +30,10 @@ import { analyzeStructure } from '../analysis/structural/analyze.ts';
 import { declaredTestRoots, type TestRoots } from '../analysis/structural/test-files.ts';
 import { checkoutRevision } from '../git/checkout.ts';
 import { extractChangeSet, type ExtractOptions } from '../git/extract.ts';
+import { describeTarget } from '../git/describe.ts';
 import { gitLine } from '../git/run.ts';
 import { buildGraph, hunkCoverage } from '../graph/index.ts';
+import { plannerInput, type PlannerInput } from '../planner/index.ts';
 import type { ChangeGraph, ChangeSet, ReviewRequest, ReviewTarget } from '../schemas/index.ts';
 
 /** A ReviewRequest whose output directory may be left to the D9 default. */
@@ -51,6 +54,7 @@ export interface GenerateResult {
   outputDirectory: string;
   changeSet: ChangeSet;
   graph: ChangeGraph;
+  planner: PlannerInput;
   summary: string;
 }
 
@@ -119,12 +123,14 @@ export async function generate(
   } else {
     outputDirectory = resolve(request.outputDirectory);
   }
-  const summary = summarise(changeSet, graph);
+  const planner = plannerInput(changeSet, graph);
+  const summary = summarise(changeSet, graph, planner);
   mkdirSync(outputDirectory, { recursive: true });
   writeJson(join(outputDirectory, 'changes.json'), changeSet);
   writeJson(join(outputDirectory, 'graph.json'), graph);
+  writeFileSync(join(outputDirectory, 'planner-input.md'), planner.text);
   writeFileSync(join(outputDirectory, 'summary.txt'), summary);
-  return { outputDirectory, changeSet, graph, summary };
+  return { outputDirectory, changeSet, graph, planner, summary };
 }
 
 /** `<target>` of the default output directory (D9). */
@@ -199,7 +205,7 @@ function writeJson(path: string, data: unknown): void {
 }
 
 /** The human-readable capability and coverage summary (summary.txt). */
-export function summarise(changeSet: ChangeSet, graph: ChangeGraph): string {
+export function summarise(changeSet: ChangeSet, graph: ChangeGraph, planner: PlannerInput): string {
   const lines: string[] = [];
   const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
   const tally = <T extends string>(items: readonly T[]) => {
@@ -227,6 +233,13 @@ export function summarise(changeSet: ChangeSet, graph: ChangeGraph): string {
   if (graph.files.length > 0) {
     lines.push(`Analysis  ${tally(graph.files.map((f) => f.capabilityTier))}`);
   }
+  const { hunks } = planner;
+  lines.push(
+    `Planner   ~${planner.estimatedTokens.toLocaleString('en')} estimated tokens, ` +
+      `${hunks.inlined}/${hunks.total} hunks inlined` +
+      (hunks.truncated > 0 ? ` (${hunks.truncated} truncated)` : '') +
+      (planner.redactions > 0 ? `, ${count(planner.redactions, 'secret')} redacted` : ''),
+  );
   const tests = graph.files.filter((f) => f.test !== null);
   if (tests.length > 0) {
     lines.push(`Tests     ${tests.map((f) => f.path).join(', ')}`);
@@ -270,22 +283,6 @@ export function summarise(changeSet: ChangeSet, graph: ChangeGraph): string {
   );
   lines.push('', ...notes);
   return `${lines.join('\n')}\n`;
-}
-
-function describeTarget(changeSet: ChangeSet): string {
-  const short = (id: string | null) => (id === null ? 'the empty tree' : id.slice(0, 7));
-  const range = `${short(changeSet.baseRevision)}..${short(changeSet.headRevision)}`;
-  const target = changeSet.target;
-  switch (target.kind) {
-    case 'pr':
-      return `pull request #${target.number} (${range})`;
-    case 'commit':
-      return `commit ${short(changeSet.headRevision)} (against ${short(changeSet.baseRevision)})`;
-    case 'range':
-      return `range ${target.base}${target.mode === 'direct' ? '..' : '...'}${target.head} (${range})`;
-    case 'local':
-      return `local changes against ${changeSet.baseRevision === null ? 'an unborn branch' : short(changeSet.baseRevision)}`;
-  }
 }
 
 /**

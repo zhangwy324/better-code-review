@@ -51,6 +51,22 @@ describe('cli', () => {
   });
 });
 
+describe('show usage', () => {
+  it.each([
+    [['h_0000000000000000'], 'show needs --dir'],
+    [['--dir', 'd'], 'show needs exactly one ID, or --file <path>'],
+    [['--dir', 'd', 'h_1', '--file', 'a.ts'], 'show needs exactly one ID, or --file <path>'],
+    [['--dir', 'd', 'h_1', '--lines', '1-2'], '--side and --lines only apply to --file'],
+    [['--dir', 'd', '--file', 'a.ts', '--side', 'both'], '--side must be old or new'],
+    [['--dir', 'd', '--file', '../a.ts'], '--file must be a repository-relative path'],
+    [['--dir', 'd', '--file', 'a.ts', '--lines', '5-2'], '--lines must look like 10-40'],
+  ])('rejects show %j with exit code 2', async (argv, message) => {
+    const result = await cli('show', ...argv);
+    expect(result.exitCode).toBe(EXIT.usage);
+    expect(result.stderr).toContain(message);
+  });
+});
+
 describe('parseRange', () => {
   it('reads direct and merge-base ranges, with HEAD for an empty end', () => {
     expect(parseRange('main..feature')).toEqual({
