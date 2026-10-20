@@ -752,6 +752,7 @@ describe('analyzeSemantics: language server answers', () => {
     });
     expect(incomplete.evidence.records.filter((r) => r.method === 'lsp')).toEqual([]);
 
+    const overrideLsp = fakeLsp(() => ok());
     const override = await analyse(
       {
         'src/shapes.ts': lines(
@@ -779,7 +780,11 @@ describe('analyzeSemantics: language server answers', () => {
           '}',
         ),
       },
-      { lsp: fakeLsp(() => ok()) },
+      { lsp: overrideLsp },
+    );
+    // Its receivers are filtered by type, so a sibling's calls are not confirmed (#21).
+    expect(overrideLsp.asked).toContainEqual(
+      expect.objectContaining({ kind: 'method', receiverTypes: ['Square', 'Shape'] }),
     );
     // Square.area may be reached through Shape: its own references miss that call (#42).
     expect(newSide(summary(override))).toEqual([

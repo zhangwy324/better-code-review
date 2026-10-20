@@ -13,7 +13,7 @@ For v0.1 the portfolio is **TypeScript only**. The signature fixture also keeps 
 | `rename-move` | Renames and moves | A renamed function in a moved file (one edge on both sides), and a pure move with a hunk-less file node |
 | `independent-roots` | Multiple independent change roots | Three unrelated changes, no edges |
 | `feature-flow` | API route → service → persistence → tests | One edge per layer, and a test-file edge from a `describe` titled like the function under test |
-| `interface-impl` | Interface implementation changes | `implements` edges from a changed and a new class; a call through the interface stays `possible` to both implementations |
+| `interface-impl` | Interface implementation changes | `implements` edges from a changed and a new class; calls through the interface and through each implementation's own type, all `possible` to both implementations |
 | `same-name` | Static reference vs same-name unrelated symbol | Three changed `validate`s: import resolution keeps each plain call to its own, while the receiver call stays `possible` to all three |
 | `tests-and-config` | Test- and config-only edits | File nodes for `package.json`, `tsconfig.json` and a workflow; a test file; no edges, since the code under test is unchanged |
 | `dynamic-calls` | Dynamic calls / reflection | Calls through computed properties and `Reflect.apply` make no edge |
@@ -24,11 +24,13 @@ For v0.1 the portfolio is **TypeScript only**. The signature fixture also keeps 
 
 | File | Contents |
 |---|---|
-| `fixture.ts` | The `Fixture` and `ExpectedFacts` types, and helpers |
+| `fixture.ts` | The `Fixture`, `ExpectedFacts` and `WithLsp` types, and helpers |
+| `facts.ts` | Reads a graph back into the facts notation, and the checks every fixture gets |
 | `<name>.ts` | One fixture each |
 | `index.ts` | `FIXTURES`, the portfolio in §18.4 order |
 | `repo.ts` | `buildFixtureRepo()`, and the deterministic Git plumbing `TestRepo` builds on |
 | `portfolio.test.ts` | Runs `generate --no-lsp` on every fixture and checks its facts |
+| `portfolio.integration.test.ts` | Runs `generate` with each installed TypeScript server (and pyright for Python files) and checks `withLsp`. `npm run test:lsp`; skipped without servers |
 
 ## Expected facts
 
@@ -38,9 +40,18 @@ For v0.1 the portfolio is **TypeScript only**. The signature fixture also keeps 
 - `edges`: `from relation to (sides)`, e.g. `checkoutSummary calls formatPrice (both)`. A test file's edge starts from its path.
 - `caps`: `name relation shown/total`.
 
-When several nodes share a display name, each one is written with its path after it, e.g. `validate [src/users/validate.ts]`. The test also checks two invariants for every fixture: every hunk is on a node, and nothing is `verified` without a language server.
+When several nodes share a display name, each one is written with its path after it, e.g. `validate [src/users/validate.ts]`.
 
-`later` lists the facts that need more than that, such as a language server or a later milestone. They are not checked yet: #21 turns the language-server ones into assertions, and #26 the planner ones.
+`withLsp` says how the edges change with a language server for every parsed language: each edge is `verified`, except those listed in `rejected` (gone) or `possible` (unsettled). Leave it out when every edge is verified. Files in a served language become `semantic`; nodes and caps don't change.
+
+The tests also check, for every fixture (Milestone 1 acceptance, #21):
+- **Coverage:** every hunk is on a node, and nothing is `verified` without a language server.
+- **Exact diffs:** each side's content in `changes.json` is the fixture's file, byte for byte, and its hunks applied to the old content give the new content.
+- **Stable IDs:** a second repository built from the same fixture gives byte-identical `changes.json`, `graph.json` and `summary.txt`.
+- **Source mapping:** each symbol node's range holds its name, and each of its hunks changes a line in that range.
+- **Missing capabilities:** without a language server, every parsed language is reported `disabled` with guidance, in `graph.json` and `summary.txt`. With one, every language is `ok`.
+
+`later` lists facts for a later milestone or issue. They are not checked yet; #26 turns the planner ones into assertions.
 
 ## Using a fixture
 
@@ -55,5 +66,5 @@ In tests, `buildFixtureRepo(dir, fixture)` builds the repository without a check
 ## Adding a fixture
 
 1. Write `<name>.ts`, exporting a `Fixture`, and add it to `index.ts`.
-2. Write the facts you expect *before* running it. Then run `npx vitest run test/fixtures` and look at every difference. Either the fixture or your expectation was wrong, or you found a bug. Don't copy the output into the expectations without reading it.
+2. Write the facts you expect, and `withLsp`, *before* running it. Then run `npx vitest run test/fixtures` and `npm run test:lsp -- test/fixtures`, and look at every difference. Either the fixture or your expectation was wrong, or you found a bug. Don't copy the output into the expectations without reading it.
 3. Add a row to the table above.

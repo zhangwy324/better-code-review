@@ -85,7 +85,6 @@ export const removedCalls: Fixture = {
       'refundOrder calls audit (old)',
     ],
   },
-  later: [
-    'With a TypeScript server on both sides: the old-side edges are verified by the base-side server (#66).',
-  ],
+  // With a language server every edge is verified, the old-side ones by a base-side server (#66).
+  later: [],
 };

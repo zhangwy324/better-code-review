@@ -1,5 +1,5 @@
-// An interface gains a method: one implementation adds it, a new implementation is added, and a
-// caller uses it through the interface type.
+// An interface gains a method: one implementation adds it, a new implementation is added, and
+// callers use it through the interface type and through each implementation's own type.
 import { type Files, type Fixture, lines, TSCONFIG } from './fixture.ts';
 
 const base: Files = {
@@ -62,6 +62,8 @@ const head: Files = {
   ),
   'src/checkout.ts': lines(
     "import type { PaymentGateway } from './payments/gateway.ts';",
+    "import type { PaypalGateway } from './payments/paypal.ts';",
+    "import type { StripeGateway } from './payments/stripe.ts';",
     '',
     'export async function pay(gateway: PaymentGateway, cents: number): Promise<string> {',
     '  return gateway.charge(cents);',
@@ -69,6 +71,14 @@ const head: Files = {
     '',
     'export async function cancel(gateway: PaymentGateway, chargeId: string): Promise<void> {',
     '  await gateway.refund(chargeId);',
+    '}',
+    '',
+    'export async function refundStripe(stripe: StripeGateway, chargeId: string): Promise<void> {',
+    '  await stripe.refund(chargeId);',
+    '}',
+    '',
+    'export async function refundPaypal(paypal: PaypalGateway, chargeId: string): Promise<void> {',
+    '  await paypal.refund(chargeId);',
     '}',
   ),
 };
@@ -97,8 +107,10 @@ export const interfaceImpl: Fixture = {
       'symbol PaypalGateway.refund',
       'module src/checkout.ts',
       'symbol cancel',
+      'symbol refundStripe',
+      'symbol refundPaypal',
     ],
-    // gateway.refund(…) is a receiver call that only types settle, so it is possible to both
+    // Every refund(…) is a receiver call that only types settle, so each is possible to both
     // implementations.
     edges: [
       'StripeGateway implements PaymentGateway (both)',
@@ -106,10 +118,24 @@ export const interfaceImpl: Fixture = {
       'cancel references PaymentGateway (new)',
       'cancel calls StripeGateway.refund (new)',
       'cancel calls PaypalGateway.refund (new)',
+      'refundStripe references StripeGateway (new)',
+      'refundStripe calls StripeGateway.refund (new)',
+      'refundStripe calls PaypalGateway.refund (new)',
+      'refundPaypal references PaypalGateway (new)',
+      'refundPaypal calls StripeGateway.refund (new)',
+      'refundPaypal calls PaypalGateway.refund (new)',
+    ],
+  },
+  // cancel's call through the interface can reach either implementation, so both are verified.
+  // An implementation-typed call is verified to its own class only; the receiver's type rules
+  // the other out, but a method of a class with bases is never rejected, so it stays possible.
+  withLsp: {
+    possible: [
+      'refundStripe calls PaypalGateway.refund (new)',
+      'refundPaypal calls StripeGateway.refund (new)',
     ],
   },
   later: [
-    'With a TypeScript server: the implements edges and the PaymentGateway reference are verified. The calls through the interface are not references of either implementation, so they stay possible (#42).',
     'M2: the plan groups the interface with its implementations, and an agent judges the two refund candidates (#43).',
   ],
 };

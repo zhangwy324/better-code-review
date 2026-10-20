@@ -106,8 +106,12 @@ interface TargetSide {
   key: TargetKey;
   /** The grammar and the name's position, for `references`. */
   lsp: { language: string; line: number; column: number } | null;
-  /** A method of a class with bases: calls through a base type are not in its references. */
-  mayOverride: boolean;
+  /**
+   * For a method of a class with bases: the class and its bases. Calls through a base type are
+   * not in its references, and a server may return its siblings' calls among them (#42), so a
+   * call is kept only when its receiver's static type is one of these. Null otherwise.
+   */
+  receiverTypes: string[] | null;
 }
 
 interface Pair {
@@ -297,26 +301,32 @@ function targetKey(file: SideFile, facts: Entity): TargetKey {
 
 /**
  * Where to ask a language server about a target: its name, or for a constructor its class name
- * (#16). Also whether a method's class has bases it may override.
+ * (#16). Also, for a method of a class with bases, the types a receiver can have to reach it.
  */
 function lspTarget(
   parsed: ParsedFile,
   facts: Entity,
   search: string,
   grammar: GrammarName,
-): Pick<TargetSide, 'lsp' | 'mayOverride'> {
+): Pick<TargetSide, 'lsp' | 'receiverTypes'> {
   const constructor = facts.kind === 'constructor';
   const inside = (d: Declaration) =>
     constructor
       ? d.kind === 'class' && d.name === search && startsIn(d.range, facts.range)
       : d.kind === facts.kind && d.name === facts.name && within(d.range, facts.range);
   const declaration = declarations(parsed).find(inside);
-  if (!declaration) return { lsp: null, mayOverride: false };
-  let mayOverride = false;
+  if (!declaration) return { lsp: null, receiverTypes: null };
+  let receiverTypes: string[] | null = null;
   if (facts.kind === 'method') {
     for (let n = declaration.node.parent; n; n = n.parent) {
       if (CLASS_NODES.has(n.type)) {
-        mayOverride = baseNames(n).length > 0;
+        const bases = baseNames(n);
+        // Subclasses and further ancestors are not listed: a call on one is dropped from the
+        // answer and stays possible, since a method of a class with bases is never rejected.
+        if (bases.length > 0) {
+          const name = n.childForFieldName('name')?.text;
+          receiverTypes = name === undefined ? bases : [name, ...bases];
+        }
         break;
       }
     }
@@ -324,7 +334,7 @@ function lspTarget(
   const at = declaration.nameRange;
   return {
     lsp: { language: grammar, line: at.startLine, column: at.startColumn ?? 1 },
-    mayOverride,
+    receiverTypes,
   };
 }
 
@@ -540,6 +550,7 @@ async function verify(pairs: Pair[], side: Side, lsp: ReferenceProvider): Promis
       line: at.line,
       column: at.column,
       kind: target.entity.kind,
+      ...(own.receiverTypes === null ? {} : { receiverTypes: own.receiverTypes }),
     });
     if (result.status !== 'ok') continue;
     for (const pair of open.filter((p) => p.target === target)) {
@@ -556,7 +567,7 @@ async function verify(pairs: Pair[], side: Side, lsp: ReferenceProvider): Promis
         };
         continue;
       }
-      if (pair.hit.chaining || own.mayOverride || !result.complete) continue;
+      if (pair.hit.chaining || own.receiverTypes !== null || !result.complete) continue;
       if (result.unresolved.some(isHit)) continue;
       const resolves =
         (await healthy(at.language, own.path)) && (await healthy(at.language, pair.file.path));
