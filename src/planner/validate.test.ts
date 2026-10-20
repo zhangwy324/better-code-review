@@ -10,8 +10,8 @@ import { buildGraph } from '../graph/build.ts';
 import type { ChangeSet } from '../schemas/changeset.ts';
 import type { LineRef } from '../schemas/common.ts';
 import type { ChangeGraph } from '../schemas/graph.ts';
-import { PLAN_SCHEMA_VERSION, type ReviewPlan } from '../schemas/plan.ts';
-import { UNGROUPED_TITLE, validatePlan, type PlanError } from './validate.ts';
+import { PLAN_SCHEMA_VERSION, UNGROUPED_TITLE, type ReviewPlan } from '../schemas/plan.ts';
+import { validatePlan, type PlanError } from './validate.ts';
 
 // The crafted invalid plans below are copies of a valid plan with one thing broken. The plan is
 // over the signature fixture without LSP, so every code edge is `possible`.

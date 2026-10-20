@@ -12,7 +12,6 @@ export {
 export { redactSecrets, sensitiveFile } from './secrets.ts';
 export { MAX_SHOW_LINES, show, ShowError, type ShowQuery } from './show.ts';
 export {
-  UNGROUPED_TITLE,
   validatePlan,
   type PlanError,
   type PlanErrorCode,

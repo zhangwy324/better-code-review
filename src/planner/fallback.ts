@@ -15,10 +15,11 @@ import type { ChangeGraph, ChangeNode } from '../schemas/graph.ts';
 import {
   PLAN_SCHEMA_VERSION,
   UNGROUPED_GROUP_ID,
+  UNGROUPED_TITLE,
   type ReviewGroup,
   type ReviewPlan,
 } from '../schemas/plan.ts';
-import { UNGROUPED_TITLE } from './validate.ts';
+import { count, list } from '../text/index.ts';
 
 /** The `fallbackReason` of a plan made because no agent was involved. */
 export const NO_AGENT_REASON = 'No agent wrote a plan, so the changes were grouped without AI.';
@@ -104,14 +105,4 @@ function group(id: string, nodes: ChangeNode[], graph: ChangeGraph): ReviewGroup
     referenceNodeIds: [],
     childGroupIds: [],
   };
-}
-
-/** `items` joined with commas, the first three and a count of the rest. */
-function list(items: readonly string[]): string {
-  const shown = items.slice(0, 3).join(', ');
-  return items.length > 3 ? `${shown} and ${count(items.length - 3, 'more file')}` : shown;
-}
-
-function count(n: number, one: string, many = `${one}s`): string {
-  return `${n.toLocaleString('en')} ${n === 1 ? one : many}`;
 }

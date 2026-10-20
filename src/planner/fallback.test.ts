@@ -6,9 +6,9 @@ import {
 } from '../analysis/semantic/fixture.test-helper.ts';
 import { gitSnapshotFiles } from '../analysis/semantic/snapshot-files.ts';
 import { buildGraph } from '../graph/build.ts';
-import { UNGROUPED_GROUP_ID } from '../schemas/plan.ts';
+import { UNGROUPED_GROUP_ID, UNGROUPED_TITLE } from '../schemas/plan.ts';
 import { fallbackPlan, NO_AGENT_REASON } from './fallback.ts';
-import { UNGROUPED_TITLE, validatePlan } from './validate.ts';
+import { validatePlan } from './validate.ts';
 
 // The signature fixture without LSP: a TypeScript and a Python cluster joined by `possible`
 // edges, plus nodes with no edge and no other change in their file. The whole portfolio is

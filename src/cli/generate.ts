@@ -42,6 +42,7 @@ import {
   type ReviewRequest,
   type ReviewTarget,
 } from '../schemas/index.ts';
+import { count, occurrences } from '../text/index.ts';
 
 /** A ReviewRequest whose output directory may be left to the D9 default. */
 export type GenerateRequest = Omit<ReviewRequest, 'outputDirectory'> & {
@@ -223,12 +224,11 @@ export function summarise(
   plan: ReviewPlan,
 ): string {
   const lines: string[] = [];
-  const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-  const tally = <T extends string>(items: readonly T[]) => {
-    const counts = new Map<T, number>();
-    for (const item of items) counts.set(item, (counts.get(item) ?? 0) + 1);
-    return [...counts].map(([k, n]) => `${n} ${k}`).join(', ');
-  };
+  // `2 symbol, 1 file`: counts first, unlike the planner input's `tally()`.
+  const tally = (items: readonly string[]) =>
+    occurrences(items)
+      .map(([k, n]) => `${n.toLocaleString('en')} ${k}`)
+      .join(', ');
 
   lines.push(`Target    ${describeTarget(changeSet)}`);
   lines.push(`Snapshot  ${changeSet.snapshotId}`);
