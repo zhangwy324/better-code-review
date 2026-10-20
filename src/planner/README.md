@@ -1,6 +1,6 @@
 # Planner
 
-What the agent sees when it writes `plan.json` (issue #22; design reference §8.6, §11.2, §14.2–14.3), and how that plan is checked (#23, [below](#plan-validation-validate)). `generate` writes the input as `planner-input.md` next to `changes.json` and `graph.json`. `better-code-review show` fetches anything it leaves out, and `better-code-review validate` checks the plan. The CLI still makes no model calls (MVP spec D8): these are files and commands the agent reads.
+What the agent sees when it writes `plan.json` (issue #22; design reference §8.6, §11.2, §14.2–14.3), how that plan is checked (#23, [below](#plan-validation-validate)), and the plan used without an agent (#24, [below](#fallback-plan)). `generate` writes the input as `planner-input.md` and the fallback plan as `plan.json`, next to `changes.json` and `graph.json`. `better-code-review show` fetches anything it leaves out, and `better-code-review validate` checks the plan. The CLI still makes no model calls (MVP spec D8): these are files and commands the agent reads.
 
 | File | Contents |
 |---|---|
@@ -8,6 +8,7 @@ What the agent sees when it writes `plan.json` (issue #22; design reference §8.
 | `show.ts` | `show()`: a hunk, node or edge by ID, or lines of any snapshot file |
 | `secrets.ts` | `sensitiveFile()` and `redactSecrets()`, used by both |
 | `validate.ts` | `validatePlan()`: the plan's rules, and the `ungrouped` group for nodes with no home |
+| `fallback.ts` | `fallbackPlan()`: a plan made from the graph alone, with no model |
 
 ## Format of `planner-input.md`
 
@@ -120,6 +121,17 @@ All errors are reported at once. Schema errors come alone, since the other rules
 **Ungrouped.** Nodes the plan gives no home are not an error. `validatePlan()` puts them in the `ungrouped` group ("Ungrouped / requires review", D1), making it last in `groupOrder` if the plan has none, and `validate` lists them so the agent can place them. Since the graph puts every hunk on a node, every hunk is then visible. A valid plan with every node placed comes back unchanged.
 
 **Citations** may point at unchanged files, because `show --file` lets the agent read them. The line must exist on that side of the snapshot. Files with omitted content (binary, too large, not UTF-8) can't be cited.
+
+## Fallback plan
+
+`generate` always writes `plan.json` with `fallbackPlan()`, so the renderer has a plan without any model (design reference §8.1, MVP spec D8). The agent overwrites it with its own. The same function makes the plan to use when the agent's plan still fails after the repair loop, with a `fallbackReason` saying so.
+
+- **Clustering.** Two nodes go together when a code edge joins them (of any provenance or side) or when they are in the same file. A test-file edge joins its target to the test file's nodes. Each cluster of two or more nodes is a group, titled after its node with the most incoming edges (`formatPrice and related changes`), or `Changes in <path>` when it has no edges.
+- **Ungrouped.** A node joined to nothing goes into the `ungrouped` group ("Ungrouped / requires review", D1), last in `groupOrder`. Every node has a home, so `validatePlan()` returns the plan unchanged.
+- **Nothing inferred.** No verdicts and no inferred relationships: every candidate edge stays `possible`.
+- **Order.** Groups, and the nodes in each, follow the graph's node order, so the same graph always gives the same plan.
+
+`portfolio.test.ts` checks that the plan is valid, with no node left to place, for every fixture. Without a language server, five fixtures have no code edges, so most or all of their nodes are ungrouped.
 
 ## Secret avoidance
 

@@ -1,13 +1,16 @@
 // Every portfolio fixture (README.md) through `generate --no-lsp`, checked against its expected
 // facts, plus what holds for all of them (Milestone 1 acceptance, #21): full hunk coverage,
 // nothing verified, exact diffs, stable IDs, source mapping and capability reporting, and a
-// planner input (#22) that lists the whole graph within its budget.
+// planner input (#22) that lists the whole graph within its budget, and a fallback plan.json
+// (#24) that passes the plan validator (#23) with every node already in a group.
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { gitSnapshotFiles } from '../../src/analysis/semantic/index.ts';
 import { generate } from '../../src/cli/generate.ts';
 import { hunkCoverage } from '../../src/graph/index.ts';
+import { validatePlan } from '../../src/planner/index.ts';
 import type { Fixture } from './fixture.ts';
 import { expectExactDiff, expectSourceMapping, facts } from './facts.ts';
 import { FIXTURES } from './index.ts';
@@ -29,13 +32,16 @@ async function generateFixture(dir: string, fixture: Fixture) {
   const read = (name: string) => readFileSync(join(out, name), 'utf8');
   return {
     ...result,
-    written: ['changes.json', 'graph.json', 'planner-input.md', 'summary.txt'].map(read),
+    repo: join(dir, 'repo'),
+    written: ['changes.json', 'graph.json', 'planner-input.md', 'plan.json', 'summary.txt'].map(
+      read,
+    ),
   };
 }
 
 describe.each(FIXTURES)('fixture $name', (fixture) => {
   it('matches its expected facts with no language server', async () => {
-    const { changeSet, graph, planner, summary, written } = await generateFixture(
+    const { repo, changeSet, graph, planner, summary, written } = await generateFixture(
       join(root, fixture.name),
       fixture,
     );
@@ -72,6 +78,11 @@ describe.each(FIXTURES)('fixture $name', (fixture) => {
       for (const hunk of file.hunks) expect(planner.text).toContain(`- ${hunk.id}`);
     }
     expect(planner.estimatedTokens).toBeLessThanOrEqual(planner.tokenBudget);
+
+    // The fallback plan (#24) is valid as written: no node is left for the validator to place.
+    const plan: unknown = JSON.parse(written[3]!);
+    const validation = await validatePlan(plan, graph, gitSnapshotFiles(repo, changeSet));
+    expect(validation).toEqual({ valid: true, plan, ungroupedNodeIds: [] });
 
     // Stable IDs: a second, separately built repository gives byte-identical outputs.
     const again = await generateFixture(join(root, `${fixture.name}-again`), fixture);

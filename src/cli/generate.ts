@@ -4,10 +4,10 @@
 //
 // Output (D9): `.better-code-review/reviews/<target>/` at the repository root, unless
 // `outputDirectory` is given. It holds `changes.json`, `graph.json`, `planner-input.md` (the
-// planner's model input, #22) and `summary.txt`, the capability and coverage summary that is
-// also printed. A rerun on the same target overwrites
-// them. The first run with the default location adds `.better-code-review/` to
-// `.git/info/exclude`, never to a tracked `.gitignore`.
+// planner's model input, #22), `plan.json` (the deterministic fallback plan, #24, which the agent
+// replaces with its own) and `summary.txt`, the capability and coverage summary that is also
+// printed. A rerun on the same target overwrites them. The first run with the default location
+// adds `.better-code-review/` to `.git/info/exclude`, never to a tracked `.gitignore`.
 //
 // Language servers (D11) need the new side on disk. For `local` that is the working tree itself.
 // For `commit`, `range` and `pr` the head commit is written to a temporary directory
@@ -33,8 +33,15 @@ import { extractChangeSet, type ExtractOptions } from '../git/extract.ts';
 import { describeTarget } from '../git/describe.ts';
 import { gitLine } from '../git/run.ts';
 import { buildGraph, hunkCoverage } from '../graph/index.ts';
-import { plannerInput, type PlannerInput } from '../planner/index.ts';
-import type { ChangeGraph, ChangeSet, ReviewRequest, ReviewTarget } from '../schemas/index.ts';
+import { fallbackPlan, plannerInput, type PlannerInput } from '../planner/index.ts';
+import {
+  UNGROUPED_GROUP_ID,
+  type ChangeGraph,
+  type ChangeSet,
+  type ReviewPlan,
+  type ReviewRequest,
+  type ReviewTarget,
+} from '../schemas/index.ts';
 
 /** A ReviewRequest whose output directory may be left to the D9 default. */
 export type GenerateRequest = Omit<ReviewRequest, 'outputDirectory'> & {
@@ -55,6 +62,8 @@ export interface GenerateResult {
   changeSet: ChangeSet;
   graph: ChangeGraph;
   planner: PlannerInput;
+  /** The fallback plan written as plan.json. */
+  plan: ReviewPlan;
   summary: string;
 }
 
@@ -124,13 +133,15 @@ export async function generate(
     outputDirectory = resolve(request.outputDirectory);
   }
   const planner = plannerInput(changeSet, graph);
-  const summary = summarise(changeSet, graph, planner);
+  const plan = fallbackPlan(graph);
+  const summary = summarise(changeSet, graph, planner, plan);
   mkdirSync(outputDirectory, { recursive: true });
   writeJson(join(outputDirectory, 'changes.json'), changeSet);
   writeJson(join(outputDirectory, 'graph.json'), graph);
   writeFileSync(join(outputDirectory, 'planner-input.md'), planner.text);
+  writeJson(join(outputDirectory, 'plan.json'), plan);
   writeFileSync(join(outputDirectory, 'summary.txt'), summary);
-  return { outputDirectory, changeSet, graph, planner, summary };
+  return { outputDirectory, changeSet, graph, planner, plan, summary };
 }
 
 /** `<target>` of the default output directory (D9). */
@@ -205,7 +216,12 @@ function writeJson(path: string, data: unknown): void {
 }
 
 /** The human-readable capability and coverage summary (summary.txt). */
-export function summarise(changeSet: ChangeSet, graph: ChangeGraph, planner: PlannerInput): string {
+export function summarise(
+  changeSet: ChangeSet,
+  graph: ChangeGraph,
+  planner: PlannerInput,
+  plan: ReviewPlan,
+): string {
   const lines: string[] = [];
   const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
   const tally = <T extends string>(items: readonly T[]) => {
@@ -239,6 +255,12 @@ export function summarise(changeSet: ChangeSet, graph: ChangeGraph, planner: Pla
       `${hunks.inlined}/${hunks.total} hunks inlined` +
       (hunks.truncated > 0 ? ` (${hunks.truncated} truncated)` : '') +
       (planner.redactions > 0 ? `, ${count(planner.redactions, 'secret')} redacted` : ''),
+  );
+  const ungrouped = plan.groups.find((g) => g.id === UNGROUPED_GROUP_ID)?.nodeIds.length ?? 0;
+  lines.push(
+    `Plan      fallback, ${count(plan.groups.length - (ungrouped > 0 ? 1 : 0), 'group')}` +
+      (ungrouped > 0 ? `, ${count(ungrouped, 'node')} ungrouped` : '') +
+      ' (an agent replaces plan.json with its own)',
   );
   const tests = graph.files.filter((f) => f.test !== null);
   if (tests.length > 0) {
