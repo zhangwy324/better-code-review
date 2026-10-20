@@ -25,6 +25,7 @@ npm run check   # format check, lint, typecheck, build, tests: the same steps CI
 | `npm run test:lsp` | Installs pinned language servers from `test/lsp-servers/` and runs the integration suites against them; fails if a server is missing ([`src/analysis/semantic/README.md`](src/analysis/semantic/README.md#tests)) |
 | `npm run schemas` | Regenerates the JSON Schema files in `schemas/` from `src/schemas/` |
 | `npm run licenses` | Checks production dependency and vendored grammar licences and writes `THIRD_PARTY_NOTICES` |
+| `npm run fixtures` | Lists the test fixture portfolio, or builds one fixture as a repository to try by hand ([`test/fixtures/README.md`](test/fixtures/README.md)) |
 | `npm run grammars` | Re-vendors the built-in tree-sitter grammars from their pins ([`src/analysis/structural/README.md`](src/analysis/structural/README.md)) |
 
 ## Layout
@@ -43,7 +44,7 @@ One package, one language (ADR 0001). Modules are folders under `src/`, created 
 | `src/viewer/` | The React viewer |
 
 - `schemas/` holds the generated JSON Schema files. Don't edit them; change `src/schemas/` and run `npm run schemas`.
-- Unit tests sit next to the code as `*.test.ts`.
+- Unit tests sit next to the code as `*.test.ts`. The fixture portfolio, Git changes that tests across milestones share, is in `test/fixtures/` ([`README.md`](test/fixtures/README.md)).
 - Relative imports use the `.ts` extension; `tsc` rewrites them to `.js` on build.
 - Files the compiled code reads at run time (grammars, query files) are copied to `dist/` by `scripts/copy-assets.ts` during `npm run build`; add new asset folders there.
 - `scripts/` holds repository tooling. Scripts are TypeScript run directly by Node (`node scripts/x.ts`), so they may only use erasable syntax (no `enum`, no parameter properties).

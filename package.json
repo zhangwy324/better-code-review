@@ -29,6 +29,7 @@
     "schemas": "node scripts/schemas.ts",
     "licenses": "node scripts/licenses.ts",
     "grammars": "node scripts/grammars.ts",
+    "fixtures": "node scripts/fixtures.ts",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm test",
     "prepack": "npm run build && npm run licenses"
   },

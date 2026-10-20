@@ -145,13 +145,13 @@ These come from §9.8, and every milestone's tests must keep them:
 
 ## Acceptance criteria per milestone
 
-"Signature fixture" means the #3/#4 fixture: `formatPrice` gains `currency`, 3 of 4 callers are updated (`emailSummary` is missed), plus name collisions, and on the Python side `tax` gains `rate`. #9 adds it to the repository. Under D12, `emailSummary` is unchanged, so v0.1 does not show it; the fixture still checks that it does not appear as a changed node.
+"Signature fixture" means the #3/#4 fixture: `formatPrice` gains `currency`, 3 of 4 callers are updated (`emailSummary` is missed), plus name collisions, and on the Python side `tax` gains `rate`. #9 adds it to the repository (`test/fixtures/signature.ts`). Under D12, `emailSummary` is unchanged, so v0.1 does not show it; the fixture still checks that it does not appear as a changed node.
 
 ### M0 · Foundations
 - [x] This spec merged (#6).
 - [x] Repo scaffold with build, lint, test and CI, including the licence check from ADR 0002 (#7).
 - [x] Versioned schemas for every contract in D6 and D4, with round-trip tests and the invariants above documented next to the types (#8).
-- [ ] Fixture portfolio from §18.4 committed. At minimum: the signature fixture, multiple independent roots, config-only edits, an unsupported language or binary file, and a rename (#9).
+- [x] Fixture portfolio from §18.4 committed. At minimum: the signature fixture, multiple independent roots, config-only edits, an unsupported language or binary file, and a rename (#9). *TypeScript only, in [`test/fixtures/`](../test/fixtures/README.md); other languages and the mixed-language case are #77.*
 - [x] #42 reports recall, precision and cost for candidate search and AI adjudication between changed entities (D12), with a go/no-go. *Go, with changes: [`candidate-adjudication.md`](research/candidate-adjudication.md).* **If it says no-go, D6 and M1/M2 are revisited before M1 starts.**
 
 ### M1 · Deterministic Change Graph
