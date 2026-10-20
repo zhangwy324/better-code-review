@@ -10,6 +10,9 @@
 // - Deletions: `deleted`, with `newPath` null and the full old content.
 // - Binary files: listed with `binary` set, no content and no hunks. Binary is Git's own test
 //   (a NUL in the first 8000 bytes, or a `binary`/`-diff` attribute when Git prints the diff).
+// - .gitattributes come from the new side: the head commit's (`--attr-source`), or the working
+//   tree's for `local`. Git before 2.40 has no `--attr-source`; there the working tree's are
+//   used and the ChangeSet warns `attributes-from-working-tree`.
 // - Size cap: when either side's blob is over `maxContentBytes` (MAX_CONTENT_BYTES, 1 MiB),
 //   neither side's content is stored and `contentOmitted` is `too-large` (D7); hunks are kept.
 // - Generated files are stored like any other file. The structural analyzer marks them
@@ -29,6 +32,7 @@ import { resolve } from 'node:path';
 import {
   CHANGESET_SCHEMA_VERSION,
   ChangeSet,
+  ExtractionWarning,
   type FileChange,
   GITLINK_MODE,
   type PullRequestInfo,
@@ -167,6 +171,8 @@ export interface ExtractOptions {
   gh?: GhRunner;
   /** Content size cap per side, in bytes. Defaults to MAX_CONTENT_BYTES. */
   maxContentBytes?: number;
+  /** Test hook: the `git version` output to assume. Defaults to the installed Git's. */
+  gitVersion?: string;
 }
 
 /**
@@ -199,6 +205,16 @@ export async function extractChangeSet(
   } else {
     ({ base, head } = await resolveRevisions(repo, target));
   }
+  // .gitattributes can change hunks (`binary`, `-diff`, `diff=<driver>`), so they are read from
+  // the head commit rather than from whatever the working tree holds.
+  const version = options.gitVersion ?? (await gitLine(repo, ['version']));
+  const attrSource = supportsAttrSource(version) ? head : null;
+  const diff = await diffFiles(repo, base, head, {
+    maxContentBytes: options.maxContentBytes ?? MAX_CONTENT_BYTES,
+    attrSource,
+  });
+  const warnings = new Set(diff.warnings);
+  if (attrSource === null) warnings.add('attributes-from-working-tree');
   return ChangeSet.parse({
     schemaVersion: CHANGESET_SCHEMA_VERSION,
     snapshotId: createHash('sha256')
@@ -207,9 +223,10 @@ export async function extractChangeSet(
     target,
     baseRevision: base,
     headRevision: head,
-    files: await diffFiles(repo, base, head, options.maxContentBytes),
+    files: diff.files,
     excludedUntrackedPaths: [],
     pullRequest,
+    warnings: ExtractionWarning.options.filter((w) => warnings.has(w)),
   });
 }
 
@@ -225,7 +242,11 @@ async function extractLocal(
   options: ExtractOptions,
 ): Promise<ChangeSet> {
   const snapshot = await captureWorkingTree(repo, target.includeUntracked);
-  const files = await diffFiles(repo, snapshot.head, snapshot.tree, options.maxContentBytes);
+  // The working tree is the new side, so its .gitattributes are the right ones.
+  const { files, warnings } = await diffFiles(repo, snapshot.head, snapshot.tree, {
+    maxContentBytes: options.maxContentBytes ?? MAX_CONTENT_BYTES,
+    attrSource: null,
+  });
   await options.beforeRecapture?.();
   assertSameSnapshot(snapshot, await captureWorkingTree(repo, target.includeUntracked));
 
@@ -240,7 +261,27 @@ async function extractLocal(
     files,
     excludedUntrackedPaths: snapshot.excludedUntracked,
     pullRequest: null,
+    warnings,
   });
+}
+
+/** Whether `git version` output names a Git with `--attr-source` (2.40 or later). */
+export function supportsAttrSource(gitVersion: string): boolean {
+  const m = /(\d+)\.(\d+)/.exec(gitVersion);
+  if (!m) throw new Error(`Unexpected git version output: ${gitVersion}`);
+  const [major, minor] = [Number(m[1]), Number(m[2])];
+  return major > 2 || (major === 2 && minor >= 40);
+}
+
+interface DiffSettings {
+  maxContentBytes: number;
+  /** The tree-ish whose .gitattributes the diff reads; null for the working tree's. */
+  attrSource: string | null;
+}
+
+interface DiffResult {
+  files: FileChange[];
+  warnings: ExtractionWarning[];
 }
 
 /** Diffs two tree-ish objects; a null base is the empty tree. */
@@ -248,14 +289,15 @@ async function diffFiles(
   repo: string,
   base: string | null,
   head: string,
-  maxContentBytes = MAX_CONTENT_BYTES,
-): Promise<FileChange[]> {
+  settings: DiffSettings,
+): Promise<DiffResult> {
   const baseTree = base ?? (await gitLine(repo, ['hash-object', '-t', 'tree', '--stdin'], ''));
   const range = [baseTree, head];
 
   // One diff prints both the file list (`--raw`, NUL-separated) and the patch, so the two
   // always describe the same comparison. An empty NUL field separates them.
   const out = await runGit(repo, [
+    ...(settings.attrSource === null ? [] : [`--attr-source=${settings.attrSource}`]),
     ...DIFF_CONFIG,
     'diff',
     '--raw',
@@ -286,10 +328,10 @@ async function diffFiles(
     throw new Error(`git diff printed patches for unlisted paths: ${paths.join(', ')}`);
   }
 
-  await fillContents(repo, changes, maxContentBytes);
+  await fillContents(repo, changes, settings.maxContentBytes);
   const files = changes.map((c) => c.file);
   files.sort((a, b) => comparePaths(a.newPath ?? a.oldPath ?? '', b.newPath ?? b.oldPath ?? ''));
-  return files;
+  return { files, warnings: [] };
 }
 
 async function resolveCommit(repo: string, revision: string): Promise<string> {

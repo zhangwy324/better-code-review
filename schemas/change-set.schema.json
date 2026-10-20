@@ -325,6 +325,15 @@
           "type": "null"
         }
       ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "attributes-from-working-tree"
+        ]
+      }
     }
   },
   "required": [
@@ -335,7 +344,8 @@
     "headRevision",
     "files",
     "excludedUntrackedPaths",
-    "pullRequest"
+    "pullRequest",
+    "warnings"
   ],
   "additionalProperties": false,
   "title": "change-set v1",

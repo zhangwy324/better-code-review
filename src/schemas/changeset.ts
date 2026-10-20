@@ -69,6 +69,14 @@ export const PullRequestInfo = z.strictObject({
   headRefName: z.string().min(1),
 });
 
+export const ExtractionWarning = z.enum([
+  /**
+   * Git is older than 2.40 (no `--attr-source`), so a `commit`, `range` or `pr` diff read
+   * `.gitattributes` from the working tree instead of the head commit.
+   */
+  'attributes-from-working-tree',
+]);
+
 export const ChangeSet = z.strictObject({
   schemaVersion: z.literal(CHANGESET_SCHEMA_VERSION),
   snapshotId: SnapshotId,
@@ -91,9 +99,15 @@ export const ChangeSet = z.strictObject({
   excludedUntrackedPaths: z.array(RepoPath),
   /** `pr` only: the pull request's metadata. Null otherwise. */
   pullRequest: PullRequestInfo.nullable(),
+  /**
+   * Where Git could not give the extraction its usual semantics, for the artifact to state. In
+   * the enum's order, each at most once; empty when there is nothing to say.
+   */
+  warnings: z.array(ExtractionWarning),
 });
 
 export type DiffHunk = z.infer<typeof DiffHunk>;
 export type FileChange = z.infer<typeof FileChange>;
 export type PullRequestInfo = z.infer<typeof PullRequestInfo>;
+export type ExtractionWarning = z.infer<typeof ExtractionWarning>;
 export type ChangeSet = z.infer<typeof ChangeSet>;

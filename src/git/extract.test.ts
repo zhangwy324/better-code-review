@@ -1,9 +1,9 @@
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { ChangeSet } from '../schemas/index.ts';
-import { extractChangeSet } from './extract.ts';
+import { extractChangeSet, supportsAttrSource } from './extract.ts';
 import { hunkLines } from './patch.ts';
 import { TestRepo } from './test-repo.test-helper.ts';
 
@@ -508,5 +508,48 @@ describe('extractChangeSet: deletions, binary, huge and generated files', () => 
       newContent: 'var a=1;\n',
       contentOmitted: null,
     });
+  });
+});
+
+describe('extractChangeSet: .gitattributes', () => {
+  const repo = new TestRepo();
+  const base = repo.commit([], { 'f.txt': 'one\n', 'g.txt': 'one\n' });
+  const head = repo.commit([base], {
+    'f.txt': 'two\n',
+    'g.txt': 'two\n',
+    '.gitattributes': 'g.txt binary\n',
+  });
+  // An untracked file in the working tree, which is not part of either commit.
+  writeFileSync(join(repo.path, '.gitattributes'), 'f.txt binary\n');
+  const target = { kind: 'commit', commit: head } as const;
+
+  it('reads them from the head commit, not the working tree', async () => {
+    const changes = await extractChangeSet(repo.path, target);
+    expect(changes.files.map((f) => [f.newPath, f.binary, f.hunks.length])).toEqual([
+      ['.gitattributes', false, 1],
+      ['f.txt', false, 1],
+      ['g.txt', true, 0],
+    ]);
+    expect(changes.warnings).toEqual([]);
+  });
+
+  it('falls back to the working tree with a warning on Git older than 2.40', async () => {
+    const changes = await extractChangeSet(repo.path, target, {
+      gitVersion: 'git version 2.39.5 (Apple Git-154)',
+    });
+    expect(changes.files.map((f) => [f.newPath, f.binary])).toEqual([
+      ['.gitattributes', false],
+      ['f.txt', true],
+      ['g.txt', false],
+    ]);
+    expect(changes.warnings).toEqual(['attributes-from-working-tree']);
+  });
+
+  it('detects --attr-source support from `git version` output', () => {
+    expect(supportsAttrSource('git version 2.40.0')).toBe(true);
+    expect(supportsAttrSource('git version 2.43.0.windows.1')).toBe(true);
+    expect(supportsAttrSource('git version 3.0.0')).toBe(true);
+    expect(supportsAttrSource('git version 2.39.5 (Apple Git-154)')).toBe(false);
+    expect(() => supportsAttrSource('nonsense')).toThrow(/Unexpected git version/);
   });
 });
