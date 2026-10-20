@@ -58,7 +58,7 @@ function edges(graph: ChangeGraph): string[] {
 }
 
 describe('generate', () => {
-  it('writes changes.json, graph.json and summary.txt for a commit, with no LSP', async () => {
+  it('writes changes.json, graph.json, planner-input.md and summary.txt for a commit, with no LSP', async () => {
     const { repo, head } = signatureRepo();
     const result = await generate(repo.path, ['--commit', head, '--no-lsp']);
     expect(result.stderr).not.toContain('error');
@@ -83,6 +83,11 @@ describe('generate', () => {
     const hunks = changes.files.flatMap((f) => f.hunks).length;
     expect(summary).toContain(`${hunks}/${hunks} hunks mapped`);
     expect(summary).toContain('Unchanged callers are not analysed.');
+    expect(summary).toMatch(
+      new RegExp(`Planner   ~[\\d,]+ estimated tokens, ${hunks}/${hunks} hunks inlined`),
+    );
+    const input = readFileSync(join(dir, 'planner-input.md'), 'utf8');
+    for (const node of graph.nodes) expect(input).toContain(node.id);
     expect(result.stdout).toBe(
       `${summary}\nWritten to ${join('.better-code-review', 'reviews', `commit-${head.slice(0, 7)}`)}\n`,
     );
@@ -102,13 +107,47 @@ describe('generate', () => {
     expect(
       (await generate(repo.path, ['--commit', head, '--no-lsp', '--out', out(2)])).exitCode,
     ).toBe(0);
-    for (const file of ['changes.json', 'graph.json', 'summary.txt']) {
+    for (const file of ['changes.json', 'graph.json', 'planner-input.md', 'summary.txt']) {
       expect(readFileSync(join(out(1), file), 'utf8')).toBe(
         readFileSync(join(out(2), file), 'utf8'),
       );
     }
     const exclude = readFileSync(join(repo.path, '.git', 'info', 'exclude'), 'utf8');
     expect(exclude.match(/better-code-review/g)).toHaveLength(1);
+  });
+
+  it('shows context from a generated review with show', async () => {
+    const { repo, head } = signatureRepo();
+    const out = join(repo.path, 'out');
+    expect((await generate(repo.path, ['--commit', head, '--no-lsp', '--out', out])).exitCode).toBe(
+      0,
+    );
+    const graph = readOutputs(out).graph;
+    const formatPrice = graph.nodes.find((n) => n.displayName === 'formatPrice')!;
+    const cli = async (...argv: string[]) => {
+      let stdout = '';
+      let stderr = '';
+      const exitCode = await run(['show', '--dir', out, ...argv], {
+        cwd: repo.path,
+        out: (t) => (stdout += t),
+        err: (t) => (stderr += t),
+      });
+      return { exitCode, stdout, stderr };
+    };
+
+    const node = await cli(formatPrice.id);
+    expect(node.exitCode).toBe(EXIT.ok);
+    expect(node.stdout).toContain('Old side, src/price.ts:');
+    // An unchanged file, read from Git at the snapshot.
+    const file = await cli('--file', 'src/reexport.ts', '--lines', '1-1');
+    expect(file.stdout).toBe(
+      "# src/reexport.ts, new side\n\n1  export { formatPrice as fmt } from './price.ts';\n",
+    );
+    expect(await cli('n_0000000000000000')).toEqual({
+      exitCode: EXIT.failed,
+      stdout: '',
+      stderr: 'no node n_0000000000000000 in this snapshot\n',
+    });
   });
 
   it('names range and pull request outputs after their revisions', async () => {

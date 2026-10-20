@@ -1,6 +1,7 @@
 // Every portfolio fixture (README.md) through `generate --no-lsp`, checked against its expected
 // facts, plus what holds for all of them (Milestone 1 acceptance, #21): full hunk coverage,
-// nothing verified, exact diffs, stable IDs, source mapping and capability reporting.
+// nothing verified, exact diffs, stable IDs, source mapping and capability reporting, and a
+// planner input (#22) that lists the whole graph within its budget.
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,12 +27,15 @@ async function generateFixture(dir: string, fixture: Fixture) {
     analysis: { useLsp: false, allowProjectCodeExecution: false },
   });
   const read = (name: string) => readFileSync(join(out, name), 'utf8');
-  return { ...result, written: ['changes.json', 'graph.json', 'summary.txt'].map(read) };
+  return {
+    ...result,
+    written: ['changes.json', 'graph.json', 'planner-input.md', 'summary.txt'].map(read),
+  };
 }
 
 describe.each(FIXTURES)('fixture $name', (fixture) => {
   it('matches its expected facts with no language server', async () => {
-    const { changeSet, graph, summary, written } = await generateFixture(
+    const { changeSet, graph, planner, summary, written } = await generateFixture(
       join(root, fixture.name),
       fixture,
     );
@@ -61,6 +65,13 @@ describe.each(FIXTURES)('fixture $name', (fixture) => {
       expect(l.guidance).toMatch(/possible only/);
       expect(summary).toMatch(new RegExp(`${l.language} +disabled`));
     }
+
+    // The planner input (#22) lists every node and hunk, and keeps to its budget.
+    for (const node of graph.nodes) expect(planner.text).toContain(`- ${node.id} `);
+    for (const file of changeSet.files) {
+      for (const hunk of file.hunks) expect(planner.text).toContain(`- ${hunk.id}`);
+    }
+    expect(planner.estimatedTokens).toBeLessThanOrEqual(planner.tokenBudget);
 
     // Stable IDs: a second, separately built repository gives byte-identical outputs.
     const again = await generateFixture(join(root, `${fixture.name}-again`), fixture);
