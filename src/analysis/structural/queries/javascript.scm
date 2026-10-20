@@ -28,7 +28,8 @@
   name: (identifier) @name
   value: [(arrow_function) (function_expression) (generator_function)]) @definition.function
 
-; Test blocks: `describe('…', …)`, `it('…', …)`, `test.only('…', …)`. The name is the title.
+; Test blocks: `describe('…', …)`, `it('…', …)`, `test.only('…', …)`. The name is the title,
+; which no code can call or reference, so they are `titled`.
 ((call_expression
   function: [
     (identifier) @_fn
@@ -37,7 +38,8 @@
   arguments: (arguments . (string (string_fragment) @name)))
   @definition.function
   (#any-of? @_fn "describe" "it" "test")
-  (#set! test "true"))
+  (#set! test "true")
+  (#set! titled "true"))
 
 ; Anonymous default exports: `export default function () {}`, `export default () => …`,
 ; `export default class {}`. The name is the `default` keyword.

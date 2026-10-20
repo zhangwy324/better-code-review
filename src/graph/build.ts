@@ -16,9 +16,10 @@
 // `test-file` edge from that file instead (D2). Rejected hits make no edge and are not copied.
 // The builder only reports code relationships; it never adds propagation or causal links (D6).
 //
-// Capability (design reference §10.8): each file gets a tier, `git-only` without entities,
-// `structural` with them, `semantic` when a language server answered for its language, and the
-// graph records the weakest and the strongest of them.
+// Capability (design reference §10.8): each file gets a tier, `git-only` when it has no grammar
+// or its structure was skipped, `structural` when it was parsed (even if no entity changed, as in
+// a pure move), `semantic` when a language server answered for its language too, and the graph
+// records the weakest and the strongest of them.
 //
 // Invariants (§9.8): every graph is checked by `assertValidGraph()` (validate.ts) before it is
 // returned.
@@ -162,7 +163,7 @@ function unanalysedFile(file: FileChange): AnalyzedFile {
 
 const TIERS = CapabilityTier.options;
 
-/** A file without entities is `git-only`; with them, `semantic` once a server answered. */
+/** A file that was not parsed is `git-only`; a parsed one is `semantic` once a server answered. */
 function fileTier(file: AnalyzedFile, evidence: SemanticEvidence | null): CapabilityTier {
   if (file.tier === 'text-only' || file.skipped !== null) return 'git-only';
   const answered = evidence?.languages.some(

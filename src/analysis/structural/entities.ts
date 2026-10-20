@@ -29,6 +29,8 @@ export interface Entity {
   range: SourceRange;
   /** A member matched a test convention (parser.ts `Declaration.test`). */
   test: boolean;
+  /** Named by a title, not an identifier (parser.ts `Declaration.titled`). */
+  titled: boolean;
   /** Hash of the code without comments, whitespace or the entity's own name. */
   contentHash: string;
   /** Parameters and return type as written, whitespace-normalised; null if there are none. */
@@ -92,6 +94,7 @@ export function extractFacts(file: ParsedFile): FileFacts {
         members: [],
         range: extent,
         test: false,
+        titled: false,
         contentHash: '',
         signature: null,
         tokens: [],
@@ -101,6 +104,7 @@ export function extractFacts(file: ParsedFile): FileFacts {
     }
     entity.members.push(extent);
     entity.test ||= d.test;
+    entity.titled ||= d.titled;
     entity.tokens.push(...tokenize(text));
     const signature = signatureOf(d.node);
     if (signature !== null) {

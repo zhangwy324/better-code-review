@@ -16,7 +16,7 @@ import { stableId } from '../schemas/ids.ts';
 import { buildGraph } from './build.ts';
 
 // Fixtures are real two-commit repositories run through the Git extractor and both analyzers
-// (src/analysis/semantic/fixture.test-helper.ts).
+// (test/fixtures/signature.ts).
 const lines = (...l: string[]) => `${l.join('\n')}\n`;
 
 const full = ({ changes, structure, evidence }: Analysed) =>
