@@ -71,9 +71,10 @@ export const CodeEdge = z.discriminatedUnion('granularity', [
 
 /**
  * Which analysis a file got (design reference §10.8), weakest first: `git-only` with no grammar
- * or no structural result (a file node), `structural` with entities but no language server
- * answering for its language (edges `possible` at best), `semantic` when one answered, so its
- * edges can be `verified`.
+ * or with its structure skipped (binary, too large, generated, unparseable), `structural` when it
+ * was parsed but no language server answered for its language (edges `possible` at best), and
+ * `semantic` when one answered, so its edges can be `verified`. The tier says what analysis was
+ * available, not whether an entity changed: a parsed file moved without changes is `structural`.
  */
 export const CapabilityTier = z.enum(['git-only', 'structural', 'semantic']);
 
