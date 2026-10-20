@@ -12,6 +12,7 @@ import { analyzeStructure } from '../analysis/structural/analyze.ts';
 import { extractChangeSet } from '../git/extract.ts';
 import { TestRepo } from '../git/test-repo.test-helper.ts';
 import type { ChangeGraph } from '../schemas/graph.ts';
+import { stableId } from '../schemas/ids.ts';
 import { buildGraph } from './build.ts';
 
 // Fixtures are real two-commit repositories run through the Git extractor and both analyzers
@@ -208,6 +209,43 @@ describe('buildGraph: capability tiers', () => {
     const b = await analyse({ 'a.txt': 'a\n' }, { 'a.txt': 'b\n' });
     expect(() => buildGraph(a.changes, { evidence: a.evidence })).toThrow(/structural/);
     expect(() => buildGraph(a.changes, { structure: b.structure })).toThrow(/snapshot/);
+  });
+});
+
+describe('buildGraph: edges', () => {
+  it('a removed call verified on the old side makes a verified edge', async () => {
+    const price = (params: string) =>
+      lines(`export function formatPrice(${params}) {`, '  return String(amount);', '}');
+    const total = (body: string) =>
+      lines(
+        "import { formatPrice } from './price';",
+        'export function total(n: number) {',
+        `  return ${body};`,
+        '}',
+      );
+    const result = await analyse(
+      { 'src/price.ts': price('amount: number'), 'src/total.ts': total('formatPrice(n)') },
+      { 'src/price.ts': price('amount: number, c: string'), 'src/total.ts': total('String(n)') },
+    );
+    expect(edgeSummary(full(result))).toEqual(['possible calls total -> formatPrice (1)']);
+
+    // The analyzer does not ask a server about the old side yet; add what it would record.
+    const [hit] = result.evidence.records;
+    const lsp = { ...hit!, method: 'lsp' as const, outcome: 'confirmed' as const, detail: null };
+    lsp.id = stableId('ev', [
+      'lsp',
+      hit!.relation,
+      hit!.sourceEntityId,
+      hit!.targetEntityId,
+      'src/total.ts',
+      'old',
+      3,
+      10,
+    ]);
+    const evidence = { ...result.evidence, records: [hit!, lsp] };
+    const graph = buildGraph(result.changes, { structure: result.structure, evidence });
+    expect(edgeSummary(graph)).toEqual(['verified calls total -> formatPrice (2)']);
+    expect(hit!.location).toMatchObject({ side: 'old', range: { startLine: 3, startColumn: 10 } });
   });
 });
 

@@ -7,7 +7,8 @@
 // unchanged callers are not represented (D12).
 //
 // Code edges, between changed entities only, from SemanticEvidence. The records at one hit
-// location are judged together: `lsp` `confirmed` makes the hit verified; otherwise any
+// location are judged together: `lsp` `confirmed` makes the hit verified, on either side (an
+// old-side hit is a removed call or reference); otherwise any
 // `rejected` record drops it; otherwise it is possible. Hits with the same relation, source and
 // target form one edge (callee → callers: `to` is the target), which is `verified` when any of
 // its hits is and cites the records of every hit it keeps. A source in a test file makes a
