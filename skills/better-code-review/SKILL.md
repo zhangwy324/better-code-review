@@ -52,10 +52,11 @@ Run the command. Progress goes to stderr. stdout ends with the capability summar
 - Exit code 2 is a usage error: fix the command. Exit code 1 means the run failed (Git, `gh`, the repository). Report the message and stop.
 - Pass on the summary's language-server lines when a server is missing. Those relationships are only `possible`, and the summary says how to verify them.
 - `--no-lsp` skips language servers. Use it only when the user asks or servers fail to start.
+- With the fallback planner (#24), `generate` also writes a deterministic no-AI `plan.json`, and the summary has a `Plan      fallback, …` line. You overwrite that file in step 3. Every run of `generate` rewrites `plan.json`, so don't run it again once you have written your plan.
 
 ## 3. Plan
 
-Read `<dir>/planner-input.md` in full, then write `<dir>/plan.json`. Fetch what the input leaves out with:
+Read `<dir>/planner-input.md` in full, then write `<dir>/plan.json`, replacing any fallback plan already there. Fetch what the input leaves out with:
 
 ```text
 better-code-review show --dir <dir> <h_… | n_… | e_…>
@@ -77,7 +78,7 @@ better-code-review validate --dir <dir>
 
 - Exit 0 prints `{"valid": true, "ungroupedNodeIds": [...]}`. If any nodes are listed, place them or confirm they belong in Ungrouped.
 - Exit 1 prints `{"valid": false, "errors": [{"path", "code", "message"}]}`. `path` is a JSON Pointer into `plan.json`. Fix every error, rewrite the file, and validate again.
-- **At most 3 repair rounds.** If the plan is still invalid, stop. Keep `plan.json`, and show the user the remaining errors. A deterministic fallback plan (#24) will replace an invalid plan once it ships.
+- **At most 3 repair rounds.** If the plan is still invalid, stop and show the user the remaining errors. With the fallback planner (#24), restore a valid plan: move yours to `<dir>/plan.rejected.json`, rerun the same `generate` command (it writes the fallback `plan.json` again), and say the review uses the fallback plan. Without it, leave your `plan.json` in place.
 
 The error codes and their usual fixes are in [references/analysis-workflow.md](references/analysis-workflow.md#repairing-validation-errors).
 
