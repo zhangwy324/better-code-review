@@ -16,7 +16,11 @@
 //   (a NUL in the first 8000 bytes, or a `binary`/`-diff` attribute when Git prints the diff).
 // - .gitattributes come from the new side: the head commit's (`--attr-source`), or the working
 //   tree's for `local`. Git before 2.40 has no `--attr-source`; there the working tree's are
-//   used and the ChangeSet warns `attributes-from-working-tree`.
+//   used and the ChangeSet warns `attributes-from-working-tree`. The per-user and system-wide
+//   attributes files are ignored.
+//   Known limitation: `$GIT_DIR/info/attributes` still applies. Git 2.43 has no option to skip it
+//   (`--attr-source`, GIT_ATTR_SOURCE and GIT_ATTR_NOSYSTEM all leave it in effect), so a
+//   `binary` or `-diff` line there can still turn text hunks into "Binary files differ".
 // - Size cap: when either side's blob is over `maxContentBytes` (MAX_CONTENT_BYTES, 1 MiB),
 //   neither side's content is stored and `contentOmitted` is `too-large` (D7); hunks are kept.
 // - Generated files are stored like any other file. The structural analyzer marks them
@@ -34,6 +38,7 @@
 //   their patch text is decoded as UTF-8 too, with U+FFFD for the invalid bytes.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import { devNull } from 'node:os';
 import { resolve } from 'node:path';
 import {
   CHANGESET_SCHEMA_VERSION,
@@ -72,7 +77,13 @@ const DIFF_CONFIG = [
   // `git diff` treats blobs over this size as binary. Git's default.
   '-c',
   'core.bigFileThreshold=512m',
+  // No per-user attributes file (by default ~/.config/git/attributes): only the snapshot's
+  // .gitattributes apply. The null device is `\\.\nul` on Windows.
+  '-c',
+  `core.attributesFile=${devNull}`,
 ];
+/** Nor the system-wide attributes file, `$(prefix)/etc/gitattributes`. */
+const DIFF_ENV = { GIT_ATTR_NOSYSTEM: '1' };
 const DIFF_OPTIONS = [
   // Git's default similarity. The limit (`-l`) is added per run from ExtractOptions.
   '--find-renames=50%',
@@ -334,7 +345,10 @@ async function diffFiles(
     ...range,
   ];
   // The C locale keeps Git's warnings in English, so that they can be recognised.
-  const { stdout: out, stderr } = await runGitWithStderr(repo, args, '', { LC_ALL: 'C' });
+  const { stdout: out, stderr } = await runGitWithStderr(repo, args, '', {
+    ...DIFF_ENV,
+    LC_ALL: 'C',
+  });
   const separator = out.indexOf('\0\0');
   const raw = separator === -1 ? '' : out.subarray(0, separator + 1).toString('utf8');
   const patch = separator === -1 ? '' : out.subarray(separator + 2).toString('utf8');

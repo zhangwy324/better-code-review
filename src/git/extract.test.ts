@@ -1,5 +1,5 @@
-import { existsSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { ChangeSet } from '../schemas/index.ts';
@@ -637,6 +637,31 @@ describe('extractChangeSet: .gitattributes', () => {
       ['g.txt', false],
     ]);
     expect(changes.warnings).toEqual(['attributes-from-working-tree']);
+  });
+
+  it('ignores a per-user attributes file', async () => {
+    const userAttributes = join(repo.path, '..', `${basename(repo.path)}-attributes`);
+    writeFileSync(userAttributes, 'f.txt binary\n');
+    repo.git('config', 'core.attributesFile', userAttributes);
+    try {
+      const changes = await extractChangeSet(repo.path, target);
+      expect(byPath(changes, 'f.txt')).toMatchObject({ binary: false, newContent: 'two\n' });
+    } finally {
+      repo.git('config', '--unset', 'core.attributesFile');
+      rmSync(userAttributes);
+    }
+  });
+
+  it('still applies .git/info/attributes (known limitation)', async () => {
+    const info = join(repo.path, '.git', 'info');
+    mkdirSync(info, { recursive: true });
+    writeFileSync(join(info, 'attributes'), 'f.txt binary\n');
+    try {
+      const changes = await extractChangeSet(repo.path, target);
+      expect(byPath(changes, 'f.txt')).toMatchObject({ binary: true });
+    } finally {
+      rmSync(join(info, 'attributes'));
+    }
   });
 
   it('detects --attr-source support from `git version` output', () => {
