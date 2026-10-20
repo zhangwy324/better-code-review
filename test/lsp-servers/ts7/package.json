@@ -1,0 +1,8 @@
+{
+  "name": "bcr-lsp-servers-ts7",
+  "private": true,
+  "description": "Pinned TypeScript 7 (`tsc --lsp`) for the LSP integration tests.",
+  "dependencies": {
+    "typescript": "7.0.2"
+  }
+}

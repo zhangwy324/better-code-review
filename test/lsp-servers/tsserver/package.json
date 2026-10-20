@@ -1,0 +1,10 @@
+{
+  "name": "bcr-lsp-servers-tsserver",
+  "private": true,
+  "description": "Pinned language servers for the LSP integration tests: typescript-language-server with TypeScript 5, and pyright.",
+  "dependencies": {
+    "pyright": "1.1.414",
+    "typescript": "5.9.3",
+    "typescript-language-server": "6.0.2"
+  }
+}

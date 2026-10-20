@@ -25,6 +25,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:lsp": "node scripts/test-lsp.ts",
     "schemas": "node scripts/schemas.ts",
     "licenses": "node scripts/licenses.ts",
     "grammars": "node scripts/grammars.ts",
