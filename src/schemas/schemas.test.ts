@@ -108,6 +108,7 @@ const semantic: SemanticEvidence = {
   languages: [
     {
       language: 'typescript',
+      side: 'new',
       server: null,
       status: 'not-installed',
       capabilitiesAttempted: [],
@@ -178,6 +179,7 @@ const graph: ChangeGraph = {
       to: nodePrice,
       relation: 'calls',
       provenance: 'possible',
+      sides: 'new',
       evidenceIds: [evidence],
     },
     {
@@ -187,6 +189,7 @@ const graph: ChangeGraph = {
       to: nodePrice,
       relation: 'calls',
       provenance: 'possible',
+      sides: 'new',
       evidenceIds: [evidence],
     },
   ],

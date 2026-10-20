@@ -42,6 +42,9 @@ import {
 
 type LspCapability = LanguageCapability['failures'][number]['capability'];
 
+/** A `LanguageCapability` without its `side`. */
+export type SessionCapability = Omit<LanguageCapability, 'side'>;
+
 export interface LspTimeouts {
   /** Server start-up, up to the `initialize` answer. */
   initializeMs: number;
@@ -201,8 +204,11 @@ export class LspSession {
     return session;
   }
 
-  /** One entry per language passed to `start()`, in that order (D11). */
-  capabilities(): LanguageCapability[] {
+  /**
+   * One entry per language passed to `start()`, in that order (D11). The caller knows which side
+   * the session's root holds and adds `side`.
+   */
+  capabilities(): SessionCapability[] {
     return this.#languages.map((language) => {
       const state = this.#stateFor(language);
       if (!state) {

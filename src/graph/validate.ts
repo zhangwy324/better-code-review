@@ -10,9 +10,9 @@
 //   home node").
 // - Every ID the graph references exists: hunks in the ChangeSet; nodes, test files, evidence and
 //   entities in the graph (3).
-// - Every edge's records match its relation and ends; a `verified` edge cites a confirmed `lsp`
-//   record; every record is cited by an edge and points at a real line of a changed file on its
-//   side (4).
+// - Every edge's records match its relation and ends, and its `sides` are theirs; a `verified`
+//   edge cites a confirmed `lsp` record; every record is cited by an edge and points at a real
+//   line of a changed file on its side (4).
 //
 // Coverage is counted from the ChangeSet's hunks, not from nodes, so a node holding no changed
 // hunk (a context node, design reference §9.5; none exist in v0.1, D12) cannot inflate it.
@@ -132,6 +132,13 @@ export function graphViolations(graph: ChangeGraph, changeSet: ChangeSet): strin
       !cited.some((r) => r.method === 'lsp' && r.outcome === 'confirmed')
     ) {
       out.push(`edge ${edge.id} is verified but cites no confirmed lsp evidence`);
+    }
+    const sides = new Set(cited.map((r) => r.location.side));
+    const citedSides = sides.size > 1 ? 'both' : [...sides][0];
+    if (citedSides !== undefined && citedSides !== edge.sides) {
+      out.push(
+        `edge ${edge.id} is on the ${edge.sides} side(s), but its evidence is on ${citedSides}`,
+      );
     }
   }
 

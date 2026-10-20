@@ -9,8 +9,11 @@
 //      map each hit to its innermost entity, keeping it only when that entity is changed;
 //   3. the unambiguous rule: a plain call of a name with one definition is accepted as is;
 //   4. import-path resolution decides the rest where the files say (imports.ts);
-//   5. test files keep one edge per (test file, changed entity) (D2);
-//   6. a language server, when one is given, confirms or rejects new-side candidates.
+//   5. a language server, when one is given, confirms or rejects new-side candidates;
+//   6. old-side candidates no new-side hit stands for (removed calls, and pairs the new-side
+//      server rejected) go to a base-side server, started only then (#66); a new-side rejection
+//      is carried over to the matching old-side hit that server did not decide;
+//   7. test files keep one hit per side for each (test file, changed entity) (D2).
 // AI adjudication of what is left (#43) is not part of this module.
 //
 // Every hit is a `text-search` candidate record. Import resolution and LSP add their own record
@@ -47,7 +50,7 @@ import {
   type TargetKey,
 } from './imports.ts';
 import { rangeContains } from './normalise.ts';
-import type { LspSession, ProjectHealth } from './session.ts';
+import type { LspSession, ProjectHealth, SessionCapability } from './session.ts';
 import { changeSetFiles, type SnapshotFiles } from './snapshot-files.ts';
 
 /** Source entities kept per (changed entity, relation); the rest is reported as a cap (D1). */
@@ -63,6 +66,11 @@ export interface SemanticOptions {
   files?: SnapshotFiles;
   /** A session started on the new side's working tree. Without one, nothing is verified. */
   lsp?: ReferenceProvider;
+  /**
+   * Starts a session on the old side's working tree for these languages. Called at most once,
+   * and only when old-side candidates need it; the caller closes the session. Needs `lsp`.
+   */
+  oldLsp?: (languages: string[]) => Promise<ReferenceProvider>;
   maxCandidatesPerEntity?: number;
 }
 
@@ -88,8 +96,15 @@ interface Target {
   entity: ChangedEntity;
   order: number;
   family: Family;
-  sides: Partial<Record<Side, { path: string; search: string; key: TargetKey }>>;
-  /** New side: the grammar and the name's position, for `references`. */
+  sides: Partial<Record<Side, TargetSide>>;
+}
+
+/** A target on one side. */
+interface TargetSide {
+  path: string;
+  search: string;
+  key: TargetKey;
+  /** The grammar and the name's position, for `references`. */
   lsp: { language: string; line: number; column: number } | null;
   /** A method of a class with bases: calls through a base type are not in its references. */
   mayOverride: boolean;
@@ -130,7 +145,19 @@ export async function analyzeSemantics(
         a.hit.line - b.hit.line ||
         a.hit.column - b.hit.column,
     );
-    if (options.lsp) await verify(pairs, options.lsp);
+    let languages: LanguageCapability[] = withoutServers(structure.files);
+    if (options.lsp) {
+      await verify(pairs, 'new', options.lsp);
+      languages = withSide(options.lsp.capabilities(), 'new');
+      const old = needOldSide(pairs);
+      const needed = [...new Set(old.map((p) => p.target.sides.old!.lsp!.language))];
+      if (options.oldLsp && needed.length > 0) {
+        const oldLsp = await options.oldLsp(needed);
+        await verify(old, 'old', oldLsp);
+        languages.push(...withSide(oldLsp.capabilities(), 'old'));
+      }
+      carryOverRejections(pairs);
+    }
     pairs = collapseTestFiles(pairs);
     const { kept, caps } = applyCaps(
       pairs,
@@ -140,7 +167,7 @@ export async function analyzeSemantics(
     return SemanticEvidence.parse({
       schemaVersion: SEMANTIC_SCHEMA_VERSION,
       snapshotId: changeSet.snapshotId,
-      languages: options.lsp ? options.lsp.capabilities() : withoutServers(structure.files),
+      languages,
       records: kept.flatMap(records),
       caps,
     });
@@ -201,14 +228,16 @@ async function prepare(
             order: structure.entities.indexOf(entity),
             family: file.family,
             sides: {},
-            lsp: null,
-            mayOverride: false,
           };
           targets.set(entity.id, target);
           const search = entity.kind === 'constructor' ? lastSegment(facts.container) : facts.name;
           if (search === null) continue;
-          target.sides[side] = { path, search, key: targetKey(file, facts) };
-          if (side === 'new') Object.assign(target, lspTarget(parsed, facts, search, grammar));
+          target.sides[side] = {
+            path,
+            search,
+            key: targetKey(file, facts),
+            ...lspTarget(parsed, facts, search, grammar),
+          };
         }
         sideFiles.push(file);
       } finally {
@@ -265,15 +294,15 @@ function targetKey(file: SideFile, facts: Entity): TargetKey {
 }
 
 /**
- * Where to ask a language server about a new-side target: its name, or for a constructor its
- * class name (#16). Also whether a method's class has bases it may override.
+ * Where to ask a language server about a target: its name, or for a constructor its class name
+ * (#16). Also whether a method's class has bases it may override.
  */
 function lspTarget(
   parsed: ParsedFile,
   facts: Entity,
   search: string,
   grammar: GrammarName,
-): Pick<Target, 'lsp' | 'mayOverride'> {
+): Pick<TargetSide, 'lsp' | 'mayOverride'> {
   const constructor = facts.kind === 'constructor';
   const inside = (d: Declaration) =>
     constructor
@@ -477,19 +506,17 @@ class DefinitionCounter {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Steps 5-6: language server, test files, caps
+// Steps 5-7 and caps: language servers, test files
 
 /**
- * Asks the language server for each new-side target's references (#16). A candidate inside a
+ * Asks a language server on `side` for each target's references (#16). A candidate inside a
  * returned site is confirmed. One that is missing is rejected only when the answer is complete,
  * the imports of both the target's and the candidate's file resolve, and nothing could reach
  * the target unseen: not through an overridden
  * base method, and not by constructor chaining, which `references` does not return.
  */
-async function verify(pairs: Pair[], lsp: ReferenceProvider): Promise<void> {
-  const open = pairs.filter(
-    (p) => p.file.side === 'new' && p.imports?.verdict !== 'no' && p.target.lsp !== null,
-  );
+async function verify(pairs: Pair[], side: Side, lsp: ReferenceProvider): Promise<void> {
+  const open = pairs.filter((p) => p.file.side === side && isOpen(p));
   // Per file, so one file whose imports do not resolve only stops rejections that involve it.
   const health = new Map<string, Promise<ProjectHealth>>();
   const healthy = async (language: string, path: string) => {
@@ -503,10 +530,11 @@ async function verify(pairs: Pair[], lsp: ReferenceProvider): Promise<void> {
   };
 
   for (const target of new Set(open.map((p) => p.target))) {
-    const at = target.lsp!;
+    const own = target.sides[side]!;
+    const at = own.lsp!;
     const result = await lsp.references({
       language: at.language,
-      path: target.sides.new!.path,
+      path: own.path,
       line: at.line,
       column: at.column,
       kind: target.entity.kind,
@@ -526,11 +554,10 @@ async function verify(pairs: Pair[], lsp: ReferenceProvider): Promise<void> {
         };
         continue;
       }
-      if (pair.hit.chaining || target.mayOverride || !result.complete) continue;
+      if (pair.hit.chaining || own.mayOverride || !result.complete) continue;
       if (result.unresolved.some(isHit)) continue;
       const resolves =
-        (await healthy(at.language, target.sides.new!.path)) &&
-        (await healthy(at.language, pair.file.path));
+        (await healthy(at.language, own.path)) && (await healthy(at.language, pair.file.path));
       if (!resolves) continue;
       pair.lsp = {
         outcome: 'rejected',
@@ -540,29 +567,93 @@ async function verify(pairs: Pair[], lsp: ReferenceProvider): Promise<void> {
   }
 }
 
+/** Not yet rejected, and a server can be asked about it on its side. */
+function isOpen(pair: Pair): boolean {
+  return (
+    pair.imports?.verdict !== 'no' &&
+    pair.lsp === null &&
+    pair.target.sides[pair.file.side]!.lsp !== null
+  );
+}
+
+function isRejected(pair: Pair): boolean {
+  return pair.imports?.verdict === 'no' || pair.lsp?.outcome === 'rejected';
+}
+
+/** The graph edge a pair belongs to (src/graph/build.ts): a test file stands for its entities. */
+function edgeKey(pair: Pair): string {
+  const from = pair.file.test ? `file:${pair.file.filePath}` : pair.source.id;
+  return JSON.stringify([pair.relation, from, pair.target.entity.id]);
+}
+
 /**
- * One edge per (test file, changed entity) (D2): keeps the most decided hit of each, preferring
- * the new side, and notes how many there were. The other hits stay visible in the diff.
+ * The old-side candidates a base-side server should decide (#66): those of edges with no
+ * new-side hit left, either because the new side has none (a removed call) or because every
+ * new-side hit was rejected. Elsewhere a new-side hit already carries the edge.
+ */
+function needOldSide(pairs: Pair[]): Pair[] {
+  const carried = new Set(
+    pairs.filter((p) => p.file.side === 'new' && !isRejected(p)).map(edgeKey),
+  );
+  return pairs.filter((p) => p.file.side === 'old' && isOpen(p) && !carried.has(edgeKey(p)));
+}
+
+/**
+ * Carries a new-side `lsp` rejection over to the matching old-side hit that no server decided
+ * (#66): the same source, target, relation, name and receiver, and the same position among the
+ * hits that share those, when both sides have equally many. The base tree usually has no
+ * installed dependencies, so a base-side server can rarely reject on its own, and otherwise the
+ * old-side twin of a rejected call keeps the edge `possible`. It only ever drops an edge: if the
+ * receiver's type changed between the sides, a real removed call is lost, and the detail names
+ * the new-side hit so the reviewer can see why.
+ */
+function carryOverRejections(pairs: Pair[]): void {
+  const groups = new Map<string, Record<Side, Pair[]>>();
+  for (const pair of pairs) {
+    if (pair.hit.chaining) continue;
+    const key = JSON.stringify([
+      pair.relation,
+      pair.source.id,
+      pair.target.entity.id,
+      pair.hit.name,
+      pair.hit.receiver,
+    ]);
+    const group = groups.get(key) ?? { old: [], new: [] };
+    group[pair.file.side].push(pair);
+    groups.set(key, group);
+  }
+  for (const { old, new: neu } of groups.values()) {
+    if (old.length !== neu.length) continue;
+    for (const [i, pair] of old.entries()) {
+      const twin = neu[i]!;
+      if (twin.lsp?.outcome !== 'rejected' || pair.lsp !== null || pair.imports !== null) continue;
+      pair.lsp = {
+        outcome: 'rejected',
+        detail:
+          `carried over from the new-side hit at ${twin.file.path}:${twin.hit.line}, which ` +
+          `the new-side server rejected (${twin.lsp.detail})`,
+      };
+    }
+  }
+}
+
+/**
+ * One edge per (test file, changed entity) (D2): keeps the most decided hit of each on each
+ * side, so the edge still shows whether the call was added, removed or kept, and notes how many
+ * there were. The other hits stay visible in the diff.
  */
 function collapseTestFiles(pairs: Pair[]): Pair[] {
   const groups = new Map<string, Pair[]>();
   for (const pair of pairs) {
     if (!pair.file.test) continue;
-    const key = JSON.stringify([pair.file.filePath, pair.target.entity.id]);
+    const key = JSON.stringify([pair.file.filePath, pair.target.entity.id, pair.file.side]);
     groups.set(key, [...(groups.get(key) ?? []), pair]);
   }
   const keep = new Set<Pair>();
   for (const group of groups.values()) {
     const best = group.reduce((a, b) => (rank(b) < rank(a) ? b : a));
-    const counts = (['new', 'old'] as const)
-      .map((side) => [side, group.filter((p) => p.file.side === side).length] as const)
-      .filter(([, n]) => n > 0);
     if (group.length > 1) {
-      const hits =
-        counts.length === 1
-          ? `${group.length} hits`
-          : counts.map(([side, n]) => `${n} ${side}-side`).join(' and ') + ' hits';
-      best.notes.push(`test file: one edge for ${hits}`);
+      best.notes.push(`test file: one hit for ${group.length} ${best.file.side}-side hits`);
     }
     keep.add(best);
   }
@@ -570,15 +661,13 @@ function collapseTestFiles(pairs: Pair[]): Pair[] {
 }
 
 function rank(pair: Pair): number {
-  const decided =
-    pair.lsp?.outcome === 'confirmed'
-      ? 0
-      : pair.imports?.verdict === 'yes'
-        ? 1
-        : pair.lsp?.outcome === 'rejected' || pair.imports?.verdict === 'no'
-          ? 3
-          : 2;
-  return decided * 2 + sideOrder(pair.file.side);
+  return pair.lsp?.outcome === 'confirmed'
+    ? 0
+    : pair.imports?.verdict === 'yes'
+      ? 1
+      : isRejected(pair)
+        ? 3
+        : 2;
 }
 
 /** Keeps the first `max` source entities per (target, relation) and reports the rest (D1). */
@@ -647,11 +736,16 @@ function records(pair: Pair): EvidenceRecord[] {
   return out;
 }
 
+function withSide(capabilities: SessionCapability[], side: Side): LanguageCapability[] {
+  return capabilities.map(({ language, ...rest }) => ({ language, side, ...rest }));
+}
+
 /** Capability without a language server: every relationship stays `possible` (D11). */
 function withoutServers(files: AnalyzedFile[]): LanguageCapability[] {
   const languages = [...new Set(files.flatMap((f) => (f.language === null ? [] : [f.language])))];
   return languages.map((language) => ({
     language,
+    side: 'new',
     server: null,
     status: 'disabled',
     capabilitiesAttempted: [],

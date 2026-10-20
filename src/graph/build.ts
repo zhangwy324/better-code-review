@@ -11,7 +11,8 @@
 // old-side hit is a removed call or reference); otherwise any
 // `rejected` record drops it; otherwise it is possible. Hits with the same relation, source and
 // target form one edge (callee → callers: `to` is the target), which is `verified` when any of
-// its hits is and cites the records of every hit it keeps. A source in a test file makes a
+// its hits is and cites the records of every hit it keeps. Its `sides` are those of the hits it
+// keeps, so a removed call is `old` (#66). A source in a test file makes a
 // `test-file` edge from that file instead (D2). Rejected hits make no edge and are not copied.
 // The builder only reports code relationships; it never adds propagation or causal links (D6).
 //
@@ -212,8 +213,16 @@ function edges(
     const from = testFile ?? nodeOfEntity.get(sourceEntityId)!.id;
     const id = stableId('e', [relation, from, to]);
     let edge = byEdge.get(id);
+    const side = hit[0]!.location.side;
     if (edge === undefined) {
-      const fields = { id, to, relation, provenance: 'possible' as const, evidenceIds: [] };
+      const fields = {
+        id,
+        to,
+        relation,
+        provenance: 'possible' as const,
+        sides: side,
+        evidenceIds: [],
+      };
       edge =
         testFile === null
           ? { ...fields, granularity: 'entity', from }
@@ -221,6 +230,7 @@ function edges(
       byEdge.set(id, edge);
     }
     if (verified) edge.provenance = 'verified';
+    if (edge.sides !== side) edge.sides = 'both';
     edge.evidenceIds.push(...hit.map((r) => r.id));
   }
 

@@ -167,6 +167,12 @@ describe('checkProjectPackages', () => {
     expect(checkProjectPackages(project())).toBeNull();
   });
 
+  it('distrusts a node_modules in a checkout without .git', () => {
+    rmSync(join(project(), '.git'), { recursive: true, force: true });
+    pkg('project/node_modules/typescript', 'typescript', '5.9.3', {});
+    expect(checkProjectPackages(project())).toBe('node_modules was checked out from Git');
+  });
+
   it('distrusts a node_modules that Git tracks', () => {
     pkg('project/node_modules/typescript', 'typescript', '5.9.3', {});
     git('add', '-f', 'node_modules/typescript/package.json');
@@ -184,10 +190,11 @@ describe('checkProjectPackages', () => {
 
   it('distrusts what it cannot check', () => {
     rmSync(join(project(), '.git'), { recursive: true });
+    write('project/.git', 'gitdir: nowhere\n');
     pkg('project/node_modules/typescript', 'typescript', '5.9.3', {});
-    const ceiling = { ...process.env, GIT_CEILING_DIRECTORIES: dir };
-    const result = withEnv(ceiling, () => checkProjectPackages(project()));
-    expect(result).toBe('could not check with Git whether node_modules is tracked');
+    expect(checkProjectPackages(project())).toBe(
+      'could not check with Git whether node_modules is tracked',
+    );
   });
 });
 
@@ -201,16 +208,6 @@ describe('safeSearchPath', () => {
     expect(safeSearchPath(path, root)).toBe(outside);
   });
 });
-
-function withEnv<T>(env: NodeJS.ProcessEnv, run: () => T): T {
-  const saved = process.env;
-  process.env = env;
-  try {
-    return run();
-  } finally {
-    process.env = saved;
-  }
-}
 
 describe('servers that run project code', () => {
   it('marks jdtls and rust-analyzer as needing the opt-in', () => {

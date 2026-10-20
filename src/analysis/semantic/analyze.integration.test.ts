@@ -3,7 +3,11 @@
 // them. Servers are found by lsp-servers.test-helper.ts: on PATH, or in the directories
 // listed in BCR_LSP_TEST_PATH (the first one with a server is used), e.g.
 //   BCR_LSP_TEST_PATH=/a/node_modules/.bin npx vitest run analyze.integration
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { checkoutRevision } from '../../git/checkout.ts';
 import { analyse, SIGNATURE_BASE, SIGNATURE_HEAD, summary } from './fixture.test-helper.ts';
 import { installedServers } from './lsp-servers.test-helper.ts';
 import { LspSession } from './session.ts';
@@ -20,17 +24,32 @@ for (const [language, label] of [
     it(
       'verifies the real callers and rejects the same-name collisions',
       async () => {
-        let session: LspSession | undefined;
+        const sessions: LspSession[] = [];
+        const baseDir = mkdtempSync(join(tmpdir(), 'bcr-base-'));
         try {
-          const result = await analyse(SIGNATURE_BASE, SIGNATURE_HEAD, async (repo) => {
-            session = await LspSession.start(repo.path, [language], {
-              searchPath: searchPath!,
-              timeouts,
-            });
-            return { lsp: session };
+          const result = await analyse(SIGNATURE_BASE, SIGNATURE_HEAD, async (repo, changes) => {
+            const start = async (root: string, languages: string[]) => {
+              const session = await LspSession.start(root, languages, {
+                searchPath: searchPath!,
+                timeouts,
+              });
+              sessions.push(session);
+              return session;
+            };
+            return {
+              lsp: await start(repo.path, [language]),
+              oldLsp: async (languages) => {
+                await checkoutRevision(repo.path, changes.baseRevision!, baseDir);
+                return start(baseDir, languages);
+              },
+            };
           });
           const lines = summary(result).filter((l) => l.startsWith('new '));
-          expect(result.evidence.languages).toMatchObject([{ language, status: 'ok' }]);
+          // The new side rejects the collision, so its old-side twin goes to a base-side server.
+          expect(result.evidence.languages).toMatchObject([
+            { language, side: 'new', status: 'ok' },
+            { language, side: 'old', status: 'ok' },
+          ]);
           if (language === 'typescript') {
             expect(lines.filter((l) => /->/.test(l) && /\.ts:/.test(l))).toEqual([
               'new calls checkoutSummary -> formatPrice @src/checkout.ts:4 text-search:candidate import-resolution:confirmed lsp:confirmed',
@@ -48,12 +67,22 @@ for (const [language, label] of [
               'new calls refund -> tax @refunds.py:5 text-search:candidate import-resolution:confirmed lsp:confirmed',
             ]);
           }
-          // Old-side candidates are never sent to the server, which only sees the new side.
-          expect(
-            result.evidence.records.filter((r) => r.method === 'lsp' && r.location.side === 'old'),
-          ).toEqual([]);
+          // Only the old-side twin of the rejected collision is asked about, and rejected too.
+          const old = summary(result).filter((l) => l.startsWith('old ') && l.includes('lsp:'));
+          expect(old).toEqual(
+            language === 'typescript'
+              ? [
+                  'old calls viaMethod -> formatPrice @src/fmt.ts:8 text-search:candidate lsp:rejected',
+                ]
+              : ['old calls use_calc -> tax @calc.py:7 text-search:candidate lsp:rejected'],
+          );
+          const detail = result.evidence.records.find(
+            (r) => r.method === 'lsp' && r.location.side === 'old',
+          )?.detail;
+          expect(detail).toBe('not among textDocument/references, and both files resolve');
         } finally {
-          await session?.close();
+          for (const session of sessions) await session.close();
+          rmSync(baseDir, { recursive: true, force: true });
         }
       },
       TIMEOUT,

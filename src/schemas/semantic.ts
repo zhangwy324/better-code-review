@@ -7,7 +7,7 @@
 // - "Not found" is not "unavailable": a server that failed or was not ready is reported in
 //   `languages`, and an empty answer from it is not a rejection (ADR 0001).
 import { z } from 'zod';
-import { CodeLocation, EntityId, EvidenceId, SnapshotId } from './common.ts';
+import { CodeLocation, EntityId, EvidenceId, Side, SnapshotId } from './common.ts';
 
 export const SEMANTIC_SCHEMA_VERSION = 1;
 
@@ -27,6 +27,11 @@ export const LspCapability = z.enum([
 /** Per-language semantic capability, shown in the artifact (D11). */
 export const LanguageCapability = z.strictObject({
   language: z.string().min(1),
+  /**
+   * The side whose files the server read: `new`, or `old` for a base-side session, which is only
+   * started when old-side candidates need it (#66). Each side has its own entry.
+   */
+  side: Side,
   /** The language server used, or null when none was. */
   server: z
     .strictObject({

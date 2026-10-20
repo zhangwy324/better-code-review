@@ -130,7 +130,7 @@ describe('graphViolations: crafted invalid graphs fail', () => {
     [
       'a test-file edge from an unknown file',
       (g) => {
-        const { id, to, relation, provenance, evidenceIds } = g.codeEdges[0]!;
+        const { id, to, relation, provenance, sides, evidenceIds } = g.codeEdges[0]!;
         const fromPath = 'nowhere.test.ts';
         g.codeEdges[0] = {
           id,
@@ -139,6 +139,7 @@ describe('graphViolations: crafted invalid graphs fail', () => {
           to,
           relation,
           provenance,
+          sides,
           evidenceIds,
         };
       },
@@ -175,6 +176,11 @@ describe('graphViolations: crafted invalid graphs fail', () => {
         }
       },
       /^edge e_\w+ is verified but cites no confirmed lsp evidence$/,
+    ],
+    [
+      'an edge whose sides are not those of its evidence',
+      (g) => (g.codeEdges[0]!.sides = g.codeEdges[0]!.sides === 'old' ? 'new' : 'old'),
+      /^edge e_\w+ is on the (old|new|both) side\(s\), but its evidence is on (old|new|both)$/,
     ],
     [
       'evidence no edge cites',
