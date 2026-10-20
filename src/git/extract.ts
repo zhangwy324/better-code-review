@@ -196,11 +196,15 @@ export const MAX_CONTENT_BYTES = 1024 * 1024;
 export const DEFAULT_RENAME_LIMIT = 1000;
 
 function diffSettings(options: ExtractOptions, attrSource: string | null): DiffSettings {
-  return {
-    maxContentBytes: options.maxContentBytes ?? MAX_CONTENT_BYTES,
-    renameLimit: options.renameLimit ?? DEFAULT_RENAME_LIMIT,
-    attrSource,
-  };
+  const { maxContentBytes = MAX_CONTENT_BYTES, renameLimit = DEFAULT_RENAME_LIMIT } = options;
+  if (!Number.isSafeInteger(maxContentBytes) || maxContentBytes < 0) {
+    throw new Error(`maxContentBytes must be a whole number of bytes, got ${maxContentBytes}`);
+  }
+  // Git gives 0 a special meaning of its own; ask for an explicit limit instead.
+  if (!Number.isSafeInteger(renameLimit) || renameLimit < 1) {
+    throw new Error(`renameLimit must be a positive whole number, got ${renameLimit}`);
+  }
+  return { maxContentBytes, renameLimit, attrSource };
 }
 
 /** Extracts the ChangeSet for a target in the repository at `repo`. */

@@ -490,6 +490,15 @@ describe('extractChangeSet: copies and the rename limit', () => {
     expect(skipped.snapshotId).not.toBe((await extract()).snapshotId);
     expect((await extract(DEFAULT_RENAME_LIMIT)).snapshotId).toBe((await extract()).snapshotId);
   });
+
+  it('rejects limits that are not whole numbers in range', async () => {
+    await expect(extract(0)).rejects.toThrow(/renameLimit must be a positive whole number/);
+    await expect(extract(1.5)).rejects.toThrow(/renameLimit/);
+    const target = { kind: 'commit', commit: head } as const;
+    await expect(extractChangeSet(repo.path, target, { maxContentBytes: -1 })).rejects.toThrow(
+      /maxContentBytes must be a whole number of bytes/,
+    );
+  });
 });
 
 describe('extractChangeSet: deletions, binary, non-UTF-8, huge and generated files', () => {
