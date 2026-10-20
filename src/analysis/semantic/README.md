@@ -157,7 +157,7 @@ pyright returned 4 of 37 references on click with no error, because `src/` was n
 | `maxUnresolvedImportShare` | `0` | Health threshold |
 | `searchPath` | `PATH` | Where to look for servers. Relative and in-repository entries are dropped without the opt-in |
 
-The CLI options that set these are not defined yet (#20).
+The CLI (`generate`, #20) starts no session with `--no-lsp` and sets `allowProjectCode` (`--allow-project-code`); the rest keep their defaults.
 
 ## Discovery and the exact commands run
 
