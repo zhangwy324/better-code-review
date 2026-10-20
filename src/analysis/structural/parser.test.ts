@@ -22,11 +22,13 @@ async function parsed(path: string, source: string): Promise<ParsedFile> {
   return result;
 }
 
-/** `kind name` per declaration, with ` [test]` for tests. */
+/** `kind name` per declaration, with ` [test]` for tests and ` [titled]` for title-named ones. */
 async function summary(path: string, source: string): Promise<string[]> {
   const file = await parsed(path, source);
   expect(file.hasErrors).toBe(false);
-  return declarations(file).map((d) => `${d.kind} ${d.name}${d.test ? ' [test]' : ''}`);
+  return declarations(file).map(
+    (d) => `${d.kind} ${d.name}${d.test ? ' [test]' : ''}${d.titled ? ' [titled]' : ''}`,
+  );
 }
 
 describe('StructuralParser', () => {
@@ -216,9 +218,9 @@ describe('Cart', () => {
       'class Cart',
       'constructor constructor',
       'method total',
-      'function Cart [test]',
-      'function totals [test]',
-      'function later [test]',
+      'function Cart [test] [titled]',
+      'function totals [test] [titled]',
+      'function later [test] [titled]',
     ]);
   });
 

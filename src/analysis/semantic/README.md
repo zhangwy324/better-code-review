@@ -35,7 +35,7 @@ await old?.close();
 
 **Scope (MVP spec D12).** Only hits inside other changed entities count: entities a hunk touches on either side. Unchanged callers are never searched for. Both sides are searched: old-side names in old-side content, so a removed call is found too. Files without structure (text-only, binary, too large, generated, unparseable) have no entities and are not searched. Hits only relate files of the same language family: TS/TSX/JS, Python, Java.
 
-**Targets.** Every changed entity with a name. Overloads are one entity (#15), so their candidates are shared. Constructors are searched by their class name, and only call sites count (#42): `new C(…)`, `C(…)`, not type annotations, `isinstance(x, C)` or imports. Constructor chaining is searched too: `super(…)` in direct subclasses (TS, Java), `this(…)` in the same class (Java), and `super().__init__(…)` in direct subclasses (Python). These were the only text-search misses in #42.
+**Targets.** Every changed entity with a name, except JS/TS test blocks, which are named by their title (`titled`, structural README); they are not counted as definitions either. Overloads are one entity (#15), so their candidates are shared. Constructors are searched by their class name, and only call sites count (#42): `new C(…)`, `C(…)`, not type annotations, `isinstance(x, C)` or imports. Constructor chaining is searched too: `super(…)` in direct subclasses (TS, Java), `this(…)` in the same class (Java), and `super().__init__(…)` in direct subclasses (Python). These were the only text-search misses in #42.
 
 ### The pipeline
 

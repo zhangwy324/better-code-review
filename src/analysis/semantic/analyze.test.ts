@@ -598,6 +598,30 @@ describe('analyzeSemantics: test files and caps', () => {
     ]);
   });
 
+  it('neither resolves to nor searches for a test block named like the code under test', async () => {
+    // describe('formatPrice') is an entity named formatPrice. Its title is no definition, so
+    // src/price.ts has the only one (the unambiguous rule), and the block is no target.
+    const test = (n: number) =>
+      lines(
+        "import { formatPrice } from '../src/price';",
+        "describe('formatPrice', () => {",
+        "  it('formats', () => {",
+        `    expect(formatPrice(${n})).toBe('1');`,
+        '  });',
+        '});',
+      );
+    const result = await analyse(
+      { 'src/price.ts': PRICE_BASE, 'test/price.test.ts': test(1) },
+      { 'src/price.ts': PRICE_HEAD, 'test/price.test.ts': test(2) },
+    );
+    expect(newSide(summary(result))).toEqual([
+      'new calls formatPrice.formats -> formatPrice @test/price.test.ts:4 text-search:candidate',
+    ]);
+    expect(result.evidence.records.map((r) => r.targetEntityId)).toEqual(
+      result.evidence.records.map(() => result.structure.entities[0]!.id),
+    );
+  });
+
   it('caps the candidates per changed entity and says so', async () => {
     const caller = (name: string, arg: string) =>
       lines(

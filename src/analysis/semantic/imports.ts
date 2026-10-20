@@ -33,7 +33,7 @@ export type Binding =
 /** The import-relevant facts of one file side. Plain data: the tree can be freed. */
 export interface ModuleInfo {
   family: Family;
-  /** Names of top-level entities (functions, classes, …): definitions in this file. */
+  /** Names of top-level entities (functions, classes, …; not test titles): its definitions. */
   definitions: Set<string>;
   /** Other top-level names (variables): what they hold is not known. */
   variables: Set<string>;
@@ -81,7 +81,9 @@ export function moduleInfo(file: ParsedFile, entities: Entity[]): ModuleInfo {
   const root = file.tree.rootNode;
   const info: ModuleInfo = {
     family,
-    definitions: new Set(entities.filter((e) => e.container === null).map((e) => e.name)),
+    definitions: new Set(
+      entities.filter((e) => e.container === null && !e.titled).map((e) => e.name),
+    ),
     variables: new Set(),
     bindings: new Map(),
     exports: new Map(),

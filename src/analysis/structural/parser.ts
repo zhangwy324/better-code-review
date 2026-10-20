@@ -54,6 +54,8 @@ export interface Declaration {
    * `function` and the block title as name.
    */
   test: boolean;
+  /** Named by a title string rather than an identifier (JS/TS test blocks), so never referenced. */
+  titled: boolean;
   /** The declaration node, without leading comments or (Python, TS class members) decorators. */
   range: SourceRange;
   nameRange: SourceRange;
@@ -136,9 +138,11 @@ export function declarations(file: ParsedFile): Declaration[] {
     if (!definition || !nameNode) continue;
     const key = `${definition.node.id}:${nameNode.id}`;
     const test = match.setProperties?.['test'] === 'true';
+    const titled = match.setProperties?.['titled'] === 'true';
     const existing = byKey.get(key);
     if (existing && existing.pattern <= match.patternIndex) {
       existing.declaration.test ||= test;
+      existing.declaration.titled ||= titled;
       continue;
     }
     byKey.set(key, {
@@ -147,6 +151,7 @@ export function declarations(file: ParsedFile): Declaration[] {
         kind: definition.name.slice('definition.'.length) as DeclarationKind,
         name: nameNode.text,
         test: test || (existing?.declaration.test ?? false),
+        titled: titled || (existing?.declaration.titled ?? false),
         range: toRange(definition.node),
         nameRange: toRange(nameNode),
         node: definition.node,

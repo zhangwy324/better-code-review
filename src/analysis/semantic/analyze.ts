@@ -223,6 +223,8 @@ async function prepare(
           const facts = entities.find((e) => e.kind === entity.kind && sameRange(e.range, range));
           if (!facts) continue;
           file.changed.set(facts, entity);
+          // A test block's title is no name to search for; it is still a source.
+          if (facts.titled) continue;
           const target = targets.get(entity.id) ?? {
             entity,
             order: structure.entities.indexOf(entity),
@@ -499,7 +501,7 @@ class DefinitionCounter {
           freeTrees(parsed);
         }
       }
-      count += entities.filter((e) => e.name === name).length;
+      count += entities.filter((e) => e.name === name && !e.titled).length;
     }
     return count;
   }

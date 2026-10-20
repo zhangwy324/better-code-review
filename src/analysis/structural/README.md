@@ -42,6 +42,7 @@ The `.wasm` grammars are **vendored** in `grammars/`, copied from the official `
 - `@definition.<kind>` captures the declaration node. Kinds: `function`, `method`, `constructor`, `class`, `interface`, `enum`, `namespace` (TS `namespace` and `module` blocks; a container like a class), `type`, `import`.
 - `@name` captures its name. For imports it is the module specifier.
 - `(#set! test "true")` marks a test: JS/TS `describe`/`it`/`test` blocks (kind `function`, named by their title), pytest `test*` functions and methods and `Test*` classes, and JUnit `@Test`-style methods. This is a per-declaration hint; deciding whether a *file* is a test file is #15's job (MVP spec D2).
+- `(#set! titled "true")` marks a declaration named by a title string rather than an identifier (JS/TS test blocks). Nothing can call or reference it, so the semantic analyzer neither counts it as a definition nor searches for it; it is still an entity.
 - Captures starting with `_` are helpers and are ignored.
 - When several patterns capture the same declaration and name, the **earliest pattern sets the kind** and any of them can mark it as a test. So specific patterns (constructors) go before general ones (methods).
 - TypeScript and TSX run `javascript.scm` followed by `typescript.scm`, so `javascript.scm` may only use node types that exist in all three grammars. JavaScript-only node types (class `field_definition`) go in `javascript-only.scm`.
