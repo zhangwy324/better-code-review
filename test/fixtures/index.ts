@@ -5,6 +5,7 @@ import type { Fixture } from './fixture.ts';
 import { independentRoots } from './independent-roots.ts';
 import { interfaceImpl } from './interface-impl.ts';
 import { largeGenerated } from './large-generated.ts';
+import { overrideDispatch, overrideDispatchPython } from './override-dispatch.ts';
 import { removedCalls } from './removed-calls.ts';
 import { renameMove } from './rename-move.ts';
 import { sameName } from './same-name.ts';
@@ -23,6 +24,8 @@ export const FIXTURES: readonly Fixture[] = [
   independentRoots,
   featureFlow,
   interfaceImpl,
+  overrideDispatch,
+  overrideDispatchPython,
   sameName,
   testsAndConfig,
   dynamicCalls,

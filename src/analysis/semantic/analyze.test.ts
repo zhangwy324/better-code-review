@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ReferencesResult, ReferenceTarget } from './session.ts';
+import type { ReferenceSite, ReferencesResult, ReferenceTarget } from './session.ts';
 import type { ReferenceProvider } from './analyze.ts';
 import {
   analyse,
@@ -675,7 +675,7 @@ describe('analyzeSemantics: language server answers', () => {
     range: { startLine: line, startColumn: column, endLine: line, endColumn: column + 11 },
     via: 'direct' as const,
   });
-  const ok = (...references: ReturnType<typeof site>[]): ReferencesResult => ({
+  const ok = (...references: ReferenceSite[]): ReferencesResult => ({
     status: 'ok',
     references,
     unresolved: [],
@@ -783,13 +783,112 @@ describe('analyzeSemantics: language server answers', () => {
       { lsp: overrideLsp },
     );
     // Its receivers are filtered by type, so a sibling's calls are not confirmed (#21).
+    // Calls through Shape are found by asking about Shape.area too (#81).
     expect(overrideLsp.asked).toContainEqual(
-      expect.objectContaining({ kind: 'method', receiverTypes: ['Square', 'Shape'] }),
+      expect.objectContaining({
+        kind: 'method',
+        receiverTypes: ['Square', 'Shape'],
+        baseMethods: [{ path: 'src/shapes.ts', line: 2, column: 3 }],
+      }),
     );
     // Square.area may be reached through Shape: its own references miss that call (#42).
     expect(newSide(summary(override))).toEqual([
       'new calls total -> Square.area @src/shapes.ts:8 text-search:candidate',
     ]);
+  });
+
+  it('passes the overridden base methods it finds in the snapshot (#81)', async () => {
+    const lsp = fakeLsp((t) =>
+      t.path === 'src/square.ts' && t.line === 6
+        ? ok({ ...site('src/report.ts', 4, 12), via: 'base-method' as const })
+        : ok(),
+    );
+    const shape = lines(
+      'export interface Named {',
+      '  name(): string;',
+      '}',
+      'export class Shape {',
+      '  area(): number { return 0; }',
+      "  name(): string { return 'shape'; }",
+      '}',
+    );
+    const square = (n: number) =>
+      lines(
+        "import { Shape, type Named } from './shape.ts';",
+        "import { Base } from 'some-package';",
+        '',
+        'export class Square extends Shape implements Named, Base {',
+        '  side = 1;',
+        `  area(): number { return ${n}; }`,
+        `  name(): string { return 'square ${n}'; }`,
+        '}',
+      );
+    const report = (n: number) =>
+      lines(
+        "import type { Shape } from './shape.ts';",
+        '',
+        'export function total(s: Shape) {',
+        `  return s.area() + s.name() + ${n};`,
+        '}',
+      );
+    const result = await analyse(
+      { 'src/shape.ts': shape, 'src/square.ts': square(1), 'src/report.ts': report(1) },
+      { 'src/shape.ts': shape, 'src/square.ts': square(2), 'src/report.ts': report(2) },
+      { lsp },
+    );
+    const asked = (line: number) =>
+      lsp.asked.find((t) => t.path === 'src/square.ts' && t.line === line);
+    // Through an import, in another file. `Base` comes from a package, outside the snapshot.
+    expect(asked(6)).toMatchObject({
+      receiverTypes: ['Square', 'Shape', 'Named', 'Base'],
+      baseMethods: [{ path: 'src/shape.ts', line: 5, column: 3 }],
+    });
+    // A base class and an interface that both declare it.
+    expect(asked(7)?.baseMethods).toEqual([
+      { path: 'src/shape.ts', line: 6, column: 3 },
+      { path: 'src/shape.ts', line: 2, column: 3 },
+    ]);
+    expect(newSide(summary(result))).toContain(
+      'new calls total -> Square.area @src/report.ts:4 text-search:candidate lsp:confirmed',
+    );
+  });
+
+  it('passes a Python base method, and none when no base declares one (#81)', async () => {
+    const lsp = fakeLsp(() => ok());
+    const account = lines('class Account:', '    def interest(self):', '        return 0');
+    const savings = (n: number) =>
+      lines(
+        'from account import Account',
+        '',
+        '',
+        'class Savings(Account):',
+        '    def interest(self):',
+        `        return ${n}`,
+        '',
+        '    def bonus(self):',
+        `        return ${n}`,
+      );
+    const report = (n: number) =>
+      lines(
+        'from account import Account',
+        '',
+        '',
+        'def total(a: Account):',
+        `    return a.interest() + a.bonus() + ${n}`,
+      );
+    await analyse(
+      { 'account.py': account, 'savings.py': savings(1), 'report.py': report(1) },
+      { 'account.py': account, 'savings.py': savings(2), 'report.py': report(2) },
+      { lsp },
+    );
+    const asked = (line: number) =>
+      lsp.asked.find((t) => t.path === 'savings.py' && t.line === line);
+    expect(asked(5)).toMatchObject({
+      receiverTypes: ['Savings', 'Account'],
+      baseMethods: [{ path: 'account.py', line: 2, column: 9 }],
+    });
+    expect(asked(8)).toMatchObject({ receiverTypes: ['Savings', 'Account'] });
+    expect(asked(8)).not.toHaveProperty('baseMethods');
   });
 
   it('asks a base-side server only about old-side hits no new-side hit stands for (#66)', async () => {
