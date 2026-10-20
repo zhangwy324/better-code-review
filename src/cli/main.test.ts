@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -8,8 +8,9 @@ import {
   SIGNATURE_HEAD,
 } from '../analysis/semantic/fixture.test-helper.ts';
 import { buildGraph } from '../graph/build.ts';
-import { PLAN_SCHEMA_VERSION, type ReviewPlan } from '../schemas/plan.ts';
-import { EXIT, parseRange, run, version } from './main.ts';
+import { fallbackPlan } from '../planner/index.ts';
+import { PLAN_SCHEMA_VERSION, ReviewPlan } from '../schemas/plan.ts';
+import { EXIT, parseRange, REJECTED_PLAN_REASON, run, version } from './main.ts';
 
 async function cli(...argv: string[]) {
   let stdout = '';
@@ -152,5 +153,38 @@ describe('validate', () => {
     const result = await cli('validate');
     expect(result.exitCode).toBe(EXIT.usage);
     expect(result.stderr).toContain('validate needs --dir');
+  });
+});
+
+describe('fallback', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'bcr-fallback-'));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('replaces plan.json with a valid fallback plan from graph.json', async () => {
+    const { changes, structure, evidence } = await analyse(SIGNATURE_BASE, SIGNATURE_HEAD);
+    const graph = buildGraph(changes, { structure, evidence });
+    writeFileSync(join(dir, 'changes.json'), JSON.stringify(changes));
+    writeFileSync(join(dir, 'graph.json'), JSON.stringify(graph));
+    writeFileSync(join(dir, 'plan.json'), '{ "an agent plan": "that failed" }');
+
+    const result = await cli('fallback', '--dir', dir);
+    expect(result.exitCode).toBe(EXIT.ok);
+    expect(result.stdout).toContain('Fallback plan written to');
+    const plan = ReviewPlan.parse(JSON.parse(readFileSync(join(dir, 'plan.json'), 'utf8')));
+    expect(plan).toEqual(fallbackPlan(graph, REJECTED_PLAN_REASON));
+    expect(plan.origin).toBe('fallback');
+
+    const check = await cli('validate', '--dir', dir);
+    expect(check.exitCode).toBe(EXIT.ok);
+    expect(JSON.parse(check.stdout)).toEqual({ valid: true, ungroupedNodeIds: [] });
+  });
+
+  it('needs --dir and an existing review', async () => {
+    const usage = await cli('fallback');
+    expect(usage.exitCode).toBe(EXIT.usage);
+    expect(usage.stderr).toContain('fallback needs --dir');
+    const missing = await cli('fallback', '--dir', join(dir, 'nope'));
+    expect(missing.exitCode).toBe(EXIT.failed);
+    expect(missing.stderr).toContain('graph.json');
   });
 });

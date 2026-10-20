@@ -18,7 +18,7 @@ Tell the user this the first time you run the skill in a session, in a sentence 
 | Git snapshot and diff extraction (`generate`) | `planner-input.md`, which you read |
 | Structural analysis (tree-sitter) and the change graph | The output of every `show` you run |
 | Installed language servers, if any. A server that runs project code (jdtls with Gradle, for example) starts only with `--allow-project-code` | The user's request and requirement, from this conversation |
-| `show` and `validate` | The `plan.json` you write and the `validate` output |
+| `show`, `validate` and `fallback` | The `plan.json` you write and the `validate` output |
 
 - `--pr` targets call GitHub through `gh` to resolve the pull request. Nothing else leaves the machine except what the model reads.
 - `planner-input.md` and `show` withhold likely secret files (`.env`, keys) and redact high-confidence tokens. That is best effort.
@@ -52,7 +52,7 @@ Run the command. Progress goes to stderr. stdout ends with the capability summar
 - Exit code 2 is a usage error: fix the command. Exit code 1 means the run failed (Git, `gh`, the repository). Report the message and stop.
 - Pass on the summary's language-server lines when a server is missing. Those relationships are only `possible`, and the summary says how to verify them.
 - `--no-lsp` skips language servers. Use it only when the user asks or servers fail to start.
-- With the fallback planner (#24), `generate` also writes a deterministic no-AI `plan.json`, and the summary has a `Plan      fallback, …` line. You overwrite that file in step 3. Every run of `generate` rewrites `plan.json`, so don't run it again once you have written your plan.
+- `generate` also writes `plan.json`, a deterministic plan made without AI; the summary's `Plan      fallback, …` line describes it. You replace it in step 3. Every run of `generate` rewrites `plan.json`, so don't run it again once you have written your plan.
 
 ## 3. Plan
 
@@ -78,7 +78,7 @@ better-code-review validate --dir <dir>
 
 - Exit 0 prints `{"valid": true, "ungroupedNodeIds": [...]}`. If any nodes are listed, place them or confirm they belong in Ungrouped.
 - Exit 1 prints `{"valid": false, "errors": [{"path", "code", "message"}]}`. `path` is a JSON Pointer into `plan.json`. Fix every error, rewrite the file, and validate again.
-- **At most 3 repair rounds.** If the plan is still invalid, stop and show the user the remaining errors. With the fallback planner (#24), restore a valid plan: move yours to `<dir>/plan.rejected.json`, rerun the same `generate` command (it writes the fallback `plan.json` again), and say the review uses the fallback plan. Without it, leave your `plan.json` in place.
+- **At most 3 repair rounds.** If the plan is still invalid, move it to `<dir>/plan.rejected.json` and run `better-code-review fallback --dir <dir>`, which writes the deterministic plan back to `plan.json`. Tell the user the review uses the fallback plan, and show them the remaining errors.
 
 The error codes and their usual fixes are in [references/analysis-workflow.md](references/analysis-workflow.md#repairing-validation-errors).
 
