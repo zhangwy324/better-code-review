@@ -50,7 +50,7 @@ export const FileChange = z.strictObject({
   /** Null on the side where the file does not exist, or when `contentOmitted` is set. */
   oldContent: z.string().nullable(),
   newContent: z.string().nullable(),
-  /** Why content was not captured: binary, or over the size cap (#13). */
+  /** Why content was not captured: binary, or either side over the size cap (1 MiB, #13). */
   contentOmitted: z.enum(['binary', 'too-large']).nullable(),
   /** In diff order. Empty for binary, mode-only and pure-rename changes. */
   hunks: z.array(DiffHunk),

@@ -3,9 +3,26 @@
 // written to changes.json. A `local` head is the working tree captured as a tree object
 // (local.ts). A `pr` is looked up with the GitHub CLI and diffed as a merge-base range (pr.ts).
 //
-// Out of scope here and owned by #13: rename and copy detection (renames show as a delete plus an
-// add), the content size cap, non-UTF-8 text, and richer handling of type changes and
-// submodules. Those cases must not crash or lose hunks, and the tests check that they don't.
+// Edge cases (#13, §8.2). Whatever the case, every hunk Git prints is kept.
+// - Renames: detected at Git's default 50% similarity, pinned in DIFF_OPTIONS, as `renamed` with
+//   both paths and both contents. Less similar pairs stay a deletion plus an addition. Copies are
+//   not detected, so a copy is an addition and `copied` is never produced.
+// - Deletions: `deleted`, with `newPath` null and the full old content.
+// - Binary files: listed with `binary` set, no content and no hunks. Binary is Git's own test
+//   (a NUL in the first 8000 bytes, or a `binary`/`-diff` attribute when Git prints the diff).
+// - Size cap: when either side's blob is over `maxContentBytes` (MAX_CONTENT_BYTES, 1 MiB),
+//   neither side's content is stored and `contentOmitted` is `too-large` (D7); hunks are kept.
+// - Generated files are stored like any other file. The structural analyzer marks them
+//   (`skipped: 'generated'`), as it needs their content to recognise them.
+// - Symlinks are never followed: their content is the link target, as Git stores it, and a
+//   file that becomes a symlink is `type-changed`. Submodules have no content.
+// - Merge commits: a `commit` target diffs against one parent, the first unless `parent` says
+//   otherwise, never a combined diff. `range` and `pr` targets use the single merge base and
+//   refuse several (criss-cross merges).
+// - Shallow clones and missing history fail with a message that says to fetch more history,
+//   rather than diff against an empty tree: a commit at the shallow boundary, or a merge base
+//   that is not in the clone.
+// Not handled: non-UTF-8 text is decoded as UTF-8, so its content and patch text are lossy.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -39,7 +56,10 @@ export interface ResolvedRevisions {
  */
 const DIFF_CONFIG = ['-c', 'diff.suppressBlankEmpty=false', '-c', 'core.quotePath=true'];
 const DIFF_OPTIONS = [
-  '--no-renames',
+  // Git's default similarity, and its default limit on the files compared for inexact renames.
+  // Copies are not detected: a copy is an added file.
+  '--find-renames=50%',
+  '-l1000',
   '--no-ext-diff',
   '--no-textconv',
   '--no-color',
@@ -53,8 +73,8 @@ const DIFF_OPTIONS = [
   '--diff-algorithm=myers',
   '--indent-heuristic',
 ];
-const SNAPSHOT_FORMAT = 'git-revisions/1';
-const LOCAL_SNAPSHOT_FORMAT = 'git-local/1';
+const SNAPSHOT_FORMAT = 'git-revisions/2';
+const LOCAL_SNAPSHOT_FORMAT = 'git-local/2';
 
 /** Resolves a target to the two commits it compares. */
 export async function resolveRevisions(
@@ -137,7 +157,15 @@ export interface ExtractOptions {
   beforeRecapture?: () => void | Promise<void>;
   /** Test hook: runs the GitHub CLI for a `pr` target. Defaults to the real `gh`. */
   gh?: GhRunner;
+  /** Content size cap per side, in bytes. Defaults to MAX_CONTENT_BYTES. */
+  maxContentBytes?: number;
 }
+
+/**
+ * Files with a side over this size are stored without content (D7). It matches the structural
+ * analyzer's parse cap (MAX_PARSE_BYTES), above which content would only be shown, not analysed.
+ */
+export const MAX_CONTENT_BYTES = 1024 * 1024;
 
 /** Extracts the ChangeSet for a target in the repository at `repo`. */
 export async function extractChangeSet(
@@ -171,7 +199,7 @@ export async function extractChangeSet(
     target,
     baseRevision: base,
     headRevision: head,
-    files: await diffFiles(repo, base, head),
+    files: await diffFiles(repo, base, head, options.maxContentBytes),
     excludedUntrackedPaths: [],
     pullRequest,
   });
@@ -189,7 +217,7 @@ async function extractLocal(
   options: ExtractOptions,
 ): Promise<ChangeSet> {
   const snapshot = await captureWorkingTree(repo, target.includeUntracked);
-  const files = await diffFiles(repo, snapshot.head, snapshot.tree);
+  const files = await diffFiles(repo, snapshot.head, snapshot.tree, options.maxContentBytes);
   await options.beforeRecapture?.();
   assertSameSnapshot(snapshot, await captureWorkingTree(repo, target.includeUntracked));
 
@@ -208,7 +236,12 @@ async function extractLocal(
 }
 
 /** Diffs two tree-ish objects; a null base is the empty tree. */
-async function diffFiles(repo: string, base: string | null, head: string): Promise<FileChange[]> {
+async function diffFiles(
+  repo: string,
+  base: string | null,
+  head: string,
+  maxContentBytes = MAX_CONTENT_BYTES,
+): Promise<FileChange[]> {
   const baseTree = base ?? (await gitLine(repo, ['hash-object', '-t', 'tree', '--stdin'], ''));
   const range = [baseTree, head];
 
@@ -230,20 +263,22 @@ async function diffFiles(repo: string, base: string | null, head: string): Promi
   if (separator === -1 && out.length > 0) throw new Error('Unexpected git diff output');
 
   const entries = parseRaw(raw);
-  const sections = groupByPath(parsePatch(patch));
+  const sections = groupByPaths(parsePatch(patch));
   const changes = entries.map((entry) => {
-    const fileSections = sections.get(entry.path);
-    if (fileSections === undefined) throw new Error(`git diff printed no patch for ${entry.path}`);
-    sections.delete(entry.path);
+    const key = pathsKey(entry.oldPath, entry.newPath);
+    const fileSections = sections.get(key);
+    if (fileSections === undefined) {
+      throw new Error(`git diff printed no patch for ${entry.newPath}`);
+    }
+    sections.delete(key);
     return { entry, file: toFileChange(entry, fileSections) };
   });
   if (sections.size > 0) {
-    throw new Error(
-      `git diff printed patches for unlisted paths: ${[...sections.keys()].join(', ')}`,
-    );
+    const paths = [...sections.values()].map(([s]) => s?.newPath);
+    throw new Error(`git diff printed patches for unlisted paths: ${paths.join(', ')}`);
   }
 
-  await fillContents(repo, changes);
+  await fillContents(repo, changes, maxContentBytes);
   const files = changes.map((c) => c.file);
   files.sort((a, b) => comparePaths(a.newPath ?? a.oldPath ?? '', b.newPath ?? b.oldPath ?? ''));
   return files;
@@ -261,49 +296,67 @@ async function isShallowBoundary(repo: string, commit: string): Promise<boolean>
 }
 
 interface RawEntry {
+  /** The status letter, without a rename's similarity score. */
   status: string;
-  path: string;
+  /** Equal to `newPath` unless the file was renamed. */
+  oldPath: string;
+  newPath: string;
   oldMode: string;
   newMode: string;
   oldOid: string;
   newOid: string;
 }
 
-/** Parses `git diff --raw -z`: `:<old mode> <new mode> <old oid> <new oid> <status>\0<path>\0`. */
+/**
+ * Parses `git diff --raw -z`: `:<old mode> <new mode> <old oid> <new oid> <status>\0<path>\0`,
+ * where a rename's status is `R<score>` and it has two paths, old then new.
+ */
 function parseRaw(raw: string): RawEntry[] {
   const fields = raw.split('\0');
   const entries: RawEntry[] = [];
-  for (let i = 0; i + 1 < fields.length; i += 2) {
-    const [oldMode, newMode, oldOid, newOid, status] = (fields[i] ?? '').slice(1).split(' ');
-    const path = fields[i + 1];
-    if (!oldMode || !newMode || !oldOid || !newOid || !status || !path) {
-      throw new Error(`Unexpected git diff --raw output: ${JSON.stringify(fields[i])}`);
+  let i = 0;
+  while (i + 1 < fields.length) {
+    const meta = fields[i++] ?? '';
+    const [oldMode, newMode, oldOid, newOid, score] = meta.slice(1).split(' ');
+    const status = score?.[0];
+    const oldPath = fields[i++];
+    const newPath = status === 'R' ? fields[i++] : oldPath;
+    if (!oldMode || !newMode || !oldOid || !newOid || !status || !oldPath || !newPath) {
+      throw new Error(`Unexpected git diff --raw output: ${JSON.stringify(meta)}`);
     }
-    entries.push({ status, path, oldMode, newMode, oldOid, newOid });
+    entries.push({ status, oldPath, newPath, oldMode, newMode, oldOid, newOid });
   }
   return entries;
 }
 
-function groupByPath(sections: PatchSection[]): Map<string, PatchSection[]> {
-  const byPath = new Map<string, PatchSection[]>();
-  for (const s of sections) byPath.set(s.path, [...(byPath.get(s.path) ?? []), s]);
-  return byPath;
+function pathsKey(oldPath: string, newPath: string): string {
+  return `${oldPath}\0${newPath}`;
+}
+
+function groupByPaths(sections: PatchSection[]): Map<string, PatchSection[]> {
+  const byPaths = new Map<string, PatchSection[]>();
+  for (const s of sections) {
+    const key = pathsKey(s.oldPath, s.newPath);
+    byPaths.set(key, [...(byPaths.get(key) ?? []), s]);
+  }
+  return byPaths;
 }
 
 const STATUS: Record<string, FileChange['status']> = {
   A: 'added',
   M: 'modified',
   D: 'deleted',
+  R: 'renamed',
   T: 'type-changed',
 };
 
 function toFileChange(entry: RawEntry, sections: PatchSection[]): FileChange {
   const status = STATUS[entry.status];
   if (status === undefined) {
-    throw new Error(`Unsupported diff status ${entry.status} for ${entry.path}`);
+    throw new Error(`Unsupported diff status ${entry.status} for ${entry.newPath}`);
   }
-  const oldPath = status === 'added' ? null : entry.path;
-  const newPath = status === 'deleted' ? null : entry.path;
+  const oldPath = status === 'added' ? null : entry.oldPath;
+  const newPath = status === 'deleted' ? null : entry.newPath;
   const binary = sections.some((s) => s.binary);
   return {
     status,
@@ -325,48 +378,87 @@ function toFileChange(entry: RawEntry, sections: PatchSection[]): FileChange {
   };
 }
 
-/** Reads the old and new blob of every text file in one `git cat-file --batch`. */
-async function fillContents(repo: string, changes: { entry: RawEntry; file: FileChange }[]) {
-  // Gitlinks (submodules) name a commit in another repository: there is no blob to read.
-  const wanted = (file: FileChange, mode: string | null) =>
-    !file.binary && mode !== null && mode !== GITLINK_MODE;
+/** Git's own test for binary content: a NUL byte in the first 8000 bytes. */
+const BINARY_SNIFF_BYTES = 8000;
 
-  const oids = new Set<string>();
-  for (const { entry, file } of changes) {
-    if (wanted(file, file.oldMode)) oids.add(entry.oldOid);
-    if (wanted(file, file.newMode)) oids.add(entry.newOid);
-  }
-  if (oids.size === 0) return;
+/**
+ * Reads the old and new blob of every text file under the size cap. Sizes come first from one
+ * `git cat-file --batch-check`, so blobs over the cap are never loaded, then the contents from
+ * one `git cat-file --batch`.
+ */
+async function fillContents(
+  repo: string,
+  changes: { entry: RawEntry; file: FileChange }[],
+  maxContentBytes: number,
+) {
+  // The blobs on the sides where the file exists. Gitlinks (submodules) name a commit in another
+  // repository: there is no blob to read.
+  const sides = ({ entry, file }: (typeof changes)[number]) =>
+    [
+      { oid: entry.oldOid, mode: file.oldMode, set: (c: string) => (file.oldContent = c) },
+      { oid: entry.newOid, mode: file.newMode, set: (c: string) => (file.newContent = c) },
+    ].filter((s) => s.mode !== null && s.mode !== GITLINK_MODE);
+  const text = changes.filter((c) => !c.file.binary && sides(c).length > 0);
+  if (text.length === 0) return;
 
-  const blobs = parseCatFileBatch(
-    await runGit(repo, ['cat-file', '--batch'], [...oids].map((o) => `${o}\n`).join('')),
-  );
-  const blob = (oid: string) => {
-    const content = blobs.get(oid);
-    if (content === undefined) throw new Error(`git cat-file did not return blob ${oid}`);
-    return content;
-  };
-  for (const { entry, file } of changes) {
-    if (wanted(file, file.oldMode)) file.oldContent = blob(entry.oldOid);
-    if (wanted(file, file.newMode)) file.newContent = blob(entry.newOid);
+  const sizes = parseCatFile(await catFile(repo, '--batch-check', text.flatMap(sides)), false);
+  const toRead = text.filter((c) => {
+    const tooLarge = sides(c).some((s) => blobOf(sizes, s.oid).size > maxContentBytes);
+    if (tooLarge) c.file.contentOmitted = 'too-large';
+    return !tooLarge;
+  });
+  if (toRead.length === 0) return;
+
+  const blobs = parseCatFile(await catFile(repo, '--batch', toRead.flatMap(sides)), true);
+  for (const change of toRead) {
+    const contents = sides(change).map((s) => blobOf(blobs, s.oid).content);
+    // Git found no binary hunk to print for a pure rename or a mode-only change, so apply its
+    // test here too: such a file must not be read as text.
+    if (contents.some((c) => c.subarray(0, BINARY_SNIFF_BYTES).includes(0))) {
+      change.file.binary = true;
+      change.file.contentOmitted = 'binary';
+      continue;
+    }
+    sides(change).forEach((s, i) => s.set(contents[i]?.toString('utf8') ?? ''));
   }
 }
 
-/** Parses `git cat-file --batch` output: `<oid> <type> <size>\n<content>\n` per object. */
-function parseCatFileBatch(out: Buffer): Map<string, string> {
-  const blobs = new Map<string, string>();
+function catFile(repo: string, mode: string, blobs: { oid: string }[]): Promise<Buffer> {
+  const oids = new Set(blobs.map((b) => b.oid));
+  return runGit(repo, ['cat-file', mode], [...oids].map((o) => `${o}\n`).join(''));
+}
+
+interface Blob {
+  size: number;
+  /** Empty when only sizes were read. */
+  content: Buffer;
+}
+
+function blobOf(blobs: Map<string, Blob>, oid: string): Blob {
+  const blob = blobs.get(oid);
+  if (blob === undefined) throw new Error(`git cat-file did not return blob ${oid}`);
+  return blob;
+}
+
+/**
+ * Parses `git cat-file --batch-check` (`<oid> <type> <size>\n` per object) or, `withContent`,
+ * `--batch` output, which follows each header with `<content>\n`.
+ */
+function parseCatFile(out: Buffer, withContent: boolean): Map<string, Blob> {
+  const blobs = new Map<string, Blob>();
   let pos = 0;
   while (pos < out.length) {
     const eol = out.indexOf(0x0a, pos);
     const header = out.subarray(pos, eol).toString('utf8');
-    const [oid, type, size] = header.split(' ');
-    if (!oid || type !== 'blob' || size === undefined) {
+    const [oid, type, sizeField] = header.split(' ');
+    if (!oid || type !== 'blob' || sizeField === undefined) {
       throw new Error(`Unexpected git cat-file output: ${header}`);
     }
-    const start = eol + 1;
-    const end = start + Number(size);
-    blobs.set(oid, out.subarray(start, end).toString('utf8'));
-    pos = end + 1;
+    const size = Number(sizeField);
+    pos = eol + 1;
+    const content = withContent ? out.subarray(pos, pos + size) : Buffer.alloc(0);
+    if (withContent) pos += size + 1;
+    blobs.set(oid, { size, content });
   }
   return blobs;
 }

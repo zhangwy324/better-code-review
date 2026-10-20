@@ -93,7 +93,7 @@ From §17.1, except item 5 (narrowed by D12). A reviewer can do all of the follo
 ### D7. Snapshot storage and packaging (§19.4 Q5, Q12)
 
 - **`changes.json` stores the full old and new content of each changed text file**, so the reading panel can expand context and the analyzers see both sides.
-  - Binary files and files above the size cap store metadata and hunks only, and are flagged. #13 sets the cap. ADR 0001 shows that very large files must be capped for memory.
+  - Binary files and files above the size cap store metadata and hunks only, and are flagged. #13 sets the cap at 1 MiB per side, the structural analyzer's parse cap. ADR 0001 shows that very large files must be capped for memory.
 - **The primary output is one self-contained `review.html`.** It embeds the viewer bundle, its third-party notices (ADR 0002) and the JSON data as inert `<script type="application/json">` blocks. It makes no network requests.
 - `changes.json`, `graph.json` and `plan.json` are written next to it for the agent and for debugging.
 - A local server is deferred (§12.1 Option B).

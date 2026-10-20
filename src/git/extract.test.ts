@@ -53,6 +53,28 @@ function buildSignatureRepo() {
   return { repo, base, head };
 }
 
+/** Every hunk `git diff` prints is in the ChangeSet, byte for byte, under the right file. */
+function expectGitHunks(repo: TestRepo, base: string, head: string, changes: ChangeSet) {
+  const fullDiff = repo.git('diff', '-M', base, head);
+  const hunkCount = changes.files.reduce((n, f) => n + f.hunks.length, 0);
+  expect(hunkCount).toBe(fullDiff.match(/^@@ /gm)?.length ?? 0);
+
+  for (const file of changes.files) {
+    // Both of a rename's paths, so that Git still pairs them.
+    const paths = [...new Set([file.oldPath, file.newPath].filter((p) => p !== null))];
+    // A type change prints two sections; take the hunks of each.
+    const hunkText = repo
+      .git('diff', '-M', base, head, '--', ...paths)
+      .split(/^(?=diff --git )/m)
+      .map((section) => {
+        const firstHunk = section.indexOf('\n@@ ');
+        return firstHunk === -1 ? '' : section.slice(firstHunk + 1);
+      })
+      .join('');
+    expect(file.hunks.map((h) => h.patch).join(''), paths.join(' -> ')).toBe(hunkText);
+  }
+}
+
 function byPath(changes: ChangeSet, path: string) {
   const file = changes.files.find((f) => (f.newPath ?? f.oldPath) === path);
   if (!file) throw new Error(`no change for ${path}`);
@@ -87,10 +109,8 @@ describe('extractChangeSet: commit target', () => {
       ],
       ['modified', 'logo.png', 'logo.png', '100644', '100644', true],
       ['modified', 'naïve/quo"te\ttab.txt', 'naïve/quo"te\ttab.txt', '100644', '100644', false],
-      // Rename detection is #13: for now a rename is a deletion plus an addition.
-      ['added', null, 'new-name.ts', null, '100644', false],
+      ['renamed', 'old-name.ts', 'new-name.ts', '100644', '100644', false],
       ['modified', 'no-newline.txt', 'no-newline.txt', '100644', '100644', false],
-      ['deleted', 'old-name.ts', null, '100644', null, false],
       ['modified', 'run.sh', 'run.sh', '100644', '100755', false],
       ['modified', 'src/checkout.ts', 'src/checkout.ts', '100644', '100644', false],
       ['added', null, 'src/new.ts', null, '100644', false],
@@ -130,18 +150,8 @@ describe('extractChangeSet: commit target', () => {
 
   it('preserves every hunk byte-exactly as `git diff` prints it', async () => {
     const changes = await extract();
-    const fullDiff = repo.git('diff', '--no-renames', base, head);
-    const hunkCount = changes.files.reduce((n, f) => n + f.hunks.length, 0);
-    expect(hunkCount).toBe(fullDiff.match(/^@@ /gm)?.length);
+    expectGitHunks(repo, base, head, changes);
     expect(byPath(changes, 'src/price.ts').hunks).toHaveLength(2);
-
-    for (const file of changes.files) {
-      const path = file.newPath ?? file.oldPath ?? '';
-      const diff = repo.git('diff', '--no-renames', base, head, '--', path);
-      const firstHunk = diff.indexOf('\n@@ ');
-      const hunkText = firstHunk === -1 ? '' : diff.slice(firstHunk + 1);
-      expect(file.hunks.map((h) => h.patch).join(''), path).toBe(hunkText);
-    }
   });
 
   it('maps every hunk line to the matching line of the old and new content', async () => {
@@ -232,6 +242,14 @@ describe('extractChangeSet: parents', () => {
       extractChangeSet(clone.path, { kind: 'commit', commit: 'FETCH_HEAD' }),
     ).rejects.toThrow(/shallow clone/);
   });
+
+  it('diffs a commit inside a shallow clone normally', async () => {
+    const clone = new TestRepo();
+    repo.git('update-ref', 'refs/heads/main', left);
+    clone.git('fetch', '-q', '--depth=2', pathToFileURL(repo.path).href, 'main');
+    const changes = await extractChangeSet(clone.path, { kind: 'commit', commit: 'FETCH_HEAD' });
+    expect([changes.baseRevision, changes.headRevision]).toEqual([root, left]);
+  });
 });
 
 describe('extractChangeSet: range target', () => {
@@ -272,15 +290,35 @@ describe('extractChangeSet: range target', () => {
       extractChangeSet(repo.path, { kind: 'range', base: main, head: orphan, mode: 'merge-base' }),
     ).rejects.toThrow(/no common ancestor/);
   });
+
+  it('says to fetch more history when the merge base is outside a shallow clone', async () => {
+    const clone = new TestRepo();
+    const url = pathToFileURL(repo.path).href;
+    clone.git('fetch', '-q', '--depth=1', url, 'main:refs/tags/main', 'feature:refs/tags/feature');
+    const target = { kind: 'range', base: 'main', head: 'feature', mode: 'merge-base' } as const;
+    await expect(extractChangeSet(clone.path, target)).rejects.toThrow(
+      /no common ancestor in this shallow clone; fetch more history/,
+    );
+    // A direct range needs no history beyond its two ends.
+    const direct = await extractChangeSet(clone.path, { ...target, mode: 'direct' });
+    expect([direct.baseRevision, direct.headRevision]).toEqual([main, feature]);
+  });
 });
 
-describe('extractChangeSet: edge cases owned by #13 keep every hunk', () => {
-  it('handles type changes, symlinks and submodules', async () => {
+describe('extractChangeSet: symlinks, type changes and submodules', () => {
+  it('stores symlinks as their target path, never followed, and submodules without content', async () => {
     const repo = new TestRepo();
-    const base = repo.commit([], { link: 'regular file\n', 'sym-target': 'x\n' });
+    const base = repo.commit([], {
+      link: 'regular file\n',
+      'sym-target': 'x\n',
+      retargeted: { mode: '120000', content: 'sym-target' },
+      'gone-link': { mode: '120000', content: '../outside/the/repo' },
+    });
     const head = repo.commit([base], {
       link: { mode: '120000', content: 'sym-target' },
       'new-link': { mode: '120000', content: 'sym-target' },
+      retargeted: { mode: '120000', content: 'link' },
+      'gone-link': null,
     });
     repo.git('update-index', '--add', '--cacheinfo', `160000,${base},vendor/sub`);
     const withSubmodule = repo.git(
@@ -310,6 +348,18 @@ describe('extractChangeSet: edge cases owned by #13 keep every hunk', () => {
       status: 'added',
       newContent: 'sym-target',
     });
+    expect(byPath(changes, 'retargeted')).toMatchObject({
+      status: 'modified',
+      oldMode: '120000',
+      newMode: '120000',
+      oldContent: 'sym-target',
+      newContent: 'link',
+    });
+    expect(byPath(changes, 'gone-link')).toMatchObject({
+      status: 'deleted',
+      oldContent: '../outside/the/repo',
+    });
+    expectGitHunks(repo, base, head, changes);
 
     const sub = await extractChangeSet(repo.path, { kind: 'commit', commit: withSubmodule.trim() });
     expect(sub.files).toHaveLength(1);
@@ -317,5 +367,136 @@ describe('extractChangeSet: edge cases owned by #13 keep every hunk', () => {
     expect(sub.files[0]?.hunks.map((h) => h.patch)).toEqual([
       `@@ -0,0 +1 @@\n+Subproject commit ${base}\n`,
     ]);
+  });
+});
+
+describe('extractChangeSet: renames', () => {
+  const body = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join('\n') + '\n';
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]);
+  const repo = new TestRepo();
+  const base = repo.commit([], {
+    'pure.ts': 'export const pure = 1;\n',
+    'edited.ts': body,
+    'naïve old.txt': `${body}naïve\n`,
+    'image.png': png,
+    'rewritten.ts': body,
+  });
+  const head = repo.commit([base], {
+    'pure.ts': null,
+    'moved/pure.ts': 'export const pure = 1;\n',
+    'edited.ts': null,
+    'moved/edited.ts': body.replace('line 5', 'line five'),
+    'naïve old.txt': null,
+    'new "name".txt': `${body}naïve\n`,
+    'image.png': null,
+    'assets/image.png': png,
+    'rewritten.ts': null,
+    'replacement.ts': 'something else entirely\n',
+  });
+
+  it('pairs old and new paths, keeping both contents and the edit hunks', async () => {
+    const changes = await extractChangeSet(repo.path, { kind: 'commit', commit: head });
+    expect(changes.files.map((f) => [f.status, f.oldPath, f.newPath, f.hunks.length])).toEqual([
+      ['renamed', 'image.png', 'assets/image.png', 0],
+      ['renamed', 'edited.ts', 'moved/edited.ts', 1],
+      ['renamed', 'pure.ts', 'moved/pure.ts', 0],
+      ['renamed', 'naïve old.txt', 'new "name".txt', 0],
+      // Under 50% similar: a deletion and an unrelated addition.
+      ['added', null, 'replacement.ts', 1],
+      ['deleted', 'rewritten.ts', null, 1],
+    ]);
+    expect(byPath(changes, 'moved/edited.ts')).toMatchObject({
+      oldMode: '100644',
+      newMode: '100644',
+      oldContent: body,
+      newContent: body.replace('line 5', 'line five'),
+    });
+    expect(byPath(changes, 'assets/image.png')).toMatchObject({
+      binary: true,
+      contentOmitted: 'binary',
+    });
+    expectGitHunks(repo, base, head, changes);
+  });
+});
+
+describe('extractChangeSet: deletions, binary, huge and generated files', () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]);
+  const big = 'x'.repeat(99) + '\n';
+  const repo = new TestRepo();
+  const base = repo.commit([], {
+    'deleted.ts': 'export const gone = 1;\n',
+    'deleted-empty.txt': '',
+    'deleted.png': png,
+    'chmod.png': png,
+    'grows.txt': 'small\n',
+    'shrinks.txt': big.repeat(3),
+    'huge-binary.bin': Buffer.concat([png, Buffer.from(big.repeat(3))]),
+  });
+  const head = repo.commit([base], {
+    'deleted.ts': null,
+    'deleted-empty.txt': null,
+    'deleted.png': null,
+    'chmod.png': { mode: '100755', content: png },
+    'grows.txt': `small\n${big.repeat(3)}`,
+    'shrinks.txt': 'small\n',
+    'huge-binary.bin': Buffer.concat([png, Buffer.from(big.repeat(4))]),
+    'app.min.js': 'var a=1;\n',
+  });
+  // Low enough that the 300-byte sides are over it.
+  const extract = () =>
+    extractChangeSet(repo.path, { kind: 'commit', commit: head }, { maxContentBytes: 200 });
+
+  it('keeps the full old content and hunks of deleted files', async () => {
+    const changes = await extract();
+    expect(byPath(changes, 'deleted.ts')).toMatchObject({
+      status: 'deleted',
+      newPath: null,
+      newMode: null,
+      oldContent: 'export const gone = 1;\n',
+      newContent: null,
+      hunks: [{ patch: '@@ -1 +0,0 @@\n-export const gone = 1;\n' }],
+    });
+    expect(byPath(changes, 'deleted-empty.txt')).toMatchObject({ oldContent: '', hunks: [] });
+  });
+
+  it('lists binary files without content or hunks, even when Git printed no diff', async () => {
+    const changes = await extract();
+    for (const path of ['deleted.png', 'chmod.png', 'huge-binary.bin']) {
+      expect(byPath(changes, path), path).toMatchObject({
+        binary: true,
+        oldContent: null,
+        newContent: null,
+        contentOmitted: 'binary',
+        hunks: [],
+      });
+    }
+    // A mode-only change: Git prints no "Binary files differ", but the file is still binary.
+    expect(byPath(changes, 'chmod.png')).toMatchObject({ oldMode: '100644', newMode: '100755' });
+  });
+
+  it('omits both sides of a file over the size cap and keeps its hunks', async () => {
+    const changes = await extract();
+    for (const path of ['grows.txt', 'shrinks.txt']) {
+      const file = byPath(changes, path);
+      expect([file.binary, file.oldContent, file.newContent, file.contentOmitted], path).toEqual([
+        false,
+        null,
+        null,
+        'too-large',
+      ]);
+      expect(file.hunks, path).toHaveLength(1);
+    }
+    expectGitHunks(repo, base, head, changes);
+
+    const uncapped = await extractChangeSet(repo.path, { kind: 'commit', commit: head });
+    expect(byPath(uncapped, 'grows.txt').newContent).toBe(`small\n${big.repeat(3)}`);
+  });
+
+  it('stores generated files like any other; the structural analyzer marks them', async () => {
+    const changes = await extract();
+    expect(byPath(changes, 'app.min.js')).toMatchObject({
+      newContent: 'var a=1;\n',
+      contentOmitted: null,
+    });
   });
 });
