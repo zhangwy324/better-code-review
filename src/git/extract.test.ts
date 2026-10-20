@@ -154,6 +154,16 @@ describe('extractChangeSet: commit target', () => {
     expect(byPath(changes, 'src/price.ts').hunks).toHaveLength(2);
   });
 
+  it('ignores repository config that would turn text into binary', async () => {
+    const expected = await extract();
+    repo.git('config', 'core.bigFileThreshold', '10');
+    try {
+      expect(await extract()).toEqual(expected);
+    } finally {
+      repo.git('config', '--unset', 'core.bigFileThreshold');
+    }
+  });
+
   it('maps every hunk line to the matching line of the old and new content', async () => {
     const changes = await extract();
     for (const file of changes.files) {

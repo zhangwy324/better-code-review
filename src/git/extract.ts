@@ -54,7 +54,15 @@ export interface ResolvedRevisions {
  * (and so the hunk IDs) depend only on the two commits. Changing these changes hunks: bump
  * SNAPSHOT_FORMAT with them.
  */
-const DIFF_CONFIG = ['-c', 'diff.suppressBlankEmpty=false', '-c', 'core.quotePath=true'];
+const DIFF_CONFIG = [
+  '-c',
+  'diff.suppressBlankEmpty=false',
+  '-c',
+  'core.quotePath=true',
+  // `git diff` treats blobs over this size as binary. Git's default.
+  '-c',
+  'core.bigFileThreshold=512m',
+];
 const DIFF_OPTIONS = [
   // Git's default similarity, and its default limit on the files compared for inexact renames.
   // Copies are not detected: a copy is an added file.
