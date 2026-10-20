@@ -20,7 +20,7 @@ const manifestPath = join(grammarsDir, 'manifest.json');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as GrammarManifest;
 
 const engine = JSON.parse(
-  readFileSync(join(root, 'node_modules', 'web-tree-sitter', 'package.json'), 'utf8'),
+  readFileSync(new URL('package.json', import.meta.resolve('web-tree-sitter')), 'utf8'),
 ) as { version: string };
 
 const work = mkdtempSync(join(tmpdir(), 'bcr-grammars-'));
