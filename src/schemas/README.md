@@ -59,7 +59,7 @@ The schemas check each document on its own: shape, types, ID formats, enums, pat
 | Rule | Where |
 |---|---|
 | Unique IDs; every hunk on a node and `uncoveredHunkIds` empty; every referenced ID exists; edges cite records about themselves, their `sides` are those records' sides, and `verified` ones cite a confirmed LSP record; every record is cited by an edge and sits on a real line of the snapshot | Graph invariant validator (`src/graph/validate.ts`, #19), run by the builder |
-| Every node has one home group; IDs in the plan exist in the graph; verdicts only on existing `possible` edges; cited lines exist; no code text | Plan validator (#23) |
+| Every node has at most one home group, and the rest go to `ungrouped`; groups nest one level and `groupOrder` lists each top-level group once; IDs in the plan exist in the graph; verdicts only on existing `possible` edges, one each; cited lines exist; no code text | Plan validator (`src/planner/validate.ts`, #23), run by `better-code-review validate` |
 | Feedback anchors exist in the snapshot | Viewer (#33) and the agent workflow (#25) |
 
 ## JSON Schema

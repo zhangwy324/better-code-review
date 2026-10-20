@@ -3,9 +3,19 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { changeSetFiles, gitSnapshotFiles } from '../analysis/semantic/index.ts';
+import {
+  changeSetFiles,
+  gitSnapshotFiles,
+  type SnapshotFiles,
+} from '../analysis/semantic/index.ts';
 import { gitLine } from '../git/run.ts';
-import { show, ShowError, type ShowQuery } from '../planner/index.ts';
+import {
+  show,
+  ShowError,
+  validatePlan,
+  type PlanValidation,
+  type ShowQuery,
+} from '../planner/index.ts';
 import { ChangeGraph, ChangeSet, RepoPath, type ReviewTarget } from '../schemas/index.ts';
 import { displayPath, generate, type GenerateOptions } from './generate.ts';
 
@@ -22,10 +32,14 @@ export const EXIT = { ok: 0, failed: 1, usage: 2 } as const;
 const USAGE = `Usage: better-code-review [--help] [--version]
        better-code-review generate <target> [options]
        better-code-review show --dir <dir> (<id> | --file <path> [--side old|new] [--lines a-b])
+       better-code-review validate --dir <dir> [--plan <file>]
 
 generate writes changes.json, graph.json, planner-input.md and summary.txt for a Git change,
 with no AI involved. show prints more context from a generated review for the planner: a hunk,
 node or edge by ID, or lines of any file in the snapshot. Secrets are redacted in both.
+validate checks the planner's plan.json against the review and prints the result as JSON:
+{"valid": true, "ungroupedNodeIds": [...]} or {"valid": false, "errors": [{"path", "code",
+"message"}]}, where path is a JSON Pointer into the plan.
 
 Targets (exactly one):
   --local              The working tree (staged, unstaged and untracked) against HEAD
@@ -47,7 +61,11 @@ show options:
   --side old|new       The side of the snapshot to read (default new)
   --lines <a>-<b>      The lines to print (default the first 400)
 
-Exit codes: 0 success, 1 the run failed, 2 bad usage.
+validate options:
+  --dir <dir>          The directory generate wrote
+  --plan <file>        The plan to check (default <dir>/plan.json)
+
+Exit codes: 0 success, 1 the run failed or the plan is invalid, 2 bad usage.
 `;
 
 export function version(): string {
@@ -64,6 +82,7 @@ export async function run(argv: string[], io: Io, options: GenerateOptions = {})
     const [command, ...rest] = argv;
     if (command === 'generate') return await runGenerate(rest, io, options);
     if (command === 'show') return await runShow(rest, io);
+    if (command === 'validate') return await runValidate(rest, io);
     const { values } = parseArgs({
       args: argv,
       options: {
@@ -199,11 +218,62 @@ async function runShow(argv: string[], io: Io): Promise<number> {
     query = { id: positionals[0]! };
   }
 
-  const read = (name: string): unknown => JSON.parse(readFileSync(join(values.dir!, name), 'utf8'));
+  const { changeSet, graph, files } = await readReview(values.dir, io);
+  try {
+    io.out(await show(changeSet, graph, files, query));
+  } catch (err) {
+    if (!(err instanceof ShowError)) throw err;
+    io.err(`${err.message}\n`);
+    return EXIT.failed;
+  }
+  return EXIT.ok;
+}
+
+async function runValidate(argv: string[], io: Io): Promise<number> {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      help: { type: 'boolean', short: 'h' },
+      dir: { type: 'string' },
+      plan: { type: 'string' },
+    },
+    strict: true,
+  });
+  if (values.help) {
+    io.out(USAGE);
+    return EXIT.ok;
+  }
+  if (values.dir === undefined) {
+    throw new UsageError('validate needs --dir, the directory generate wrote');
+  }
+  const { graph, files } = await readReview(values.dir, io);
+
+  // The plan's own problems are the agent's to repair, so they are reported, not thrown.
+  const text = readFileSync(values.plan ?? join(values.dir, 'plan.json'), 'utf8');
+  let result: PlanValidation;
+  try {
+    result = await validatePlan(JSON.parse(text), graph, files);
+  } catch (err) {
+    if (!(err instanceof SyntaxError)) throw err;
+    result = { valid: false, errors: [{ path: '', code: 'json', message: err.message }] };
+  }
+  const report = result.valid
+    ? { valid: true, ungroupedNodeIds: result.ungroupedNodeIds }
+    : { valid: false, errors: result.errors };
+  io.out(`${JSON.stringify(report, null, 2)}\n`);
+  return result.valid ? EXIT.ok : EXIT.failed;
+}
+
+/** The ChangeSet and graph `generate` wrote to `dir`, and the snapshot's files. */
+async function readReview(
+  dir: string,
+  io: Io,
+): Promise<{ changeSet: ChangeSet; graph: ChangeGraph; files: SnapshotFiles }> {
+  const read = (name: string): unknown => JSON.parse(readFileSync(join(dir, name), 'utf8'));
   const changeSet = ChangeSet.parse(read('changes.json'));
   const graph = ChangeGraph.parse(read('graph.json'));
   if (graph.snapshotId !== changeSet.snapshotId) {
-    throw new Error(`graph.json and changes.json in ${values.dir} are from different snapshots`);
+    throw new Error(`graph.json and changes.json in ${dir} are from different snapshots`);
   }
   // Unchanged files come from Git at the snapshot's revision, so this must run in the repository;
   // elsewhere only changed files can be read.
@@ -213,14 +283,7 @@ async function runShow(argv: string[], io: Io): Promise<number> {
   } catch {
     files = changeSetFiles(changeSet);
   }
-  try {
-    io.out(await show(changeSet, graph, files, query));
-  } catch (err) {
-    if (!(err instanceof ShowError)) throw err;
-    io.err(`${err.message}\n`);
-    return EXIT.failed;
-  }
-  return EXIT.ok;
+  return { changeSet, graph, files };
 }
 
 /** `a..b` (direct) or `a...b` (merge base), as Git spells them. An empty end is HEAD. */
