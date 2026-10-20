@@ -4,9 +4,13 @@
 // (local.ts). A `pr` is looked up with the GitHub CLI and diffed as a merge-base range (pr.ts).
 //
 // Edge cases (#13, §8.2). Whatever the case, every hunk Git prints is kept.
-// - Renames: detected at Git's default 50% similarity, pinned in DIFF_OPTIONS, as `renamed` with
-//   both paths and both contents. Less similar pairs stay a deletion plus an addition. Copies are
-//   not detected, so a copy is an addition and `copied` is never produced.
+// - Renames and copies: detected at Git's default 50% similarity, pinned in DIFF_OPTIONS, as
+//   `renamed` or `copied` with both paths and both contents; a copy's old side is its source,
+//   which may be any file of the base, changed or not (`--find-copies-harder`). Less similar
+//   pairs stay a deletion plus an addition. Git compares at most `renameLimit` (default 1000)
+//   sources by destinations, squared; past that it detects only copies from changed files, or
+//   only exact renames, and the ChangeSet warns `copy-detection-limited` or
+//   `rename-detection-skipped`.
 // - Deletions: `deleted`, with `newPath` null and the full old content.
 // - Binary files: listed with `binary` set, no content and no hunks. Binary is Git's own test
 //   (a NUL in the first 8000 bytes, or a `binary`/`-diff` attribute when Git prints the diff).
@@ -42,7 +46,7 @@ import {
 import { assertSameSnapshot, captureWorkingTree, comparePaths } from './local.ts';
 import { type PatchSection, parsePatch } from './patch.ts';
 import { type GhRunner, resolvePullRequest } from './pr.ts';
-import { GitError, gitLine, runGit } from './run.ts';
+import { GitError, gitLine, runGit, runGitWithStderr } from './run.ts';
 
 export type RevisionTarget = Extract<ReviewTarget, { kind: 'commit' | 'range' }>;
 export type LocalTarget = Extract<ReviewTarget, { kind: 'local' }>;
@@ -68,10 +72,10 @@ const DIFF_CONFIG = [
   'core.bigFileThreshold=512m',
 ];
 const DIFF_OPTIONS = [
-  // Git's default similarity, and its default limit on the files compared for inexact renames.
-  // Copies are not detected: a copy is an added file.
+  // Git's default similarity. The limit (`-l`) is added per run from ExtractOptions.
   '--find-renames=50%',
-  '-l1000',
+  '--find-copies=50%',
+  '--find-copies-harder',
   '--no-ext-diff',
   '--no-textconv',
   '--no-color',
@@ -171,6 +175,11 @@ export interface ExtractOptions {
   gh?: GhRunner;
   /** Content size cap per side, in bytes. Defaults to MAX_CONTENT_BYTES. */
   maxContentBytes?: number;
+  /**
+   * Git's rename limit (`-l`) for rename and copy detection. Defaults to DEFAULT_RENAME_LIMIT.
+   * It can change which files pair up, so it is part of the snapshot ID.
+   */
+  renameLimit?: number;
   /** Test hook: the `git version` output to assume. Defaults to the installed Git's. */
   gitVersion?: string;
 }
@@ -180,6 +189,17 @@ export interface ExtractOptions {
  * analyzer's parse cap (MAX_PARSE_BYTES), above which content would only be shown, not analysed.
  */
 export const MAX_CONTENT_BYTES = 1024 * 1024;
+
+/** Git's own default for `diff.renameLimit`. */
+export const DEFAULT_RENAME_LIMIT = 1000;
+
+function diffSettings(options: ExtractOptions, attrSource: string | null): DiffSettings {
+  return {
+    maxContentBytes: options.maxContentBytes ?? MAX_CONTENT_BYTES,
+    renameLimit: options.renameLimit ?? DEFAULT_RENAME_LIMIT,
+    attrSource,
+  };
+}
 
 /** Extracts the ChangeSet for a target in the repository at `repo`. */
 export async function extractChangeSet(
@@ -209,16 +229,14 @@ export async function extractChangeSet(
   // the head commit rather than from whatever the working tree holds.
   const version = options.gitVersion ?? (await gitLine(repo, ['version']));
   const attrSource = supportsAttrSource(version) ? head : null;
-  const diff = await diffFiles(repo, base, head, {
-    maxContentBytes: options.maxContentBytes ?? MAX_CONTENT_BYTES,
-    attrSource,
-  });
+  const settings = diffSettings(options, attrSource);
+  const diff = await diffFiles(repo, base, head, settings);
   const warnings = new Set(diff.warnings);
   if (attrSource === null) warnings.add('attributes-from-working-tree');
   return ChangeSet.parse({
     schemaVersion: CHANGESET_SCHEMA_VERSION,
     snapshotId: createHash('sha256')
-      .update(JSON.stringify([SNAPSHOT_FORMAT, base, head]))
+      .update(JSON.stringify([SNAPSHOT_FORMAT, base, head, settings.renameLimit]))
       .digest('hex'),
     target,
     baseRevision: base,
@@ -243,17 +261,17 @@ async function extractLocal(
 ): Promise<ChangeSet> {
   const snapshot = await captureWorkingTree(repo, target.includeUntracked);
   // The working tree is the new side, so its .gitattributes are the right ones.
-  const { files, warnings } = await diffFiles(repo, snapshot.head, snapshot.tree, {
-    maxContentBytes: options.maxContentBytes ?? MAX_CONTENT_BYTES,
-    attrSource: null,
-  });
+  const settings = diffSettings(options, null);
+  const { files, warnings } = await diffFiles(repo, snapshot.head, snapshot.tree, settings);
   await options.beforeRecapture?.();
   assertSameSnapshot(snapshot, await captureWorkingTree(repo, target.includeUntracked));
 
   return ChangeSet.parse({
     schemaVersion: CHANGESET_SCHEMA_VERSION,
     snapshotId: createHash('sha256')
-      .update(JSON.stringify([LOCAL_SNAPSHOT_FORMAT, snapshot.head, snapshot.tree]))
+      .update(
+        JSON.stringify([LOCAL_SNAPSHOT_FORMAT, snapshot.head, snapshot.tree, settings.renameLimit]),
+      )
       .digest('hex'),
     target,
     baseRevision: snapshot.head,
@@ -275,6 +293,7 @@ export function supportsAttrSource(gitVersion: string): boolean {
 
 interface DiffSettings {
   maxContentBytes: number;
+  renameLimit: number;
   /** The tree-ish whose .gitattributes the diff reads; null for the working tree's. */
   attrSource: string | null;
 }
@@ -296,7 +315,7 @@ async function diffFiles(
 
   // One diff prints both the file list (`--raw`, NUL-separated) and the patch, so the two
   // always describe the same comparison. An empty NUL field separates them.
-  const out = await runGit(repo, [
+  const args = [
     ...(settings.attrSource === null ? [] : [`--attr-source=${settings.attrSource}`]),
     ...DIFF_CONFIG,
     'diff',
@@ -305,8 +324,11 @@ async function diffFiles(
     '-z',
     '--no-abbrev',
     ...DIFF_OPTIONS,
+    `-l${settings.renameLimit}`,
     ...range,
-  ]);
+  ];
+  // The C locale keeps Git's warnings in English, so that they can be recognised.
+  const { stdout: out, stderr } = await runGitWithStderr(repo, args, '', { LC_ALL: 'C' });
   const separator = out.indexOf('\0\0');
   const raw = separator === -1 ? '' : out.subarray(0, separator + 1).toString('utf8');
   const patch = separator === -1 ? '' : out.subarray(separator + 2).toString('utf8');
@@ -331,7 +353,19 @@ async function diffFiles(
   await fillContents(repo, changes, settings.maxContentBytes);
   const files = changes.map((c) => c.file);
   files.sort((a, b) => comparePaths(a.newPath ?? a.oldPath ?? '', b.newPath ?? b.oldPath ?? ''));
-  return { files, warnings: [] };
+  return { files, warnings: renameLimitWarnings(stderr) };
+}
+
+/**
+ * Git's warnings when a diff was over the rename limit (diffcore-rename.c): with
+ * `--find-copies-harder` it first falls back to copies from changed files only, and past that
+ * it skips inexact rename and copy detection altogether.
+ */
+function renameLimitWarnings(stderr: string): ExtractionWarning[] {
+  const warnings: ExtractionWarning[] = [];
+  if (/only found copies from modified paths/.test(stderr)) warnings.push('copy-detection-limited');
+  if (/rename detection was skipped/.test(stderr)) warnings.push('rename-detection-skipped');
+  return warnings;
 }
 
 async function resolveCommit(repo: string, revision: string): Promise<string> {
@@ -346,9 +380,9 @@ async function isShallowBoundary(repo: string, commit: string): Promise<boolean>
 }
 
 interface RawEntry {
-  /** The status letter, without a rename's similarity score. */
+  /** The status letter, without a rename's or copy's similarity score. */
   status: string;
-  /** Equal to `newPath` unless the file was renamed. */
+  /** Equal to `newPath` unless the file was renamed or copied. */
   oldPath: string;
   newPath: string;
   oldMode: string;
@@ -359,7 +393,8 @@ interface RawEntry {
 
 /**
  * Parses `git diff --raw -z`: `:<old mode> <new mode> <old oid> <new oid> <status>\0<path>\0`,
- * where a rename's status is `R<score>` and it has two paths, old then new.
+ * where a rename's or copy's status is `R<score>` or `C<score>` and it has two paths, old
+ * (the source) then new.
  */
 function parseRaw(raw: string): RawEntry[] {
   const fields = raw.split('\0');
@@ -370,7 +405,7 @@ function parseRaw(raw: string): RawEntry[] {
     const [oldMode, newMode, oldOid, newOid, score] = meta.slice(1).split(' ');
     const status = score?.[0];
     const oldPath = fields[i++];
-    const newPath = status === 'R' ? fields[i++] : oldPath;
+    const newPath = status === 'R' || status === 'C' ? fields[i++] : oldPath;
     if (!oldMode || !newMode || !oldOid || !newOid || !status || !oldPath || !newPath) {
       throw new Error(`Unexpected git diff --raw output: ${JSON.stringify(meta)}`);
     }
@@ -397,6 +432,7 @@ const STATUS: Record<string, FileChange['status']> = {
   M: 'modified',
   D: 'deleted',
   R: 'renamed',
+  C: 'copied',
   T: 'type-changed',
 };
 

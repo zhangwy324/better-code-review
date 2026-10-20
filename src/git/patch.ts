@@ -1,4 +1,4 @@
-// Parses the text of `git diff` (two trees, rename detection without copies, default `a/` and `b/`
+// Parses the text of `git diff` (two trees, rename and copy detection, default `a/` and `b/`
 // prefixes) into per-file sections and hunks. Hunk text is sliced from Git's output unchanged, so
 // joining a section's hunks reproduces everything Git printed from its first `@@` line onward.
 
@@ -13,7 +13,7 @@ export interface ParsedHunk {
 
 /** One `diff --git` block. A type change (e.g. file to symlink) is printed as two blocks. */
 export interface PatchSection {
-  /** Equal to `newPath` unless the file was renamed; added and deleted files have both. */
+  /** Equal to `newPath` unless the file was renamed or copied; added and deleted files have both. */
   oldPath: string;
   newPath: string;
   /** Git printed "Binary files … differ" instead of hunks. */
@@ -24,11 +24,12 @@ export interface PatchSection {
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 export function parsePatch(text: string): PatchSection[] {
-  // A section's paths are known only after its extended headers: a rename names them there.
+  // A section's paths are known only after its extended headers: a rename or copy names them
+  // there (`rename from`/`copy from`, `rename to`/`copy to`).
   type OpenSection = Omit<PatchSection, 'oldPath' | 'newPath'> & {
     header: string;
-    renameFrom?: string;
-    renameTo?: string;
+    fromPath?: string;
+    toPath?: string;
   };
   const sections: OpenSection[] = [];
   let section: OpenSection | undefined;
@@ -59,23 +60,24 @@ export function parsePatch(text: string): PatchSection[] {
       hunk.patch += line;
     } else if (line.startsWith('Binary files ')) {
       section.binary = true;
-    } else if (line.startsWith('rename from ')) {
-      section.renameFrom = headerField(line.slice('rename from '.length));
-    } else if (line.startsWith('rename to ')) {
-      section.renameTo = headerField(line.slice('rename to '.length));
+    } else {
+      const from = /^(?:rename|copy) from (.*)/s.exec(line);
+      const to = /^(?:rename|copy) to (.*)/s.exec(line);
+      if (from?.[1] !== undefined) section.fromPath = headerField(from[1]);
+      if (to?.[1] !== undefined) section.toPath = headerField(to[1]);
     }
     // Other lines before the first hunk are extended headers (mode, index, ---/+++).
   }
 
-  return sections.map(({ header, renameFrom, renameTo, binary, hunks }) => {
+  return sections.map(({ header, fromPath, toPath, binary, hunks }) => {
     let oldPath: string;
     let newPath: string;
-    if (renameFrom === undefined && renameTo === undefined) {
+    if (fromPath === undefined && toPath === undefined) {
       oldPath = newPath = headerPath(header);
-    } else if (renameFrom !== undefined && renameTo !== undefined) {
-      [oldPath, newPath] = [renameFrom, renameTo];
+    } else if (fromPath !== undefined && toPath !== undefined) {
+      [oldPath, newPath] = [fromPath, toPath];
     } else {
-      throw new Error(`Incomplete rename headers after ${JSON.stringify(header)}`);
+      throw new Error(`Incomplete rename or copy headers after ${JSON.stringify(header)}`);
     }
     for (const h of hunks) checkLineCounts(newPath, h);
     return { oldPath, newPath, binary, hunks };

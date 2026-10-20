@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { ChangeSet } from '../schemas/index.ts';
-import { extractChangeSet, supportsAttrSource } from './extract.ts';
+import { DEFAULT_RENAME_LIMIT, extractChangeSet, supportsAttrSource } from './extract.ts';
 import { hunkLines } from './patch.ts';
 import { TestRepo } from './test-repo.test-helper.ts';
 
@@ -55,17 +55,20 @@ function buildSignatureRepo() {
 
 /** Every hunk `git diff` prints is in the ChangeSet, byte for byte, under the right file. */
 function expectGitHunks(repo: TestRepo, base: string, head: string, changes: ChangeSet) {
-  const fullDiff = repo.git('diff', '-M', base, head);
+  const fullDiff = repo.git('diff', '-M', '--find-copies-harder', base, head);
   const hunkCount = changes.files.reduce((n, f) => n + f.hunks.length, 0);
   expect(hunkCount).toBe(fullDiff.match(/^@@ /gm)?.length ?? 0);
 
   for (const file of changes.files) {
-    // Both of a rename's paths, so that Git still pairs them.
+    // Both of a rename's or copy's paths, so that Git still pairs them.
     const paths = [...new Set([file.oldPath, file.newPath].filter((p) => p !== null))];
-    // A type change prints two sections; take the hunks of each.
+    const paired = paths.length === 2;
+    // A type change prints two sections; take the hunks of each. A copy's source may have its
+    // own section too, which belongs to another file.
     const hunkText = repo
-      .git('diff', '-M', base, head, '--', ...paths)
+      .git('diff', '-M', '--find-copies-harder', base, head, '--', ...paths)
       .split(/^(?=diff --git )/m)
+      .filter((section) => /^(?:rename|copy) to /m.test(section) === paired)
       .map((section) => {
         const firstHunk = section.indexOf('\n@@ ');
         return firstHunk === -1 ? '' : section.slice(firstHunk + 1);
@@ -326,7 +329,7 @@ describe('extractChangeSet: symlinks, type changes and submodules', () => {
     });
     const head = repo.commit([base], {
       link: { mode: '120000', content: 'sym-target' },
-      'new-link': { mode: '120000', content: 'sym-target' },
+      'new-link': { mode: '120000', content: 'elsewhere' },
       retargeted: { mode: '120000', content: 'link' },
       'gone-link': null,
     });
@@ -356,7 +359,7 @@ describe('extractChangeSet: symlinks, type changes and submodules', () => {
     ]);
     expect(byPath(changes, 'new-link')).toMatchObject({
       status: 'added',
-      newContent: 'sym-target',
+      newContent: 'elsewhere',
     });
     expect(byPath(changes, 'retargeted')).toMatchObject({
       status: 'modified',
@@ -426,6 +429,66 @@ describe('extractChangeSet: renames', () => {
       contentOmitted: 'binary',
     });
     expectGitHunks(repo, base, head, changes);
+  });
+});
+
+describe('extractChangeSet: copies and the rename limit', () => {
+  const body = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join('\n') + '\n';
+  const other = body.replace(/line/g, 'row');
+  const repo = new TestRepo();
+  const base = repo.commit([], {
+    'unchanged.ts': body,
+    'changed.ts': other,
+    'gone.ts': `${body}${other}`,
+  });
+  const head = repo.commit([base], {
+    'copy-of-unchanged.ts': body.replace('line 5', 'line five'),
+    'changed.ts': `${other}row 11\n`,
+    'copy-of-changed.ts': other,
+    'gone.ts': null,
+    'renamed.ts': `${body}${other}!\n`,
+  });
+  const extract = (renameLimit = DEFAULT_RENAME_LIMIT) =>
+    extractChangeSet(repo.path, { kind: 'commit', commit: head }, { renameLimit });
+  const summary = (changes: ChangeSet) =>
+    changes.files.map((f) => [f.status, f.oldPath, f.newPath]);
+
+  it('reports copies of changed and unchanged files with their source as the old side', async () => {
+    const changes = await extract();
+    expect(summary(changes)).toEqual([
+      ['modified', 'changed.ts', 'changed.ts'],
+      ['copied', 'changed.ts', 'copy-of-changed.ts'],
+      ['copied', 'unchanged.ts', 'copy-of-unchanged.ts'],
+      ['renamed', 'gone.ts', 'renamed.ts'],
+    ]);
+    expect(byPath(changes, 'copy-of-unchanged.ts')).toMatchObject({
+      oldContent: body,
+      newContent: body.replace('line 5', 'line five'),
+    });
+    expect(byPath(changes, 'copy-of-changed.ts')).toMatchObject({
+      oldContent: other,
+      newContent: other,
+      hunks: [],
+    });
+    expect(changes.warnings).toEqual([]);
+    expectGitHunks(repo, base, head, changes);
+  });
+
+  it('warns when the rename limit narrowed or skipped detection', async () => {
+    // 3 sources by 3 destinations is over 2 squared; the 2 changed sources are not.
+    const limited = await extract(2);
+    expect(limited.warnings).toEqual(['copy-detection-limited']);
+    expect(summary(limited)).toContainEqual(['added', null, 'copy-of-unchanged.ts']);
+    expect(summary(limited)).toContainEqual(['renamed', 'gone.ts', 'renamed.ts']);
+
+    const skipped = await extract(1);
+    expect(skipped.warnings).toEqual(['rename-detection-skipped']);
+    expect(summary(skipped)).toContainEqual(['added', null, 'renamed.ts']);
+    expect(summary(skipped)).toContainEqual(['deleted', 'gone.ts', null]);
+
+    // Hunk IDs depend on how files pair up, so the snapshot does too.
+    expect(skipped.snapshotId).not.toBe((await extract()).snapshotId);
+    expect((await extract(DEFAULT_RENAME_LIMIT)).snapshotId).toBe((await extract()).snapshotId);
   });
 });
 

@@ -47,7 +47,7 @@ export const runGh: GhRunner = async (cwd, args) =>
       notFound: (cause) => new GhNotFoundError({ cause }),
       failed: (exitCode, stderr) => new GhError(args, exitCode, stderr),
     })
-  ).toString('utf8');
+  ).stdout.toString('utf8');
 
 /** The fields of GitHub's "get a pull request" response that are used here. */
 const PullResponse = z.object({

@@ -40,7 +40,7 @@ export const GITLINK_MODE = '160000';
 
 export const FileChange = z.strictObject({
   status: FileStatus,
-  /** Null for added files. */
+  /** Null for added files. For a copy, its source. */
   oldPath: RepoPath.nullable(),
   /** Null for deleted files. */
   newPath: RepoPath.nullable(),
@@ -52,7 +52,7 @@ export const FileChange = z.strictObject({
   newContent: z.string().nullable(),
   /** Why content was not captured: binary, or either side over the size cap (1 MiB, #13). */
   contentOmitted: z.enum(['binary', 'too-large']).nullable(),
-  /** In diff order. Empty for binary, mode-only and pure-rename changes. */
+  /** In diff order. Empty for binary, mode-only, pure-rename and exact-copy changes. */
   hunks: z.array(DiffHunk),
 });
 
@@ -75,6 +75,16 @@ export const ExtractionWarning = z.enum([
    * `.gitattributes` from the working tree instead of the head commit.
    */
   'attributes-from-working-tree',
+  /**
+   * The diff was over Git's rename limit for `--find-copies-harder`, so copies were looked for
+   * only among changed files; a copy of an unchanged file shows as an addition.
+   */
+  'copy-detection-limited',
+  /**
+   * The diff was over Git's rename limit, so only exact renames and copies were detected; the
+   * others show as a deletion plus an addition.
+   */
+  'rename-detection-skipped',
 ]);
 
 export const ChangeSet = z.strictObject({

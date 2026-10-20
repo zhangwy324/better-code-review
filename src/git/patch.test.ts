@@ -46,12 +46,16 @@ describe('parsePatch', () => {
     expect(hunks[2]?.patch).toBe('@@ -0,0 +1 @@\n+no newline\n\\ No newline at end of file\n');
   });
 
-  it('takes the paths of a rename from its rename headers, quoted or not', () => {
+  it('takes the paths of a rename or copy from its extended headers, quoted or not', () => {
     const renames = [
       'diff --git a/a b/c b/d',
       'similarity index 100%',
       'rename from a b',
       'rename to c b/d',
+      'diff --git a/src b/src copy',
+      'similarity index 90%',
+      'copy from src',
+      'copy to src copy',
       'diff --git "a/na\\303\\257ve" b/plain',
       'similarity index 80%',
       'rename from "na\\303\\257ve"',
@@ -66,6 +70,7 @@ describe('parsePatch', () => {
     ].join('\n');
     expect(parsePatch(renames).map((s) => [s.oldPath, s.newPath, s.hunks.length])).toEqual([
       ['a b', 'c b/d', 0],
+      ['src', 'src copy', 0],
       ['naïve', 'plain', 1],
     ]);
     expect(() => parsePatch('diff --git a/x b/y\nrename from x\n')).toThrow(/Incomplete rename/);
