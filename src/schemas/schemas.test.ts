@@ -136,6 +136,7 @@ const semantic: SemanticEvidence = {
 const graph: ChangeGraph = {
   schemaVersion: 1,
   snapshotId,
+  capabilityTier: 'structural',
   files: structural.files,
   languages: semantic.languages,
   nodes: [

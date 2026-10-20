@@ -64,9 +64,18 @@ export const CodeEdge = z.discriminatedUnion('granularity', [
   }),
 ]);
 
+/**
+ * Which analysis the graph was built from (design reference §10.8): `git-only` without the
+ * structural analyzer, `structural` when no language server answered for any language (edges are
+ * `possible` at best), and `semantic` when one did, so edges can be `verified`. Per-file and
+ * per-language detail is in `files` and `languages`.
+ */
+export const CapabilityTier = z.enum(['git-only', 'structural', 'semantic']);
+
 export const ChangeGraph = z.strictObject({
   schemaVersion: z.literal(GRAPH_SCHEMA_VERSION),
   snapshotId: SnapshotId,
+  capabilityTier: CapabilityTier,
   /** Every changed file, with its language tier and test classification (D2, D11). */
   files: z.array(AnalyzedFile),
   /** Per-language semantic capability (D11). */
@@ -80,6 +89,7 @@ export const ChangeGraph = z.strictObject({
   uncoveredHunkIds: z.array(HunkId),
 });
 
+export type CapabilityTier = z.infer<typeof CapabilityTier>;
 export type ChangeNode = z.infer<typeof ChangeNode>;
 export type CodeEdge = z.infer<typeof CodeEdge>;
 export type ChangeGraph = z.infer<typeof ChangeGraph>;

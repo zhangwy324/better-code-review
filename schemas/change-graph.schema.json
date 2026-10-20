@@ -11,6 +11,14 @@
       "pattern": "^[0-9a-f]{64}$",
       "description": "SHA-256 hex digest identifying the exact before/after snapshot"
     },
+    "capabilityTier": {
+      "type": "string",
+      "enum": [
+        "git-only",
+        "structural",
+        "semantic"
+      ]
+    },
     "files": {
       "type": "array",
       "items": {
@@ -656,6 +664,7 @@
   "required": [
     "schemaVersion",
     "snapshotId",
+    "capabilityTier",
     "files",
     "languages",
     "nodes",
