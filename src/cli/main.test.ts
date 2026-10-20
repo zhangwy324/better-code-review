@@ -67,6 +67,7 @@ describe('show usage', () => {
     [['--dir', 'd'], 'show needs exactly one ID, or --file <path>'],
     [['--dir', 'd', 'h_1', '--file', 'a.ts'], 'show needs exactly one ID, or --file <path>'],
     [['--dir', 'd', 'h_1', '--lines', '1-2'], '--side and --lines only apply to --file'],
+    [['--dir', 'd', 'h_1', '--side=old'], '--side and --lines only apply to --file'],
     [['--dir', 'd', '--file', 'a.ts', '--side', 'both'], '--side must be old or new'],
     [['--dir', 'd', '--file', '../a.ts'], '--file must be a repository-relative path'],
     [['--dir', 'd', '--file', 'a.ts', '--lines', '5-2'], '--lines must look like 10-40'],
@@ -125,6 +126,8 @@ describe('validate', () => {
     write('plan.json', plan);
     const ok = await cli('validate', '--dir', dir);
     expect(ok.exitCode).toBe(EXIT.ok);
+    // The fixture's commits are not in this repository, so the CLI says it reads changed files only.
+    expect(ok.stderr).toContain('only changed files can be read');
     const report = JSON.parse(ok.stdout) as { valid: boolean; ungroupedNodeIds: string[] };
     expect(report.valid).toBe(true);
     expect(report.ungroupedNodeIds.length).toBeGreaterThan(0);

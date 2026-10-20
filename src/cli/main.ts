@@ -179,7 +179,7 @@ async function runShow(argv: string[], io: Io): Promise<number> {
       help: { type: 'boolean', short: 'h' },
       dir: { type: 'string' },
       file: { type: 'string' },
-      side: { type: 'string', default: 'new' },
+      side: { type: 'string' },
       lines: { type: 'string' },
     },
     allowPositionals: true,
@@ -194,11 +194,12 @@ async function runShow(argv: string[], io: Io): Promise<number> {
   if ((values.file === undefined) === (positionals.length !== 1)) {
     throw new UsageError('show needs exactly one ID, or --file <path>');
   }
-  if (values.file === undefined && (values.lines !== undefined || argv.includes('--side'))) {
+  if (values.file === undefined && (values.lines !== undefined || values.side !== undefined)) {
     throw new UsageError('--side and --lines only apply to --file');
   }
-  if (values.side !== 'new' && values.side !== 'old') {
-    throw new UsageError(`--side must be old or new, got ${values.side}`);
+  const side = values.side ?? 'new';
+  if (side !== 'new' && side !== 'old') {
+    throw new UsageError(`--side must be old or new, got ${side}`);
   }
 
   let query: ShowQuery;
@@ -206,7 +207,7 @@ async function runShow(argv: string[], io: Io): Promise<number> {
     if (!RepoPath.safeParse(values.file).success) {
       throw new UsageError(`--file must be a repository-relative path, got ${values.file}`);
     }
-    query = { file: values.file, side: values.side, lines: null };
+    query = { file: values.file, side, lines: null };
     if (values.lines !== undefined) {
       const match = /^([1-9]\d*)-([1-9]\d*)$/.exec(values.lines);
       if (!match || Number(match[2]) < Number(match[1])) {
@@ -275,14 +276,22 @@ async function readReview(
   if (graph.snapshotId !== changeSet.snapshotId) {
     throw new Error(`graph.json and changes.json in ${dir} are from different snapshots`);
   }
-  // Unchanged files come from Git at the snapshot's revision, so this must run in the repository;
-  // elsewhere only changed files can be read.
-  let files;
+  // Unchanged files come from Git at the snapshot's revision, so this must run in the repository
+  // that has it; elsewhere only changed files can be read, and the user is told so.
+  const revision = changeSet.headRevision ?? changeSet.baseRevision;
+  let repo: string | null = null;
   try {
-    files = gitSnapshotFiles(await gitLine(io.cwd, ['rev-parse', '--show-toplevel']), changeSet);
+    repo = await gitLine(io.cwd, ['rev-parse', '--show-toplevel']);
+    if (revision !== null) await gitLine(repo, ['cat-file', '-e', `${revision}^{commit}`]);
   } catch {
-    files = changeSetFiles(changeSet);
+    io.err(
+      repo === null
+        ? 'Not in a Git repository, so only changed files can be read.\n'
+        : `This repository has no commit ${revision}, so only changed files can be read.\n`,
+    );
+    repo = null;
   }
+  const files = repo === null ? changeSetFiles(changeSet) : gitSnapshotFiles(repo, changeSet);
   return { changeSet, graph, files };
 }
 
