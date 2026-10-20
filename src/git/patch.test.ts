@@ -28,10 +28,10 @@ const PATCH = [
 describe('parsePatch', () => {
   it('splits files and hunks, keeping hunk text exactly', () => {
     const sections = parsePatch(PATCH);
-    expect(sections.map((s) => [s.path, s.binary, s.hunks.length])).toEqual([
-      ['src/a b.ts', false, 2],
-      ['img.png', true, 0],
-      ['last', false, 1],
+    expect(sections.map((s) => [s.oldPath, s.newPath, s.binary, s.hunks.length])).toEqual([
+      ['src/a b.ts', 'src/a b.ts', false, 2],
+      ['img.png', 'img.png', true, 0],
+      ['last', 'last', false, 1],
     ]);
     const hunks = sections.flatMap((s) => s.hunks);
     expect(hunks[0]).toEqual({
@@ -44,6 +44,36 @@ describe('parsePatch', () => {
     // An omitted count means 1.
     expect(hunks[1]).toMatchObject({ oldStart: 10, oldLines: 1, newStart: 10, newLines: 0 });
     expect(hunks[2]?.patch).toBe('@@ -0,0 +1 @@\n+no newline\n\\ No newline at end of file\n');
+  });
+
+  it('takes the paths of a rename or copy from its extended headers, quoted or not', () => {
+    const renames = [
+      'diff --git a/a b/c b/d',
+      'similarity index 100%',
+      'rename from a b',
+      'rename to c b/d',
+      'diff --git a/src b/src copy',
+      'similarity index 90%',
+      'copy from src',
+      'copy to src copy',
+      'diff --git "a/na\\303\\257ve" b/plain',
+      'similarity index 80%',
+      'rename from "na\\303\\257ve"',
+      'rename to plain',
+      'index 1111111..2222222 100644',
+      '--- "a/na\\303\\257ve"',
+      '+++ b/plain',
+      '@@ -1 +1 @@',
+      '-x',
+      '+y',
+      '',
+    ].join('\n');
+    expect(parsePatch(renames).map((s) => [s.oldPath, s.newPath, s.hunks.length])).toEqual([
+      ['a b', 'c b/d', 0],
+      ['src', 'src copy', 0],
+      ['naïve', 'plain', 1],
+    ]);
+    expect(() => parsePatch('diff --git a/x b/y\nrename from x\n')).toThrow(/Incomplete rename/);
   });
 
   it('rejects hunks whose body disagrees with the header', () => {

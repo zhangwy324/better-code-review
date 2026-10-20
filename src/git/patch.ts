@@ -1,6 +1,6 @@
-// Parses the text of `git diff` (two trees, `--no-renames`, default `a/` and `b/` prefixes) into
-// per-file sections and hunks. Hunk text is sliced from Git's output unchanged, so joining a
-// section's hunks reproduces everything Git printed from its first `@@` line onward.
+// Parses the text of `git diff` (two trees, rename and copy detection, default `a/` and `b/`
+// prefixes) into per-file sections and hunks. Hunk text is sliced from Git's output unchanged, so
+// joining a section's hunks reproduces everything Git printed from its first `@@` line onward.
 
 export interface ParsedHunk {
   oldStart: number;
@@ -13,7 +13,9 @@ export interface ParsedHunk {
 
 /** One `diff --git` block. A type change (e.g. file to symlink) is printed as two blocks. */
 export interface PatchSection {
-  path: string;
+  /** Equal to `newPath` unless the file was renamed or copied; added and deleted files have both. */
+  oldPath: string;
+  newPath: string;
   /** Git printed "Binary files … differ" instead of hunks. */
   binary: boolean;
   hunks: ParsedHunk[];
@@ -22,14 +24,21 @@ export interface PatchSection {
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 export function parsePatch(text: string): PatchSection[] {
-  const sections: PatchSection[] = [];
-  let section: PatchSection | undefined;
+  // A section's paths are known only after its extended headers: a rename or copy names them
+  // there (`rename from`/`copy from`, `rename to`/`copy to`).
+  type OpenSection = Omit<PatchSection, 'oldPath' | 'newPath'> & {
+    header: string;
+    fromPath?: string;
+    toPath?: string;
+  };
+  const sections: OpenSection[] = [];
+  let section: OpenSection | undefined;
   let hunk: ParsedHunk | undefined;
 
   for (const line of text.split(/(?<=\n)/)) {
     if (line === '') continue;
     if (line.startsWith('diff --git ')) {
-      section = { path: headerPath(line), binary: false, hunks: [] };
+      section = { header: line, binary: false, hunks: [] };
       sections.push(section);
       hunk = undefined;
     } else if (section === undefined) {
@@ -51,12 +60,28 @@ export function parsePatch(text: string): PatchSection[] {
       hunk.patch += line;
     } else if (line.startsWith('Binary files ')) {
       section.binary = true;
+    } else {
+      const from = /^(?:rename|copy) from (.*)/s.exec(line);
+      const to = /^(?:rename|copy) to (.*)/s.exec(line);
+      if (from?.[1] !== undefined) section.fromPath = headerField(from[1]);
+      if (to?.[1] !== undefined) section.toPath = headerField(to[1]);
     }
     // Other lines before the first hunk are extended headers (mode, index, ---/+++).
   }
 
-  for (const s of sections) for (const h of s.hunks) checkLineCounts(s.path, h);
-  return sections;
+  return sections.map(({ header, fromPath, toPath, binary, hunks }) => {
+    let oldPath: string;
+    let newPath: string;
+    if (fromPath === undefined && toPath === undefined) {
+      oldPath = newPath = headerPath(header);
+    } else if (fromPath !== undefined && toPath !== undefined) {
+      [oldPath, newPath] = [fromPath, toPath];
+    } else {
+      throw new Error(`Incomplete rename or copy headers after ${JSON.stringify(header)}`);
+    }
+    for (const h of hunks) checkLineCounts(newPath, h);
+    return { oldPath, newPath, binary, hunks };
+  });
 }
 
 export interface HunkLine {
@@ -108,8 +133,9 @@ function checkLineCounts(path: string, hunk: ParsedHunk): void {
 }
 
 /**
- * The path from a `diff --git a/<path> b/<path>` line. Without rename detection both names are
- * the same, which makes an unquoted header unambiguous even when the path contains spaces.
+ * The path from the `diff --git a/<path> b/<path>` line of a file that was not renamed. Both
+ * names are then the same, which makes an unquoted header unambiguous even when the path contains
+ * spaces. A rename's header is ambiguous, so its paths come from `rename from`/`rename to`.
  */
 export function headerPath(line: string): string {
   const rest = line.slice('diff --git '.length).replace(/\n$/, '');
@@ -127,6 +153,15 @@ export function headerPath(line: string): string {
   if (!Number.isInteger(n) || n < 1 || rest !== `a/${path} b/${path}`) {
     throw new Error(`Unexpected diff header: ${rest}`);
   }
+  return path;
+}
+
+/** The path in an extended header line such as `rename from <path>`, quoted or not. */
+function headerField(field: string): string {
+  const value = field.replace(/\n$/, '');
+  if (!value.startsWith('"')) return value;
+  const [path, end] = unquote(value, 0);
+  if (end !== value.length - 1) throw new Error(`Unexpected diff header field: ${value}`);
   return path;
 }
 

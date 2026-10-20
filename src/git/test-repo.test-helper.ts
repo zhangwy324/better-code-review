@@ -22,7 +22,8 @@ export const ISOLATED_GIT_ENV = {
 };
 export const ENV = { ...process.env, ...ISOLATED_GIT_ENV };
 
-export type FileSpec = string | Buffer | null | { mode: '100755' | '120000'; content: string };
+export type FileSpec =
+  string | Buffer | null | { mode: '100755' | '120000'; content: string | Buffer };
 
 const repos: TestRepo[] = [];
 afterAll(() => {

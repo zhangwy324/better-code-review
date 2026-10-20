@@ -40,7 +40,7 @@ export const GITLINK_MODE = '160000';
 
 export const FileChange = z.strictObject({
   status: FileStatus,
-  /** Null for added files. */
+  /** Null for added files. For a copy, its source. */
   oldPath: RepoPath.nullable(),
   /** Null for deleted files. */
   newPath: RepoPath.nullable(),
@@ -50,9 +50,13 @@ export const FileChange = z.strictObject({
   /** Null on the side where the file does not exist, or when `contentOmitted` is set. */
   oldContent: z.string().nullable(),
   newContent: z.string().nullable(),
-  /** Why content was not captured: binary, or over the size cap (#13). */
-  contentOmitted: z.enum(['binary', 'too-large']).nullable(),
-  /** In diff order. Empty for binary, mode-only and pure-rename changes. */
+  /**
+   * Why content was not captured: binary, either side over the size cap (1 MiB by default), or
+   * either side not valid UTF-8 (#13). For `not-utf8` the hunks' patch text is lossy: invalid
+   * bytes are U+FFFD.
+   */
+  contentOmitted: z.enum(['binary', 'too-large', 'not-utf8']).nullable(),
+  /** In diff order. Empty for binary, mode-only, pure-rename and exact-copy changes. */
   hunks: z.array(DiffHunk),
 });
 
@@ -68,6 +72,24 @@ export const PullRequestInfo = z.strictObject({
   baseRefName: z.string().min(1),
   headRefName: z.string().min(1),
 });
+
+export const ExtractionWarning = z.enum([
+  /**
+   * Git is older than 2.40 (no `--attr-source`), so a `commit`, `range` or `pr` diff read
+   * `.gitattributes` from the working tree instead of the head commit.
+   */
+  'attributes-from-working-tree',
+  /**
+   * The diff was over Git's rename limit for `--find-copies-harder`, so copies were looked for
+   * only among changed files; a copy of an unchanged file shows as an addition.
+   */
+  'copy-detection-limited',
+  /**
+   * The diff was over Git's rename limit, so only exact renames and copies were detected; the
+   * others show as a deletion plus an addition.
+   */
+  'rename-detection-skipped',
+]);
 
 export const ChangeSet = z.strictObject({
   schemaVersion: z.literal(CHANGESET_SCHEMA_VERSION),
@@ -91,9 +113,15 @@ export const ChangeSet = z.strictObject({
   excludedUntrackedPaths: z.array(RepoPath),
   /** `pr` only: the pull request's metadata. Null otherwise. */
   pullRequest: PullRequestInfo.nullable(),
+  /**
+   * Where Git could not give the extraction its usual semantics, for the artifact to state. In
+   * the enum's order, each at most once; empty when there is nothing to say.
+   */
+  warnings: z.array(ExtractionWarning),
 });
 
 export type DiffHunk = z.infer<typeof DiffHunk>;
 export type FileChange = z.infer<typeof FileChange>;
 export type PullRequestInfo = z.infer<typeof PullRequestInfo>;
+export type ExtractionWarning = z.infer<typeof ExtractionWarning>;
 export type ChangeSet = z.infer<typeof ChangeSet>;

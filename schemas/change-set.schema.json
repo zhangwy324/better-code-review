@@ -210,7 +210,8 @@
                 "type": "string",
                 "enum": [
                   "binary",
-                  "too-large"
+                  "too-large",
+                  "not-utf8"
                 ]
               },
               {
@@ -325,6 +326,17 @@
           "type": "null"
         }
       ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "attributes-from-working-tree",
+          "copy-detection-limited",
+          "rename-detection-skipped"
+        ]
+      }
     }
   },
   "required": [
@@ -335,7 +347,8 @@
     "headRevision",
     "files",
     "excludedUntrackedPaths",
-    "pullRequest"
+    "pullRequest",
+    "warnings"
   ],
   "additionalProperties": false,
   "title": "change-set v1",

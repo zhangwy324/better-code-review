@@ -49,7 +49,7 @@ export const ChangedEntity = z.strictObject({
   container: z.string().min(1).nullable(),
   /** The file on the new side, or the old side for deleted entities. */
   path: RepoPath,
-  /** The old-side path when it differs from `path` (rename or move). */
+  /** The old-side path when it differs from `path`: a rename or move, or the source of a copy. */
   oldPath: RepoPath.nullable(),
   change: z.enum(['added', 'modified', 'deleted', 'renamed', 'moved']),
   /** Extent of the entity on each side, including leading doc comments (#42). */
