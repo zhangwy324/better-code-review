@@ -628,14 +628,21 @@ async function verify(pairs: Pair[], side: Side, lsp: ReferenceProvider): Promis
         };
         continue;
       }
-      if (pair.hit.chaining || own.receiverTypes !== null || !result.complete) continue;
+      if (pair.hit.chaining || !result.complete) continue;
+      // A method of a class with bases is not rejected for a missing call: calls through a base
+      // method are not in its own references (#42). A call the server returned but whose
+      // receiver's type is a sibling class is (#80); a subclass or a further ancestor is not.
+      const excluded = result.excluded.find(isHit);
+      if (excluded ? !excluded.sibling : own.receiverTypes !== null) continue;
       if (result.unresolved.some(isHit)) continue;
       const resolves =
         (await healthy(at.language, own.path)) && (await healthy(at.language, pair.file.path));
       if (!resolves) continue;
       pair.lsp = {
         outcome: 'rejected',
-        detail: 'not among textDocument/references, and both files resolve',
+        detail: excluded
+          ? `among textDocument/references, but the receiver's static type, ${excluded.receiverType}, is a sibling class that cannot reach this method, and both files resolve`
+          : 'not among textDocument/references, and both files resolve',
       };
     }
   }

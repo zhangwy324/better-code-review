@@ -4,6 +4,7 @@
 // a missing, broken or slow server; it reports a capability gap or an `unknown` answer instead.
 import { readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { EntityKind, LanguageCapability, SourceRange } from '../../schemas/index.ts';
 import { fileUriToPath, LspClient, normaliseUri, type Spawner, spawnProcess } from './client.ts';
@@ -16,7 +17,10 @@ import {
   isMethodDeclaration,
   isUnresolvedImport,
   receiverOf,
+  type TextPosition,
+  type TypeHeader,
   toSourceRange,
+  typeHeaderAt,
   typeNameAt,
 } from './normalise.ts';
 import type {
@@ -109,9 +113,12 @@ export interface ReferenceTarget extends FilePosition {
   /** For an override: the base methods it overrides, queried too (#42). */
   baseMethods?: FilePosition[];
   /**
-   * For an override: the types whose receivers can reach it, i.e. its class, its subclasses
-   * and its ancestors. A call through a base method is kept only when the receiver's static
-   * type is one of these; without the list such calls are returned as `unresolved`.
+   * For a method of a class with bases: type names whose receivers reach it. The analyzer passes
+   * the class and its direct bases, not subclasses or further ancestors. A call is kept only
+   * when its receiver's static type is one of these; any other is `excluded`, and is a sibling
+   * only when its type is a class that shares an ancestor with these bases but is not related
+   * to the class (found by following declarations, so the list need not be complete). Without
+   * the list, calls through a base method are returned as `unresolved`.
    */
   receiverTypes?: string[];
 }
@@ -124,6 +131,19 @@ export interface ReferenceSite {
   via: 'direct' | 'base-method';
 }
 
+/** A call dropped because its receiver's static type is not one of `receiverTypes` (#80). */
+export interface ExcludedSite extends ReferenceSite {
+  /** The receiver's static type, as `typeDefinition` named it (`A | B` for several). */
+  receiverType: string;
+  /**
+   * Whether that type is a sibling, so the call cannot reach the method: a class that extends or
+   * implements, directly or not, one of the method's class's direct bases, and is neither that
+   * class, a subclass of it, nor one of its ancestors. False when that could not be settled.
+   * A subclass or a further ancestor is dropped too, but can reach the method.
+   */
+  sibling: boolean;
+}
+
 export type ReferencesResult =
   | {
       status: 'ok';
@@ -131,11 +151,42 @@ export type ReferencesResult =
       references: ReferenceSite[];
       /** Calls through a base method whose receiver type could not be decided. */
       unresolved: ReferenceSite[];
+      /** With `receiverTypes`: calls the server returned whose receiver's type is not listed. */
+      excluded: ExcludedSite[];
       /** False when a base-method query failed: some calls may be missing. */
       complete: boolean;
     }
   /** Not "no references": the server was missing, not ready, or failed (ADR 0001). */
   | { status: 'unknown'; reason: string };
+
+/** A type declaration a server pointed at. */
+interface DeclaredType {
+  name: string;
+  /** Null when the declaration's header could not be read. */
+  header: TypeHeader | null;
+  /** Whether it is in the workspace. */
+  inside: boolean;
+  abs: string;
+  /** Its file (repository-relative inside the workspace) and the name's position. */
+  key: string;
+}
+
+/** A type's ancestors, by `DeclaredType.key`: all of them with their names, and the direct ones. */
+interface Ancestors {
+  all: Map<string, string>;
+  direct: Set<string>;
+}
+
+/** What one `references` query with `receiverTypes` learns about the method's class (#80). */
+interface Family {
+  target: ReferenceTarget;
+  receiverTypes: readonly string[];
+  own?: Promise<{ type: DeclaredType; ancestors: Ancestors } | null>;
+  ancestors: Map<string, Promise<Ancestors | null>>;
+}
+
+/** Bounds the ancestors followed for one type. */
+const MAX_ANCESTORS = 32;
 
 export interface ProjectHealth {
   /** Whether a reference the server did not return may be treated as a rejection (#42). */
@@ -420,20 +471,23 @@ export class LspSession {
 
     const references: ReferenceSite[] = [];
     const unresolved: ReferenceSite[] = [];
+    const excluded: ExcludedSite[] = [];
     const seen = new Set<string>();
+    const family: Family | undefined = target.receiverTypes
+      ? { target, receiverTypes: target.receiverTypes, ancestors: new Map() }
+      : undefined;
     for (const [loc, via] of found) {
       const [site] = this.#sites([loc], via, constructor);
       if (!site || seen.has(siteKey(site))) continue;
       seen.add(siteKey(site));
       const verdict =
-        target.kind === 'method'
-          ? await this.#methodCall(state, client, loc, via, target.receiverTypes)
-          : 'keep';
+        target.kind === 'method' ? await this.#methodCall(state, client, loc, via, family) : 'keep';
       if (verdict === 'keep') references.push(site);
-      if (verdict === 'unresolved') unresolved.push(site);
+      else if (verdict === 'unresolved') unresolved.push(site);
+      else if (verdict !== 'drop') excluded.push({ ...site, ...verdict });
     }
     state.answered = true;
-    return { status: 'ok', references, unresolved, complete };
+    return { status: 'ok', references, unresolved, excluded, complete };
   }
 
   /** Waits for jdtls's `ServiceReady`, or for in-flight `$/progress` work to end (bounded). */
@@ -553,7 +607,8 @@ export class LspSession {
    * whole override family (base and sibling declarations, `super.x()`, sibling receivers), and
    * the base-method query does by design, so both go through the same filter:
    * - other declarations of the method are dropped;
-   * - with `receiverTypes`, a receiver whose static type is not one of them is dropped;
+   * - with `receiverTypes`, a receiver whose static type is not one of them is excluded, with
+   *   that type and whether it is a sibling (#80);
    * - `super.x()` through a base method is static dispatch to the base and is dropped;
    * - what cannot be decided is `unresolved`, except direct answers, which are trusted.
    */
@@ -562,33 +617,29 @@ export class LspSession {
     client: LspClient,
     loc: Location,
     via: ReferenceSite['via'],
-    receiverTypes: readonly string[] | undefined,
-  ): Promise<'keep' | 'drop' | 'unresolved'> {
+    family: Family | undefined,
+  ): Promise<'keep' | 'drop' | 'unresolved' | Omit<ExcludedSite, keyof ReferenceSite>> {
     const lines = this.#fileLines(fileUriToPath(loc.uri));
     if (isMethodDeclaration(lines, loc.range)) return 'drop';
     const receiver = receiverOf(lines[loc.range.start.line] ?? '', loc.range.start.character);
     const undecided = via === 'direct' ? 'keep' : 'unresolved';
     if (receiver.kind === 'super') return via === 'direct' ? 'unresolved' : 'drop';
-    if (receiver.kind !== 'identifier' || !receiverTypes) return undecided;
-    const reaches = await this.#receiverReaches(
-      state,
-      client,
-      loc,
-      receiver.character,
-      receiverTypes,
-    );
-    if (reaches === null) return 'unresolved';
-    return reaches ? 'keep' : 'drop';
+    if (receiver.kind !== 'identifier' || !family) return undecided;
+    const types = await this.#receiverTypes(state, client, loc, receiver.character);
+    if (types === null) return 'unresolved';
+    if (types.some((t) => family.receiverTypes.includes(t.name))) return 'keep';
+    // A union is not settled: one of its members may be related to the class.
+    const sibling = types.length === 1 && (await this.#isSibling(state, client, types[0]!, family));
+    return { receiverType: types.map((t) => t.name).join(' | '), sibling };
   }
 
-  /** Whether the receiver's static type is one of `receiverTypes`, or null if undecided. */
-  async #receiverReaches(
+  /** The receiver's static types, from `typeDefinition`, or null if undecided. */
+  async #receiverTypes(
     state: ServerState,
     client: LspClient,
     loc: Location,
     character: number,
-    receiverTypes: readonly string[],
-  ): Promise<boolean | null> {
+  ): Promise<DeclaredType[] | null> {
     const path = fileUriToPath(loc.uri);
     if (!this.#supported(state, client, 'textDocument/typeDefinition', 'typeDefinition')) {
       return null;
@@ -600,17 +651,153 @@ export class LspSession {
         { position: { line: loc.range.start.line, character } },
         this.#timeouts.requestMs,
       );
-      const first = Array.isArray(answer) ? answer[0] : answer;
-      if (!first) return null;
-      const [uri, range] =
-        'targetUri' in first
-          ? [first.targetUri, first.targetSelectionRange]
-          : [first.uri, first.range];
-      const type = typeNameAt(this.#fileLines(fileUriToPath(uri)), range);
-      return type === null ? null : receiverTypes.includes(type);
+      const all = (Array.isArray(answer) ? answer : answer ? [answer] : []).map((l) =>
+        this.#declaredAt(l),
+      );
+      if (all.length === 0 || all.some((t) => t === null)) return null;
+      return all as DeclaredType[];
     } catch (err) {
       if (client.exitReason !== null) throw err;
       this.#fail(state, 'typeDefinition', err);
+      return null;
+    }
+  }
+
+  /** The type declared at a `typeDefinition` or `definition` target, or null without a name. */
+  #declaredAt(location: Location | LocationLink): DeclaredType | null {
+    const [uri, range] =
+      'targetUri' in location
+        ? [location.targetUri, location.targetSelectionRange]
+        : [location.uri, location.range];
+    let abs: string;
+    try {
+      abs = fileUriToPath(uri);
+    } catch {
+      return null;
+    }
+    const lines = this.#fileLines(abs);
+    const name = typeNameAt(lines, range);
+    if (name === null) return null;
+    const header = typeHeaderAt(lines, range);
+    const at = header?.at ?? range.start;
+    const rel = relative(this.#root, abs);
+    const inside = rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+    const file = inside ? rel.split(sep).join('/') : abs;
+    return { name, header, inside, abs, key: `${file}:${at.line}:${at.character}` };
+  }
+
+  /**
+   * Whether a receiver type is a sibling of the target's class (see `ExcludedSite.sibling`).
+   * Ancestors are followed with `textDocument/definition` on each base the headers name, so a
+   * subclass, a further ancestor and a sibling are told apart by declaration, not by name.
+   * Anything that cannot be followed makes it not a sibling: the call stays possible.
+   */
+  async #isSibling(
+    state: ServerState,
+    client: LspClient,
+    type: DeclaredType,
+    family: Family,
+  ): Promise<boolean> {
+    // An interface, a type alias or a Python protocol can be satisfied by the class itself.
+    if (type.header?.keyword !== 'class' || !type.inside) return false;
+    family.own ??= this.#ownClass(state, client, family);
+    const own = await family.own;
+    if (!own) return false;
+    const ancestors = await this.#ancestors(state, client, type, family);
+    if (!ancestors) return false;
+    if (ancestors.all.has(own.type.key) || own.ancestors.all.has(type.key)) return false;
+    if ([...ancestors.all.values()].includes('Protocol')) return false;
+    return [...own.ancestors.direct].some((key) => ancestors.all.has(key));
+  }
+
+  /**
+   * The target method's class, found as the nearest class above it whose name is in
+   * `receiverTypes` and whose header names the rest of them, and its ancestors.
+   */
+  async #ownClass(
+    state: ServerState,
+    client: LspClient,
+    family: Family,
+  ): Promise<{ type: DeclaredType; ancestors: Ancestors } | null> {
+    const { target, receiverTypes } = family;
+    const abs = join(this.#root, target.path);
+    const uri = pathToFileURL(abs).href;
+    const lines = this.#fileLines(abs);
+    for (let line = Math.min(target.line - 1, lines.length - 1); line >= 0; line--) {
+      const match = /\bclass\s+([A-Za-z_$][\w$]*)/.exec(lines[line]!);
+      if (!match || !receiverTypes.includes(match[1]!)) continue;
+      const character = match.index + match[0].length - match[1]!.length;
+      const end = { line, character: character + match[1]!.length };
+      const type = this.#declaredAt({ uri, range: { start: { line, character }, end } });
+      const bases = type?.header?.bases?.map((b) => b.name) ?? [];
+      if (!type || receiverTypes.some((t) => t !== type.name && !bases.includes(t))) return null;
+      const ancestors = await this.#ancestors(state, client, type, family);
+      return ancestors && { type, ancestors };
+    }
+    return null;
+  }
+
+  /**
+   * A type's ancestors in the workspace and the first ones outside it, by declaration, or null
+   * when a base could not be followed. Cached per query.
+   */
+  #ancestors(
+    state: ServerState,
+    client: LspClient,
+    type: DeclaredType,
+    family: Family,
+  ): Promise<Ancestors | null> {
+    let result = family.ancestors.get(type.key);
+    if (!result) {
+      result = this.#walkAncestors(state, client, type);
+      family.ancestors.set(type.key, result);
+    }
+    return result;
+  }
+
+  async #walkAncestors(
+    state: ServerState,
+    client: LspClient,
+    type: DeclaredType,
+  ): Promise<Ancestors | null> {
+    const all = new Map<string, string>();
+    const direct = new Set<string>();
+    const queue = [type];
+    for (let node = queue.shift(); node; node = queue.shift()) {
+      if (!node.header?.bases) return null;
+      for (const base of node.header.bases) {
+        const found = await this.#definitionOf(state, client, node.abs, base.at);
+        // A declaration in the workspace must be followed; one outside it ends the walk there.
+        if (!found || (found.inside && !found.header)) return null;
+        if (node === type) direct.add(found.key);
+        if (all.has(found.key)) continue;
+        if (all.size >= MAX_ANCESTORS) return null;
+        all.set(found.key, found.name);
+        if (found.inside) queue.push(found);
+      }
+    }
+    return { direct, all };
+  }
+
+  async #definitionOf(
+    state: ServerState,
+    client: LspClient,
+    abs: string,
+    position: TextPosition,
+  ): Promise<DeclaredType | null> {
+    if (!this.#supported(state, client, 'textDocument/definition', 'definition')) return null;
+    try {
+      const answer = await client.request<Location | (Location | LocationLink)[] | null>(
+        'textDocument/definition',
+        abs,
+        { position },
+        this.#timeouts.requestMs,
+      );
+      const first = Array.isArray(answer) ? answer[0] : answer;
+      return first ? this.#declaredAt(first) : null;
+    } catch (err) {
+      if (client.exitReason !== null) throw err;
+      this.#fail(state, 'definition', err);
       return null;
     }
   }

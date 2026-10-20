@@ -135,6 +135,160 @@ export function typeNameAt(lines: readonly string[], range: Range): string | nul
   return TYPE_DECLARATION.exec(head)?.[1] ?? null;
 }
 
+/** A 0-based position, as in LSP. */
+export interface TextPosition {
+  line: number;
+  character: number;
+}
+
+/** A type's declaration header: what it is, its name, and the bases it names directly. */
+export interface TypeHeader {
+  /** `class`, `interface`, `enum`, `record`, `type`, … */
+  keyword: string;
+  name: string;
+  /** Where the name is declared. */
+  at: TextPosition;
+  /**
+   * The bases written in the header (`extends`/`implements`, Python's parentheses), each at its
+   * last identifier (`Base` in `m.Base<T>`), so a server can be asked where it is declared. Null
+   * when one is not a plain dotted name (`extends mixin(A)`, `*bases`).
+   */
+  bases: { name: string; at: TextPosition }[] | null;
+}
+
+const HEADER_LINES = 20;
+const DOTTED_BASE = /^\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?:[<[][\s\S]*)?$/;
+
+/**
+ * The header of the type declared at a `typeDefinition` or `definition` target (see
+ * `typeNameAt`), for TS/JS, Java and Python. Null when there is no declaration of that name.
+ */
+export function typeHeaderAt(lines: readonly string[], range: Range): TypeHeader | null {
+  const name = typeNameAt(lines, range);
+  if (name === null) return null;
+  const declaration = new RegExp(
+    `\\b(class|interface|enum|record|struct|trait|object|type)\\s+(${name.replace(/\$/g, '\\$')})(?![\\w$])`,
+  );
+  for (let line = range.start.line; line < range.start.line + 5 && line < lines.length; line++) {
+    const match = declaration.exec(lines[line]!);
+    if (!match) continue;
+    const character = match.index + match[0].length - name.length;
+    // The text after the name, flattened, with a map back to positions.
+    const text: string[] = [];
+    const positions: TextPosition[] = [];
+    for (let l = line; l < line + HEADER_LINES && l < lines.length; l++) {
+      const from = l === line ? character + name.length : 0;
+      const source = `${lines[l]!}\n`;
+      for (let c = from; c < source.length; c++) {
+        text.push(source[c]!);
+        positions.push({ line: l, character: c });
+      }
+    }
+    const bases = parseBases(match[1]!, text.join(''), positions);
+    return { keyword: match[1]!, name, at: { line, character }, bases };
+  }
+  return null;
+}
+
+/** Bases in the header text after a type's name; see `TypeHeader.bases`. */
+function parseBases(keyword: string, text: string, positions: TextPosition[]): TypeHeader['bases'] {
+  let i = skipSpace(text, 0);
+  // Type parameters: `<T>` (TS, Java), `[T]` (Python 3.12). A Java record's components.
+  if (text[i] === '<' || text[i] === '[') i = skipSpace(text, closing(text, i));
+  if (keyword === 'record' && text[i] === '(') i = skipSpace(text, closing(text, i));
+  if (i < 0 || i > text.length) return null;
+  const entries: [number, number][] = [];
+  if (text[i] === '(') {
+    // Python: `(A, m.B, Generic[T], metaclass=M)`.
+    const end = closing(text, i);
+    if (end < 0) return null;
+    entries.push(...split(text, i + 1, end - 1));
+  } else if (text[i] === ':' || text[i] === '{') {
+    return [];
+  } else {
+    // TS/JS, Java: `extends A<T> implements B, C {`, ending at the body (`permits` ends it too).
+    const body = depth0(text, i, text.length).find((k) => text[k] === '{');
+    if (body === undefined) return null;
+    const clauses: { word: string; from: number; start: number }[] = [];
+    const words = /\b(extends|implements|permits)\b/g;
+    const top = new Set(depth0(text, i, body));
+    for (const m of text.slice(i, body).matchAll(words)) {
+      const from = i + m.index;
+      if (top.has(from)) clauses.push({ word: m[1]!, from, start: from + m[1]!.length });
+    }
+    const first = clauses[0]?.from ?? body;
+    if (text.slice(i, first).trim() !== '') return null;
+    for (let k = 0; k < clauses.length; k++) {
+      const end = clauses[k + 1]?.from ?? body;
+      if (clauses[k]!.word !== 'permits') entries.push(...split(text, clauses[k]!.start, end));
+    }
+  }
+  const bases: NonNullable<TypeHeader['bases']> = [];
+  for (const [start, end] of entries) {
+    const entry = text.slice(start, end);
+    if (entry.trim() === '') continue;
+    // Python keyword arguments (`metaclass=M`) are not bases.
+    if (/^\s*[A-Za-z_]\w*\s*=(?!=)/.test(entry)) continue;
+    const dotted = DOTTED_BASE.exec(entry);
+    if (!dotted) return null;
+    const last = /([A-Za-z_$][\w$]*)$/.exec(dotted[1]!)!;
+    const offset = start + entry.indexOf(dotted[1]!) + last.index;
+    bases.push({ name: last[1]!, at: positions[offset]! });
+  }
+  return bases;
+}
+
+function skipSpace(text: string, i: number): number {
+  if (i < 0) return i;
+  while (i < text.length && /\s/.test(text[i]!)) i++;
+  return i;
+}
+
+const OPEN: Record<string, string> = { '(': ')', '[': ']', '<': '>', '{': '}' };
+
+/** The index after the bracket that closes the one at `i`, or -1. `=>` is not a bracket. */
+function closing(text: string, i: number): number {
+  const stack: string[] = [];
+  for (let k = i; k < text.length; k++) {
+    const ch = text[k]!;
+    if (ch === '>' && text[k - 1] === '=') continue;
+    if (OPEN[ch]) stack.push(OPEN[ch]);
+    else if (ch === stack[stack.length - 1]) {
+      stack.pop();
+      if (stack.length === 0) return k + 1;
+    } else if (')]}>'.includes(ch)) return -1;
+  }
+  return -1;
+}
+
+/** The indices in `[start, end)` at bracket depth 0, counting from `start`. */
+function depth0(text: string, start: number, end: number): number[] {
+  const out: number[] = [];
+  let depth = 0;
+  for (let k = start; k < end; k++) {
+    const ch = text[k]!;
+    const arrow = ch === '>' && text[k - 1] === '=';
+    if (!arrow && ')]>'.includes(ch)) depth--;
+    if (depth === 0) out.push(k);
+    if ('([<'.includes(ch)) depth++;
+  }
+  return out;
+}
+
+/** `[start, end)` ranges between commas at depth 0. */
+function split(text: string, start: number, end: number): [number, number][] {
+  const parts: [number, number][] = [];
+  let from = start;
+  for (const k of depth0(text, start, end)) {
+    if (text[k] === ',') {
+      parts.push([from, k]);
+      from = k + 1;
+    }
+  }
+  parts.push([from, end]);
+  return parts;
+}
+
 /** Number of import statements in a file, approximately (one per statement, not per name). */
 export function countImports(text: string): number {
   let count = 0;

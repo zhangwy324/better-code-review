@@ -9,6 +9,7 @@ import {
   rangeContains,
   receiverOf,
   toSourceRange,
+  typeHeaderAt,
   typeNameAt,
 } from './normalise.ts';
 import type { Range } from './protocol.ts';
@@ -160,6 +161,51 @@ describe('typeNameAt', () => {
     expect(typeNameAt(lines, range(0, 0, 1, 1))).toBe('Shape');
     expect(typeNameAt(lines, range(2, 0, 3, 12))).toBe('Point');
     expect(typeNameAt(['let x = 1;'], range(0, 0, 10))).toBeNull();
+  });
+});
+
+describe('typeHeaderAt', () => {
+  const bases = (lines: string[], name: string, line = 0) => {
+    const header = typeHeaderAt(lines, at(lines, line, name));
+    return (
+      header && [
+        header.keyword,
+        header.bases?.map((b) => `${b.name}@${b.at.line}:${b.at.character}`) ?? null,
+      ]
+    );
+  };
+
+  it('reads TypeScript and Java heritage clauses', () => {
+    expect(
+      bases(
+        ['export abstract class A<T extends B<T>> extends m.Base<T> implements I, J<() => void> {'],
+        'A',
+      ),
+    ).toEqual(['class', ['Base@0:50', 'I@0:69', 'J@0:72']]);
+    expect(bases(['export class A', '  extends B', '  implements C {'], 'A')).toEqual([
+      'class',
+      ['B@1:10', 'C@2:13'],
+    ]);
+    expect(bases(['interface I extends J, K {}'], 'I')).toEqual([
+      'interface',
+      ['J@0:20', 'K@0:23'],
+    ]);
+    expect(bases(['public final class A {'], 'A')).toEqual(['class', []]);
+    expect(bases(['record R(int x) implements I {'], 'R')).toEqual(['record', ['I@0:27']]);
+    expect(bases(['sealed class S extends T permits U, V {'], 'S')).toEqual(['class', ['T@0:23']]);
+    expect(bases(['type T = { a: 1 };'], 'T')).toEqual(['type', null]);
+    // A base that is not a name cannot be followed.
+    expect(bases(['class A extends mixin(B) {'], 'A')).toEqual(['class', null]);
+  });
+
+  it('reads Python base lists', () => {
+    expect(bases(['class A(base.B, Generic[T], metaclass=M):'], 'A')).toEqual([
+      'class',
+      ['B@0:13', 'Generic@0:16'],
+    ]);
+    expect(bases(['class A:'], 'A')).toEqual(['class', []]);
+    expect(bases(['class A(*bases):'], 'A')).toEqual(['class', null]);
+    expect(typeHeaderAt(['x = 1'], range(0, 0, 1))).toBeNull();
   });
 });
 

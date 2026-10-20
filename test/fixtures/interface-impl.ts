@@ -1,5 +1,6 @@
 // An interface gains a method: one implementation adds it, a new implementation is added, and
-// callers use it through the interface type and through each implementation's own type.
+// callers use it through the interface type, through each implementation's own type, and
+// through a new subclass of one implementation.
 import { type Files, type Fixture, lines, TSCONFIG } from './fixture.ts';
 
 const base: Files = {
@@ -60,10 +61,18 @@ const head: Files = {
     '  }',
     '}',
   ),
+  'src/payments/stripe-connect.ts': lines(
+    "import { StripeGateway } from './stripe.ts';",
+    '',
+    'export class StripeConnectGateway extends StripeGateway {',
+    "  readonly account = 'acct_1';",
+    '}',
+  ),
   'src/checkout.ts': lines(
     "import type { PaymentGateway } from './payments/gateway.ts';",
     "import type { PaypalGateway } from './payments/paypal.ts';",
     "import type { StripeGateway } from './payments/stripe.ts';",
+    "import type { StripeConnectGateway } from './payments/stripe-connect.ts';",
     '',
     'export async function pay(gateway: PaymentGateway, cents: number): Promise<string> {',
     '  return gateway.charge(cents);',
@@ -80,6 +89,13 @@ const head: Files = {
     'export async function refundPaypal(paypal: PaypalGateway, chargeId: string): Promise<void> {',
     '  await paypal.refund(chargeId);',
     '}',
+    '',
+    'export async function refundConnect(',
+    '  connect: StripeConnectGateway,',
+    '  chargeId: string,',
+    '): Promise<void> {',
+    '  await connect.refund(chargeId);',
+    '}',
   ),
 };
 
@@ -93,6 +109,7 @@ export const interfaceImpl: Fixture = {
       'src/payments/gateway.ts structural',
       'src/payments/stripe.ts structural',
       'src/payments/paypal.ts structural',
+      'src/payments/stripe-connect.ts structural',
       'src/checkout.ts structural',
     ],
     // Interface members are not entities, so the interface itself changes. The blank line added
@@ -105,16 +122,20 @@ export const interfaceImpl: Fixture = {
       'symbol PaypalGateway',
       'symbol PaypalGateway.charge',
       'symbol PaypalGateway.refund',
+      'module src/payments/stripe-connect.ts',
+      'symbol StripeConnectGateway',
       'module src/checkout.ts',
       'symbol cancel',
       'symbol refundStripe',
       'symbol refundPaypal',
+      'symbol refundConnect',
     ],
     // Every refund(…) is a receiver call that only types settle, so each is possible to both
     // implementations.
     edges: [
       'StripeGateway implements PaymentGateway (both)',
       'PaypalGateway implements PaymentGateway (new)',
+      'StripeConnectGateway implements StripeGateway (new)',
       'cancel references PaymentGateway (new)',
       'cancel calls StripeGateway.refund (new)',
       'cancel calls PaypalGateway.refund (new)',
@@ -124,16 +145,24 @@ export const interfaceImpl: Fixture = {
       'refundPaypal references PaypalGateway (new)',
       'refundPaypal calls StripeGateway.refund (new)',
       'refundPaypal calls PaypalGateway.refund (new)',
+      'refundConnect references StripeConnectGateway (new)',
+      'refundConnect calls StripeGateway.refund (new)',
+      'refundConnect calls PaypalGateway.refund (new)',
     ],
   },
   // cancel's call through the interface can reach either implementation, so both are verified.
-  // An implementation-typed call is verified to its own class only; the receiver's type rules
-  // the other out, but a method of a class with bases is never rejected, so it stays possible.
+  // An implementation-typed call is verified to its own class only. The other implementation is
+  // a sibling (it implements the same interface), so the receiver's type rejects that call (#80).
+  // connect.refund() reaches StripeGateway.refund through a subclass, which receiverTypes does not
+  // list, so the filter drops it; a subclass is not a sibling, so it stays possible. To
+  // PaypalGateway, StripeConnectGateway is a sibling through StripeGateway, so that is rejected.
   withLsp: {
-    possible: [
+    rejected: [
       'refundStripe calls PaypalGateway.refund (new)',
       'refundPaypal calls StripeGateway.refund (new)',
+      'refundConnect calls PaypalGateway.refund (new)',
     ],
+    possible: ['refundConnect calls StripeGateway.refund (new)'],
   },
   later: [
     'M2: the plan groups the interface with its implementations, and an agent judges the two refund candidates (#43).',

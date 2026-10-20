@@ -679,6 +679,7 @@ describe('analyzeSemantics: language server answers', () => {
     status: 'ok',
     references,
     unresolved: [],
+    excluded: [],
     complete: true,
   });
 
@@ -889,6 +890,67 @@ describe('analyzeSemantics: language server answers', () => {
     });
     expect(asked(8)).toMatchObject({ receiverTypes: ['Savings', 'Account'] });
     expect(asked(8)).not.toHaveProperty('baseMethods');
+  });
+
+  it('rejects a call whose receiver is a sibling class, and only that (#80)', async () => {
+    const shapes = (n: number, total: string) => ({
+      'src/shapes.ts': lines(
+        'class Shape {',
+        '  area() { return 0; }',
+        '}',
+        'export class Square extends Shape {',
+        `  area() { return ${n}; }`,
+        '}',
+        'export class Circle extends Shape {',
+        `  area() { return ${n + 1}; }`,
+        '}',
+        'export function total(q: Square, c: Circle) {',
+        `  return ${total};`,
+        '}',
+      ),
+    });
+    // q.area() at 11:12, c.area() at 11:23.
+    const at = (column: number) => ({
+      path: 'src/shapes.ts',
+      range: { startLine: 11, startColumn: column, endLine: 11, endColumn: column + 4 },
+      via: 'direct' as const,
+    });
+    // Square.area: c (a Circle) is a sibling. Circle.area: q's type is reported as not one.
+    const answer = (target: ReferenceTarget): ReferencesResult => {
+      const [own, other, receiverType] =
+        target.line === 5 ? [12, 23, 'Circle'] : [23, 12, 'Square'];
+      return {
+        status: 'ok',
+        references: [at(own)],
+        unresolved: [],
+        excluded: [{ ...at(other), receiverType, sibling: target.line === 5 }],
+        complete: true,
+      };
+    };
+    const run = (broken: string[] = []) =>
+      analyse(shapes(1, 'q.area() + c.area()'), shapes(2, 'q.area() + c.area() + 0'), {
+        lsp: fakeLsp(answer, broken),
+      });
+
+    const result = await run();
+    // Per line: q.area(), then c.area().
+    expect(newSide(summary(result)).filter((l) => l.includes('.area'))).toEqual([
+      'new calls total -> Square.area @src/shapes.ts:11 text-search:candidate lsp:confirmed text-search:candidate lsp:rejected',
+      'new calls total -> Circle.area @src/shapes.ts:11 text-search:candidate text-search:candidate lsp:confirmed',
+    ]);
+    const rejected = result.evidence.records.filter(
+      (r) => r.method === 'lsp' && r.outcome === 'rejected' && r.location.side === 'new',
+    );
+    expect(rejected.map((r) => [r.location.range.startColumn, r.detail])).toEqual([
+      [
+        23,
+        "among textDocument/references, but the receiver's static type, Circle, is a sibling class that cannot reach this method, and both files resolve",
+      ],
+    ]);
+
+    // The usual conditions hold: a file that does not resolve stops it.
+    const unhealthy = await run(['src/shapes.ts']);
+    expect(unhealthy.evidence.records.filter((r) => r.outcome === 'rejected')).toEqual([]);
   });
 
   it('asks a base-side server only about old-side hits no new-side hit stands for (#66)', async () => {
