@@ -8,7 +8,7 @@ The project is MIT-licensed. Contributions are accepted under the same licence (
 
 ## Setup
 
-You need **Node.js 24 or later** (the only runtime; see [ADR 0001](docs/adr/0001-analyzer-runtime.md)).
+You need **Node.js 24 or later** (the only runtime; see [ADR 0001](docs/adr/0001-analyzer-runtime.md)) and **Git 2.30 or later**. Git 2.40 or later reads `.gitattributes` from the reviewed commit rather than the working tree, and the tests expect it; the reasons for both versions are at the top of [`src/git/extract.ts`](src/git/extract.ts).
 
 ```bash
 npm ci
