@@ -2,7 +2,7 @@
 // builder (#18) and checked by the invariant validator (#19). The agent never edits it (D6).
 //
 // Invariants (spec "Invariants"):
-// - Every hunk in the ChangeSet is on at least one node or in `uncoveredHunkIds` (2, 7).
+// - Every hunk in the ChangeSet is on at least one node, so `uncoveredHunkIds` is empty (2, 7).
 // - Every ID referenced here exists here or in the ChangeSet (3).
 // - Every `verified` edge cites at least one `lsp` evidence record with outcome `confirmed` (4).
 // - Only code edges live here; inferred and propagation links live in the plan (D6).
@@ -87,10 +87,13 @@ export const ChangeGraph = z.strictObject({
   languages: z.array(LanguageCapability),
   nodes: z.array(ChangeNode),
   codeEdges: z.array(CodeEdge),
-  /** The evidence records cited by `codeEdges`. */
+  /** The evidence records cited by `codeEdges`, and no others. */
   evidence: z.array(EvidenceRecord),
   caps: z.array(FanOutCap),
-  /** Hunks with no node. Expected to be empty, since unsupported files get file nodes. */
+  /**
+   * Hunks with no node. Always empty: unsupported files get file nodes, and the invariant validator
+   * rejects a graph that lists any.
+   */
   uncoveredHunkIds: z.array(HunkId),
 });
 

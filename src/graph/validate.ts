@@ -5,11 +5,14 @@
 //
 // The rules, numbered as the spec's "Invariants":
 // - Every ID is unique within its list: hunks, nodes, edges, evidence (1).
-// - Every hunk is on at least one node or in `uncoveredHunkIds`, not both (2, 7).
+// - Every hunk is on at least one node (2, 7), and `uncoveredHunkIds` is empty: unsupported files
+//   get file nodes, so a hunk with no node is a builder bug (MVP spec M1: "100% of hunks have a
+//   home node").
 // - Every ID the graph references exists: hunks in the ChangeSet; nodes, test files, evidence and
 //   entities in the graph (3).
 // - Every edge's records match its relation and ends; a `verified` edge cites a confirmed `lsp`
-//   record; every record points at a real line of a changed file on its side (4).
+//   record; every record is cited by an edge and points at a real line of a changed file on its
+//   side (4).
 //
 // Coverage is counted from the ChangeSet's hunks, not from nodes, so a node holding no changed
 // hunk (a context node, design reference §9.5; none exist in v0.1, D12) cannot inflate it.
@@ -77,22 +80,14 @@ export function graphViolations(graph: ChangeGraph, changeSet: ChangeSet): strin
   // Coverage (2, 7).
   const hunks = new Set(hunkIds);
   const onNodes = new Set(graph.nodes.flatMap((n) => n.hunkIds));
-  const uncovered = new Set(graph.uncoveredHunkIds);
-  for (const id of hunks) {
-    if (!onNodes.has(id) && !uncovered.has(id)) {
-      out.push(`hunk ${id} is on no node and not in uncoveredHunkIds`);
-    }
-    if (onNodes.has(id) && uncovered.has(id)) {
-      out.push(`hunk ${id} is in uncoveredHunkIds but on a node`);
-    }
+  for (const id of hunks) if (!onNodes.has(id)) out.push(`hunk ${id} is on no node`);
+  for (const id of graph.uncoveredHunkIds) {
+    out.push(`uncoveredHunkIds lists hunk ${id}; every hunk must be on a node`);
   }
   for (const node of graph.nodes) {
     for (const id of node.hunkIds) {
       if (!hunks.has(id)) out.push(`node ${node.id} cites hunk ${id}, which is not in the change`);
     }
-  }
-  for (const id of uncovered) {
-    if (!hunks.has(id)) out.push(`uncoveredHunkIds lists hunk ${id}, which is not in the change`);
   }
 
   // References (3) and evidence (4).
@@ -101,6 +96,7 @@ export function graphViolations(graph: ChangeGraph, changeSet: ChangeSet): strin
   for (const n of graph.nodes) if (n.entityId !== null) nodeOfEntity.set(n.entityId, n);
   const records = new Map(graph.evidence.map((r) => [r.id, r]));
   const filePaths = new Set(graph.files.map((f) => f.path));
+  const citedIds = new Set(graph.codeEdges.flatMap((e) => e.evidenceIds));
 
   for (const edge of graph.codeEdges) {
     const to = nodes.get(edge.to);
@@ -140,6 +136,7 @@ export function graphViolations(graph: ChangeGraph, changeSet: ChangeSet): strin
   }
 
   for (const r of graph.evidence) {
+    if (!citedIds.has(r.id)) out.push(`evidence ${r.id} is cited by no edge`);
     for (const entity of [r.sourceEntityId, r.targetEntityId]) {
       if (!nodeOfEntity.has(entity)) {
         out.push(`evidence ${r.id} cites entity ${entity}, which has no node`);

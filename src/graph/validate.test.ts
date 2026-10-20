@@ -100,25 +100,19 @@ describe('graphViolations: crafted invalid graphs fail', () => {
       (g) => g.evidence.push(g.evidence[0]!),
       /^evidence record ID ev_\w+ is not unique$/,
     ],
+    ['a hunk on no node', (g) => (g.nodes[0]!.hunkIds = []), /^hunk h_\w+ is on no node$/],
     [
-      'a hunk on no node',
-      (g) => (g.nodes[0]!.hunkIds = []),
-      /^hunk h_\w+ is on no node and not in uncoveredHunkIds$/,
-    ],
-    [
-      'a hunk both on a node and uncovered',
-      (g) => g.uncoveredHunkIds.push(g.nodes[0]!.hunkIds[0]!),
-      /^hunk h_\w+ is in uncoveredHunkIds but on a node$/,
+      'an uncovered hunk',
+      (g) => {
+        g.uncoveredHunkIds = g.nodes[0]!.hunkIds;
+        g.nodes[0]!.hunkIds = [];
+      },
+      /^uncoveredHunkIds lists hunk h_\w+; every hunk must be on a node$/,
     ],
     [
       'a node citing an unknown hunk',
       (g) => g.nodes[0]!.hunkIds.push('h_0000000000000000'),
       /^node n_\w+ cites hunk h_0+, which is not in the change$/,
-    ],
-    [
-      'an unknown uncovered hunk',
-      (g) => g.uncoveredHunkIds.push('h_0000000000000000'),
-      /^uncoveredHunkIds lists hunk h_0+, which is not in the change$/,
     ],
     [
       'an edge to a missing node',
@@ -183,6 +177,11 @@ describe('graphViolations: crafted invalid graphs fail', () => {
       /^edge e_\w+ is verified but cites no confirmed lsp evidence$/,
     ],
     [
+      'evidence no edge cites',
+      (g) => g.evidence.push({ ...g.evidence[0]!, id: 'ev_0000000000000000' }),
+      /^evidence ev_0+ is cited by no edge$/,
+    ],
+    [
       'evidence about an entity with no node',
       (g) => (g.evidence[0]!.sourceEntityId = 'ent_0000000000000000'),
       /^evidence ev_\w+ cites entity ent_0+, which has no node$/,
@@ -240,12 +239,8 @@ describe('hunkCoverage', () => {
       g.nodes.push({ ...g.nodes[0]!, id: 'n_0000000000000000' }),
     );
     expect(hunkCoverage(doubled, changes)).toEqual({ mapped: 12, total: 12 });
-    // A hunk moved to uncoveredHunkIds is not mapped, but still counted.
-    const unmapped = tamper(graph, (g) => {
-      g.uncoveredHunkIds = g.nodes[0]!.hunkIds;
-      g.nodes[0]!.hunkIds = [];
-    });
-    expect(graphViolations(unmapped, changes)).toEqual([]);
+    // A hunk on no node is not mapped, but still counted.
+    const unmapped = tamper(graph, (g) => (g.nodes[0]!.hunkIds = []));
     expect(hunkCoverage(unmapped, changes)).toEqual({ mapped: 11, total: 12 });
   });
 });
