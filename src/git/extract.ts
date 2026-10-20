@@ -36,6 +36,17 @@
 // - Text that is not valid UTF-8 on either side (Latin-1, UTF-16, ...) is listed without content,
 //   `contentOmitted` `not-utf8`, so nothing parses or shows garbled text. Its hunks are kept, but
 //   their patch text is decoded as UTF-8 too, with U+FFFD for the invalid bytes.
+//
+// Git version (#56): 2.30 or later (MIN_GIT_VERSION). It is checked once, before anything else
+// runs, so an older Git stops with GitTooOldError rather than fail partway with an unclear error.
+// The newest options the extractor relies on, by the release that added them:
+// - 2.30: `git rev-parse --end-of-options` (resolveCommit).
+// - 2.29: `git fetch --no-write-fetch-head` (pr.ts).
+// - 2.28: `git diff --no-relative`.
+// The rest (`diff --raw --patch -z`, `--find-copies-harder`, `--indent-heuristic`,
+// `--diff-algorithm`, `cat-file --batch`, `merge-base --all`, `rev-parse --git-path` and
+// `--is-shallow-repository`, `:/` pathspecs) is older. `--attr-source` (2.40) is optional: see
+// .gitattributes above.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { devNull } from 'node:os';
@@ -224,6 +235,7 @@ export async function extractChangeSet(
   target: ReviewTarget,
   options: ExtractOptions = {},
 ): Promise<ChangeSet> {
+  const gitVersion = await checkGitVersion(repo, options.gitVersion);
   if (target.kind === 'local') return extractLocal(repo, target, options);
 
   let base: string | null;
@@ -244,8 +256,7 @@ export async function extractChangeSet(
   }
   // .gitattributes can change hunks (`binary`, `-diff`, `diff=<driver>`), so they are read from
   // the head commit rather than from whatever the working tree holds.
-  const version = options.gitVersion ?? (await gitLine(repo, ['version']));
-  const attrSource = supportsAttrSource(version) ? head : null;
+  const attrSource = atLeast(gitVersion, ATTR_SOURCE_GIT_VERSION) ? head : null;
   const settings = diffSettings(options, attrSource);
   const diff = await diffFiles(repo, base, head, settings);
   const warnings = new Set(diff.warnings);
@@ -300,12 +311,49 @@ async function extractLocal(
   });
 }
 
-/** Whether `git version` output names a Git with `--attr-source` (2.40 or later). */
-export function supportsAttrSource(gitVersion: string): boolean {
-  const m = /(\d+)\.(\d+)/.exec(gitVersion);
-  if (!m) throw new Error(`Unexpected git version output: ${gitVersion}`);
-  const [major, minor] = [Number(m[1]), Number(m[2])];
-  return major > 2 || (major === 2 && minor >= 40);
+/** A Git release, as its major and minor version. */
+export type GitVersion = readonly [major: number, minor: number];
+
+/** The oldest Git the extractor supports; the reasons are at the top of this file. */
+const MIN_GIT_VERSION: GitVersion = [2, 30];
+/** The first Git with `--attr-source`. */
+const ATTR_SOURCE_GIT_VERSION: GitVersion = [2, 40];
+
+/** The installed Git is older than MIN_GIT_VERSION. */
+export class GitTooOldError extends Error {
+  constructor(found: string) {
+    super(
+      `Git ${found} is too old; better-code-review needs Git ${MIN_GIT_VERSION.join('.')} or later`,
+    );
+    this.name = 'GitTooOldError';
+  }
+}
+
+/**
+ * Reads the Git version (`git version`, or the `gitVersion` test hook) and throws GitTooOldError
+ * when it is older than MIN_GIT_VERSION.
+ */
+async function checkGitVersion(repo: string, gitVersion?: string): Promise<GitVersion> {
+  const output = gitVersion ?? (await gitLine(repo, ['version']));
+  const version = parseGitVersion(output);
+  if (!atLeast(version, MIN_GIT_VERSION)) {
+    throw new GitTooOldError(output.trim().replace(/^git version /, ''));
+  }
+  return version;
+}
+
+/**
+ * The major and minor version in `git version` output. Vendor suffixes (`2.56.0.windows.2`,
+ * `2.39.5 (Apple Git-154)`) and release candidates (`2.45.0.rc1`) are ignored.
+ */
+export function parseGitVersion(output: string): GitVersion {
+  const m = /^git version (\d+)\.(\d+)/.exec(output.trim());
+  if (!m) throw new Error(`Unexpected git version output: ${output}`);
+  return [Number(m[1]), Number(m[2])];
+}
+
+function atLeast([major, minor]: GitVersion, [minMajor, minMinor]: GitVersion): boolean {
+  return major > minMajor || (major === minMajor && minor >= minMinor);
 }
 
 interface DiffSettings {

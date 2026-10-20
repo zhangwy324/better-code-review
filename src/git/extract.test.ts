@@ -3,7 +3,12 @@ import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { ChangeSet } from '../schemas/index.ts';
-import { DEFAULT_RENAME_LIMIT, extractChangeSet, supportsAttrSource } from './extract.ts';
+import {
+  DEFAULT_RENAME_LIMIT,
+  extractChangeSet,
+  GitTooOldError,
+  parseGitVersion,
+} from './extract.ts';
 import { hunkLines } from './patch.ts';
 import { TestRepo } from './test-repo.test-helper.ts';
 
@@ -663,12 +668,47 @@ describe('extractChangeSet: .gitattributes', () => {
       rmSync(join(info, 'attributes'));
     }
   });
+});
 
-  it('detects --attr-source support from `git version` output', () => {
-    expect(supportsAttrSource('git version 2.40.0')).toBe(true);
-    expect(supportsAttrSource('git version 2.43.0.windows.1')).toBe(true);
-    expect(supportsAttrSource('git version 3.0.0')).toBe(true);
-    expect(supportsAttrSource('git version 2.39.5 (Apple Git-154)')).toBe(false);
-    expect(() => supportsAttrSource('nonsense')).toThrow(/Unexpected git version/);
+describe('extractChangeSet: Git version', () => {
+  const repo = new TestRepo();
+  const head = repo.commit([], { 'f.txt': 'one\n' });
+
+  it('parses `git version` output, vendor suffixes included', () => {
+    expect(parseGitVersion('git version 2.43.0\n')).toEqual([2, 43]);
+    expect(parseGitVersion('git version 2.56.0.windows.2')).toEqual([2, 56]);
+    expect(parseGitVersion('git version 2.39.5 (Apple Git-154)')).toEqual([2, 39]);
+    expect(parseGitVersion('git version 2.45.0.rc1')).toEqual([2, 45]);
+    expect(parseGitVersion('git version 2.47.0.123.gabcdef0')).toEqual([2, 47]);
+    expect(parseGitVersion('git version 3.0')).toEqual([3, 0]);
+    expect(parseGitVersion('git version 10.2.1')).toEqual([10, 2]);
+    expect(() => parseGitVersion('nonsense 2.43.0')).toThrow(/Unexpected git version/);
+    expect(() => parseGitVersion('git version two')).toThrow(/Unexpected git version/);
+  });
+
+  it('accepts Git 2.30 and later', async () => {
+    // Versions with `--attr-source` are left to the installed Git, which may not have it.
+    for (const gitVersion of ['git version 2.30.0', 'git version 2.39.5 (Apple Git-154)']) {
+      const target = { kind: 'commit', commit: head } as const;
+      await expect(extractChangeSet(repo.path, target, { gitVersion })).resolves.toBeDefined();
+    }
+  });
+
+  it('stops before extracting with an older Git, naming both versions', async () => {
+    const message = 'Git 2.29.2.windows.3 is too old; better-code-review needs Git 2.30 or later';
+    // A missing commit, or the GitHub CLI failing, would be another error had extraction started.
+    const gh = () => Promise.reject(new Error('gh was run'));
+    for (const target of [
+      { kind: 'commit', commit: 'no-such-commit' },
+      { kind: 'local', includeUntracked: true },
+      { kind: 'pr', number: 7 },
+    ] as const) {
+      const extraction = extractChangeSet(repo.path, target, {
+        gh,
+        gitVersion: 'git version 2.29.2.windows.3',
+      });
+      await expect(extraction).rejects.toBeInstanceOf(GitTooOldError);
+      await expect(extraction).rejects.toThrow(message);
+    }
   });
 });
