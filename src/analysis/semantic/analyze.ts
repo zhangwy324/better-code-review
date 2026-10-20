@@ -115,6 +115,8 @@ interface TargetSide {
   receiverTypes: string[] | null;
   /** For a method: the same-named methods of its class's direct bases, asked about too (#81). */
   baseMethods: FilePosition[];
+  /** With `receiverTypes`: the position of the class's name, to follow its ancestors (#80). */
+  ownerClass: { line: number; column: number } | null;
 }
 
 interface Pair {
@@ -314,24 +316,28 @@ async function lspTarget(
   facts: Entity,
   search: string,
   snapshot: { parser: StructuralParser; resolver: Resolver; files: SnapshotFiles },
-): Promise<Pick<TargetSide, 'lsp' | 'receiverTypes' | 'baseMethods'>> {
+): Promise<Pick<TargetSide, 'lsp' | 'receiverTypes' | 'baseMethods' | 'ownerClass'>> {
   const constructor = facts.kind === 'constructor';
   const inside = (d: Declaration) =>
     constructor
       ? d.kind === 'class' && d.name === search && startsIn(d.range, facts.range)
       : d.kind === facts.kind && d.name === facts.name && within(d.range, facts.range);
   const declaration = declarations(parsed).find(inside);
-  if (!declaration) return { lsp: null, receiverTypes: null, baseMethods: [] };
+  if (!declaration) return { lsp: null, receiverTypes: null, baseMethods: [], ownerClass: null };
   let receiverTypes: string[] | null = null;
+  let ownerClass: TargetSide['ownerClass'] = null;
   const baseMethods: FilePosition[] = [];
   if (facts.kind === 'method') {
     const cls = enclosingClass(declaration.node);
     const bases = cls === null ? [] : baseNames(cls);
-    // Subclasses and further ancestors are not listed: a call on one is dropped from the
-    // answer and stays possible, since a method of a class with bases is never rejected.
+    // Subclasses and further ancestors are not listed: the session keeps a call on a
+    // subclass that inherits the method (#80); any other is dropped and stays possible.
     if (cls !== null && bases.length > 0) {
-      const name = cls.childForFieldName('name')?.text;
-      receiverTypes = name === undefined ? bases : [name, ...bases];
+      const name = cls.childForFieldName('name');
+      receiverTypes = name ? [name.text, ...bases] : bases;
+      if (name) {
+        ownerClass = { line: name.startPosition.row + 1, column: name.startPosition.column + 1 };
+      }
     }
     for (const base of bases) {
       const found = await baseMethod(file, parsed, base, declaration.name, snapshot);
@@ -343,6 +349,7 @@ async function lspTarget(
     lsp: { language: file.grammar, line: at.startLine, column: at.startColumn ?? 1 },
     receiverTypes,
     baseMethods,
+    ownerClass,
   };
 }
 
@@ -612,6 +619,7 @@ async function verify(pairs: Pair[], side: Side, lsp: ReferenceProvider): Promis
       kind: target.entity.kind,
       ...(own.receiverTypes === null ? {} : { receiverTypes: own.receiverTypes }),
       ...(own.baseMethods.length === 0 ? {} : { baseMethods: own.baseMethods }),
+      ...(own.ownerClass === null ? {} : { ownerClass: { path: own.path, ...own.ownerClass } }),
     });
     if (result.status !== 'ok') continue;
     for (const pair of open.filter((p) => p.target === target)) {
@@ -628,14 +636,21 @@ async function verify(pairs: Pair[], side: Side, lsp: ReferenceProvider): Promis
         };
         continue;
       }
-      if (pair.hit.chaining || own.receiverTypes !== null || !result.complete) continue;
+      if (pair.hit.chaining || !result.complete) continue;
+      // A method of a class with bases is not rejected for a missing call: calls through a base
+      // method are not in its own references (#42). A call the server returned but whose
+      // receiver's type is a sibling class is (#80); a subclass or a further ancestor is not.
+      const excluded = result.excluded.find(isHit);
+      if (excluded ? !excluded.sibling : own.receiverTypes !== null) continue;
       if (result.unresolved.some(isHit)) continue;
       const resolves =
         (await healthy(at.language, own.path)) && (await healthy(at.language, pair.file.path));
       if (!resolves) continue;
       pair.lsp = {
         outcome: 'rejected',
-        detail: 'not among textDocument/references, and both files resolve',
+        detail: excluded
+          ? `among textDocument/references, but the receiver's static type, ${excluded.receiverType}, is a sibling class that cannot reach this method, and both files resolve`
+          : 'not among textDocument/references, and both files resolve',
       };
     }
   }

@@ -36,6 +36,36 @@ const FILES: Record<string, string> = {
     '',
   ].join('\n'),
   'src/broken.ts': "import { x } from 'missing-package';\nimport { y } from './y';\n",
+  // Stripe.refund's receivers (#80): Paypal and Adyen are siblings; Connect is a subclass, Root
+  // a further ancestor, Refunder an interface, and a union is not settled.
+  'src/gateways.ts': [
+    'export interface Gateway {',
+    '  refund(): void;',
+    '}',
+    'export class Root implements Gateway {',
+    '  refund(): void {}',
+    '}',
+    'export class Mid extends Root {}',
+    'export class Stripe extends Mid implements Gateway {',
+    '  override refund(): void {}',
+    '}',
+    'export class Paypal implements Gateway {',
+    '  refund(): void {}',
+    '}',
+    'export class Connect extends Stripe {}',
+    'export class Adyen extends Paypal {}',
+    'export interface Refunder extends Gateway {}',
+    'export function use(p: Paypal, k: Connect, a: Adyen, r: Root, i: Refunder, u: Paypal | Adyen) {',
+    '  p.refund(); k.refund(); a.refund(); r.refund(); i.refund(); u.refund();',
+    '}',
+    'export class Express extends Stripe {',
+    '  override refund(): void {}',
+    '}',
+    'export function useExpress(e: Express) {',
+    '  e.refund();',
+    '}',
+    '',
+  ].join('\n'),
 };
 
 const root = mkdtempSync(join(tmpdir(), 'bcr-session-'));
@@ -251,7 +281,13 @@ describe('readiness', () => {
         }),
     );
     const result = await session.references(formatPrice);
-    expect(result).toEqual({ status: 'ok', references: [], unresolved: [], complete: true });
+    expect(result).toEqual({
+      status: 'ok',
+      references: [],
+      unresolved: [],
+      excluded: [],
+      complete: true,
+    });
     await session.close();
   });
 
@@ -398,6 +434,118 @@ describe('overrides', () => {
     if (result.status !== 'ok') throw new Error(result.reason);
     expect(result.references.map((r) => r.via)).toEqual(['direct']);
     expect(result.unresolved).toHaveLength(3); // s.area(), c.area(), sq[0].area()
+    await session.close();
+  });
+});
+
+describe('sibling receivers (#80)', () => {
+  const lines = FILES['src/gateways.ts']!.split('\n');
+  const types: Record<string, string[]> = {
+    p: ['Paypal'],
+    k: ['Connect'],
+    a: ['Adyen'],
+    r: ['Root'],
+    i: ['Refunder'],
+    u: ['Paypal', 'Adyen'],
+    e: ['Express'],
+  };
+  /** Which `refund` a call resolves to statically, by its receiver: [line, character]. */
+  const resolves: Record<string, [number, number]> = {
+    p: [11, 2],
+    k: [8, 11], // Connect inherits Stripe's
+    a: [11, 2],
+    r: [4, 2],
+    i: [1, 2],
+    u: [11, 2],
+    e: [21, 11],
+  };
+  // Stripe.refund, and Stripe's name.
+  const stripeRefund = {
+    language: 'typescript',
+    path: 'src/gateways.ts',
+    line: 9,
+    column: 12,
+    kind: 'method' as const,
+    receiverTypes: ['Stripe', 'Mid', 'Gateway'],
+    ownerClass: { path: 'src/gateways.ts', line: 8, column: 14 },
+  };
+  /** Where a type's name is declared. */
+  function declaration(name: string): Location {
+    const line = lines.findIndex((l) => new RegExp(`(class|interface) ${name}\\b`).test(l));
+    const character = lines[line]!.indexOf(` ${name}`) + 1;
+    return {
+      uri: uri('src/gateways.ts'),
+      range: { start: { line, character }, end: { line, character: character + name.length } },
+    };
+  }
+  const word = (params: Record<string, unknown>) => {
+    const { line, character } = params.position as { line: number; character: number };
+    return lines[line]!.slice(character).match(/^\w+/)![0];
+  };
+  /** A base's declaration, or for a call the `refund` it resolves to. */
+  const definition = (params: Record<string, unknown>): Location => {
+    if (word(params) !== 'refund') return declaration(word(params));
+    const { line, character } = params.position as { line: number; character: number };
+    const [l, c] = resolves[lines[line]![character - 2]!]!;
+    const range = { start: { line: l, character: c }, end: { line: l, character: c + 6 } };
+    return { uri: uri('src/gateways.ts'), range };
+  };
+
+  it('reports dropped calls with their receiver type, and which are siblings', async () => {
+    const { session } = await start(
+      () =>
+        new FakeServer(
+          {
+            // Every declaration (0 to 3, 10), dropped, and every call.
+            'textDocument/references': () =>
+              [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((n) =>
+                loc('src/gateways.ts', 'refund', n),
+              ),
+            'textDocument/prepareCallHierarchy': () => [],
+            'textDocument/typeDefinition': (params) => types[word(params)]!.map(declaration),
+            'textDocument/definition': (params) => [definition(params)],
+          },
+          { ...CAPABILITIES, definitionProvider: true },
+        ),
+    );
+    const result = await session.references(stripeRefund);
+    if (result.status !== 'ok') throw new Error(result.reason);
+    // Connect is a subclass that inherits Stripe.refund, so `definition` lands on it.
+    expect(result.references.map((r) => r.range.startColumn)).toEqual([17]);
+    expect(result.excluded.map((e) => [e.range.startColumn, e.receiverType, e.sibling])).toEqual([
+      [5, 'Paypal', true],
+      [29, 'Adyen', true], // through Paypal
+      [41, 'Root', false], // an ancestor of Stripe through Mid
+      [53, 'Refunder', false], // an interface Stripe could satisfy
+      [65, 'Paypal | Adyen', false],
+      [5, 'Express', false], // a subclass that overrides it
+    ]);
+    // Without the class's position, its ancestors are not followed, so nothing is a sibling.
+    const { ownerClass, ...withoutOwner } = stripeRefund;
+    expect(ownerClass).toBeDefined();
+    const unsettled = await session.references(withoutOwner);
+    if (unsettled.status !== 'ok') throw new Error(unsettled.reason);
+    expect(unsettled.excluded.filter((e) => e.sibling)).toEqual([]);
+    expect(session.capabilities()[0]!.capabilitiesAttempted).toContain('definition');
+    await session.close();
+  });
+
+  it('calls nothing a sibling when a base cannot be followed', async () => {
+    const { session } = await start(
+      () =>
+        new FakeServer(
+          {
+            'textDocument/references': () => [loc('src/gateways.ts', 'refund', 4)],
+            'textDocument/prepareCallHierarchy': () => [],
+            'textDocument/typeDefinition': (params) => types[word(params)]!.map(declaration),
+            'textDocument/definition': () => null,
+          },
+          { ...CAPABILITIES, definitionProvider: true },
+        ),
+    );
+    const result = await session.references(stripeRefund);
+    if (result.status !== 'ok') throw new Error(result.reason);
+    expect(result.excluded.map((e) => [e.receiverType, e.sibling])).toEqual([['Paypal', false]]);
     await session.close();
   });
 });

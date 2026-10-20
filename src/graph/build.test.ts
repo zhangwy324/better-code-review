@@ -130,6 +130,7 @@ describe('buildGraph on the signature fixture (M1 acceptance)', () => {
         },
       ],
       unresolved: [],
+      excluded: [],
       complete: true,
     });
     const lsp: ReferenceProvider = {
@@ -192,7 +193,13 @@ describe('buildGraph on the signature fixture (M1 acceptance)', () => {
         'src/total.ts': caller('1'),
       },
       {
-        lsp: fakeLsp(() => ({ status: 'ok', references: [], unresolved: [], complete: true })),
+        lsp: fakeLsp(() => ({
+          status: 'ok',
+          references: [],
+          unresolved: [],
+          excluded: [],
+          complete: true,
+        })),
         oldLsp: () =>
           Promise.resolve(
             fakeLsp(() => ({
@@ -205,6 +212,7 @@ describe('buildGraph on the signature fixture (M1 acceptance)', () => {
                 },
               ],
               unresolved: [],
+              excluded: [],
               complete: true,
             })),
           ),
