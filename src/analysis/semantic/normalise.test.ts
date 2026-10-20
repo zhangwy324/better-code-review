@@ -120,6 +120,10 @@ describe('isMethodDeclaration', () => {
       '    def area(self) -> float:',
       '  public double area() {',
       '  async area<T>(x: T) {',
+      '  area(): void {}',
+      '  public void area() throws IOException { log(); }',
+      '  area(cb: () => void): Promise<void> { return run(cb); }',
+      '  area(): number;',
     ];
     for (let i = 0; i < decl.length; i++) {
       expect(isMethodDeclaration(decl, at(decl, i, 'area')), decl[i]).toBe(true);
@@ -130,6 +134,10 @@ describe('isMethodDeclaration', () => {
       '    if (area()) {',
       '    x = self.area()',
       '    if area(x):',
+      '    area(() => { done(); });',
+      '    area().then(() => {});',
+      '    area() || {};',
+      '    area();',
     ];
     for (let i = 0; i < calls.length; i++) {
       expect(isMethodDeclaration(calls, at(calls, i, 'area')), calls[i]).toBe(false);

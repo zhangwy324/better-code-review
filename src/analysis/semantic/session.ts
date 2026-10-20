@@ -117,10 +117,14 @@ export interface ReferenceTarget extends FilePosition {
    * the class and its direct bases, not subclasses or further ancestors. A call is kept only
    * when its receiver's static type is one of these; any other is `excluded`, and is a sibling
    * only when its type is a class that shares an ancestor with these bases but is not related
-   * to the class (found by following declarations, so the list need not be complete). Without
-   * the list, calls through a base method are returned as `unresolved`.
+   * to the class (found by following declarations from `ownerClass`, so the list need not be
+   * complete). A call whose receiver type is not listed is still kept when `definition` at the
+   * call lands on this method: a subclass that does not override it (#80). Without the list,
+   * calls through a base method are returned as `unresolved`.
    */
   receiverTypes?: string[];
+  /** With `receiverTypes`: the position of the method's class's name. Without it, no sibling. */
+  ownerClass?: FilePosition;
 }
 
 export interface ReferenceSite {
@@ -628,6 +632,8 @@ export class LspSession {
     const types = await this.#receiverTypes(state, client, loc, receiver.character);
     if (types === null) return 'unresolved';
     if (types.some((t) => family.receiverTypes.includes(t.name))) return 'keep';
+    // A subclass that does not override the method: the call resolves to it statically.
+    if (await this.#resolvesToTarget(state, client, loc, family.target)) return 'keep';
     // A union is not settled: one of its members may be related to the class.
     const sibling = types.length === 1 && (await this.#isSibling(state, client, types[0]!, family));
     return { receiverType: types.map((t) => t.name).join(' | '), sibling };
@@ -710,31 +716,55 @@ export class LspSession {
     return [...own.ancestors.direct].some((key) => ancestors.all.has(key));
   }
 
-  /**
-   * The target method's class, found as the nearest class above it whose name is in
-   * `receiverTypes` and whose header names the rest of them, and its ancestors.
-   */
+  /** The target method's class, at `ownerClass`, and its ancestors. */
   async #ownClass(
     state: ServerState,
     client: LspClient,
     family: Family,
   ): Promise<{ type: DeclaredType; ancestors: Ancestors } | null> {
-    const { target, receiverTypes } = family;
-    const abs = join(this.#root, target.path);
-    const uri = pathToFileURL(abs).href;
-    const lines = this.#fileLines(abs);
-    for (let line = Math.min(target.line - 1, lines.length - 1); line >= 0; line--) {
-      const match = /\bclass\s+([A-Za-z_$][\w$]*)/.exec(lines[line]!);
-      if (!match || !receiverTypes.includes(match[1]!)) continue;
-      const character = match.index + match[0].length - match[1]!.length;
-      const end = { line, character: character + match[1]!.length };
-      const type = this.#declaredAt({ uri, range: { start: { line, character }, end } });
-      const bases = type?.header?.bases?.map((b) => b.name) ?? [];
-      if (!type || receiverTypes.some((t) => t !== type.name && !bases.includes(t))) return null;
-      const ancestors = await this.#ancestors(state, client, type, family);
-      return ancestors && { type, ancestors };
+    const at = family.target.ownerClass;
+    if (!at) return null;
+    const abs = join(this.#root, at.path);
+    const line = at.line - 1;
+    const character = at.column - 1;
+    const name = /^[A-Za-z_$][\w$]*/.exec((this.#fileLines(abs)[line] ?? '').slice(character));
+    if (!name) return null;
+    const end = { line, character: character + name[0].length };
+    const type = this.#declaredAt({
+      uri: pathToFileURL(abs).href,
+      range: { start: { line, character }, end },
+    });
+    const ancestors = type && (await this.#ancestors(state, client, type, family));
+    return ancestors ? { type, ancestors } : null;
+  }
+
+  /**
+   * Whether `definition` at a call's name lands only on the target method itself, so the
+   * receiver's type inherits it without overriding it.
+   */
+  async #resolvesToTarget(
+    state: ServerState,
+    client: LspClient,
+    loc: Location,
+    target: ReferenceTarget,
+  ): Promise<boolean> {
+    if (!this.#supported(state, client, 'textDocument/definition', 'definition')) return false;
+    const want = join(this.#root, target.path);
+    const position = { line: target.line - 1, character: target.column - 1 };
+    try {
+      const answer = await client.request<Location | (Location | LocationLink)[] | null>(
+        'textDocument/definition',
+        fileUriToPath(loc.uri),
+        { position: loc.range.start },
+        this.#timeouts.requestMs,
+      );
+      const all = toLocations(Array.isArray(answer) ? answer : answer ? [answer] : null);
+      return all.length > 0 && all.every((l) => isAt(l, want, position));
+    } catch (err) {
+      if (client.exitReason !== null) throw err;
+      this.#fail(state, 'definition', err);
+      return false;
     }
-    return null;
   }
 
   /**
@@ -978,6 +1008,20 @@ function toLocations(answer: (Location | LocationLink)[] | null): Location[] {
   return (answer ?? []).map((l) =>
     'targetUri' in l ? { uri: l.targetUri, range: l.targetSelectionRange } : l,
   );
+}
+
+/** Whether a location is in file `abs` and covers `p`. */
+function isAt(l: Location, abs: string, p: Position): boolean {
+  let path: string;
+  try {
+    path = fileUriToPath(l.uri);
+  } catch {
+    return false;
+  }
+  const { start, end } = l.range;
+  const after = (a: Position, b: Position) =>
+    a.line > b.line || (a.line === b.line && a.character >= b.character);
+  return path === abs && after(p, start) && !after(p, end);
 }
 
 function locationKey(l: Location): string {

@@ -790,6 +790,7 @@ describe('analyzeSemantics: language server answers', () => {
         kind: 'method',
         receiverTypes: ['Square', 'Shape'],
         baseMethods: [{ path: 'src/shapes.ts', line: 2, column: 3 }],
+        ownerClass: { path: 'src/shapes.ts', line: 4, column: 14 },
       }),
     );
     // Square.area may be reached through Shape: its own references miss that call (#42).

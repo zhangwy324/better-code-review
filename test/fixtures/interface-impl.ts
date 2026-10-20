@@ -153,16 +153,15 @@ export const interfaceImpl: Fixture = {
   // cancel's call through the interface can reach either implementation, so both are verified.
   // An implementation-typed call is verified to its own class only. The other implementation is
   // a sibling (it implements the same interface), so the receiver's type rejects that call (#80).
-  // connect.refund() reaches StripeGateway.refund through a subclass, which receiverTypes does not
-  // list, so the filter drops it; a subclass is not a sibling, so it stays possible. To
-  // PaypalGateway, StripeConnectGateway is a sibling through StripeGateway, so that is rejected.
+  // connect.refund() reaches StripeGateway.refund through a subclass that does not override it,
+  // so `definition` at the call lands on that method and it is verified. To PaypalGateway,
+  // StripeConnectGateway is a sibling through StripeGateway, so that is rejected.
   withLsp: {
     rejected: [
       'refundStripe calls PaypalGateway.refund (new)',
       'refundPaypal calls StripeGateway.refund (new)',
       'refundConnect calls PaypalGateway.refund (new)',
     ],
-    possible: ['refundConnect calls StripeGateway.refund (new)'],
   },
   later: [
     'M2: the plan groups the interface with its implementations, and an agent judges the two refund candidates (#43).',

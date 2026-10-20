@@ -82,8 +82,9 @@ export function isAliasDeclaration(lines: readonly string[], range: Range): bool
 
 /**
  * Whether a method reference is a declaration (`area(): number {`, `def area(self):`,
- * `public double area() {`) rather than a call: tsserver lists the declarations of base and
- * sibling overrides among the references of an override; TS 7 and pyright do not.
+ * `public double area() {`, a one-line body `area(): void {}`, an interface's
+ * `area(): number;`) rather than a call: tsserver lists the declarations of base and sibling
+ * overrides among the references of an override; TS 7 and pyright do not.
  */
 export function isMethodDeclaration(lines: readonly string[], range: Range): boolean {
   const text = lines[range.start.line] ?? '';
@@ -92,7 +93,9 @@ export function isMethodDeclaration(lines: readonly string[], range: Range): boo
   if (/\b(?:def|function)\s+$/.test(before)) return true;
   if (/[=(.,!?&|+\-*/%]|\b(?:if|elif|while|for|return|await|yield|new)\b/.test(before))
     return false;
-  return /^\s*(?:<[^()]*>)?\s*\(.*[{:]\s*$/.test(after);
+  return /^\s*(?:<[^()]*>)?\s*\((?:.*[{:]\s*$|.*\)[^{}();=?|&,+\-*/%!]*\{.*\}\s*;?\s*$|.*\)\s*:[^{}();=?]+;\s*$)/.test(
+    after,
+  );
 }
 
 export type Receiver =
