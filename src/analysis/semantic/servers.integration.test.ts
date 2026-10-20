@@ -6,7 +6,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type ReferencesResult, LspSession } from './session.ts';
 import { installedServers } from './lsp-servers.test-helper.ts';
 
@@ -87,13 +87,18 @@ describe.skipIf(tsServers.length === 0)('TypeScript servers', () => {
         kind,
       });
 
+      // Started before, and closed after, every test, so one test can be run on its own with -t.
+      beforeAll(async () => {
+        session = await LspSession.start(fixture(TS_FILES), ['typescript', 'tsx'], {
+          searchPath,
+          timeouts,
+        });
+      }, TIMEOUT);
+      afterAll(() => session?.close());
+
       it(
         'starts and reports which TypeScript it uses',
-        async () => {
-          session = await LspSession.start(fixture(TS_FILES), ['typescript', 'tsx'], {
-            searchPath,
-            timeouts,
-          });
+        () => {
           const [cap] = session.capabilities();
           expect(cap).toMatchObject({ status: 'ok', server: { name: launch.name } });
           expect(cap!.server!.configuration).toMatch(/TypeScript \d/);
@@ -151,7 +156,6 @@ describe.skipIf(tsServers.length === 0)('TypeScript servers', () => {
           const broken = await session.projectHealth('typescript', ['src/broken.ts']);
           expect(broken).toMatchObject({ healthy: false, imports: 1 });
           expect(session.capabilities()[0]!.status).toBe('unhealthy');
-          await session.close();
         },
         TIMEOUT,
       );
@@ -177,10 +181,14 @@ describe.skipIf(pyServers.length === 0)('Python servers', () => {
         kind,
       });
 
+      beforeAll(async () => {
+        session = await LspSession.start(fixture(PY_FILES), ['python'], { searchPath, timeouts });
+      }, TIMEOUT);
+      afterAll(() => session?.close());
+
       it(
         'starts',
-        async () => {
-          session = await LspSession.start(fixture(PY_FILES), ['python'], { searchPath, timeouts });
+        () => {
           expect(session.capabilities()[0]).toMatchObject({ status: 'ok' });
         },
         TIMEOUT,
@@ -234,7 +242,6 @@ describe.skipIf(pyServers.length === 0)('Python servers', () => {
             healthy: false,
             imports: 1,
           });
-          await session.close();
         },
         TIMEOUT,
       );
