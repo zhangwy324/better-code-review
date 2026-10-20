@@ -213,6 +213,8 @@ async function analyseFile(
   if (change.binary) return none('binary');
   if (language === null) return none(null);
   if (change.contentOmitted === 'too-large') return none('too-large');
+  // No text to parse: the extractor would only have had a garbled decoding.
+  if (change.contentOmitted === 'not-utf8') return none('parse-error');
   const contents = sides.map((s) => s.content ?? '');
   if (contents.some((c) => Buffer.byteLength(c, 'utf8') > maxParseBytes)) return none('too-large');
   if (sides.some((s, i) => isGenerated(s.path!, contents[i]!))) return none('generated');

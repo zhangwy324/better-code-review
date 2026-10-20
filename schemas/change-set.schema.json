@@ -210,7 +210,8 @@
                 "type": "string",
                 "enum": [
                   "binary",
-                  "too-large"
+                  "too-large",
+                  "not-utf8"
                 ]
               },
               {

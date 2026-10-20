@@ -492,7 +492,7 @@ describe('extractChangeSet: copies and the rename limit', () => {
   });
 });
 
-describe('extractChangeSet: deletions, binary, huge and generated files', () => {
+describe('extractChangeSet: deletions, binary, non-UTF-8, huge and generated files', () => {
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]);
   const big = 'x'.repeat(99) + '\n';
   const repo = new TestRepo();
@@ -504,6 +504,8 @@ describe('extractChangeSet: deletions, binary, huge and generated files', () => 
     'grows.txt': 'small\n',
     'shrinks.txt': big.repeat(3),
     'huge-binary.bin': Buffer.concat([png, Buffer.from(big.repeat(3))]),
+    'latin1.txt': Buffer.from('caf\xe9\n', 'latin1'),
+    'bom.txt': '\uFEFFone\n',
   });
   const head = repo.commit([base], {
     'deleted.ts': null,
@@ -514,6 +516,8 @@ describe('extractChangeSet: deletions, binary, huge and generated files', () => 
     'shrinks.txt': 'small\n',
     'huge-binary.bin': Buffer.concat([png, Buffer.from(big.repeat(4))]),
     'app.min.js': 'var a=1;\n',
+    'latin1.txt': Buffer.from('caf\xe9s\n', 'latin1'),
+    'bom.txt': '﻿two\n',
   });
   // Low enough that the 300-byte sides are over it.
   const extract = () =>
@@ -530,6 +534,24 @@ describe('extractChangeSet: deletions, binary, huge and generated files', () => 
       hunks: [{ patch: '@@ -1 +0,0 @@\n-export const gone = 1;\n' }],
     });
     expect(byPath(changes, 'deleted-empty.txt')).toMatchObject({ oldContent: '', hunks: [] });
+  });
+
+  it('lists text that is not UTF-8 without content, keeping its hunks', async () => {
+    const changes = await extract();
+    const latin1 = byPath(changes, 'latin1.txt');
+    expect(latin1).toMatchObject({
+      binary: false,
+      oldContent: null,
+      newContent: null,
+      contentOmitted: 'not-utf8',
+    });
+    // The patch text is decoded as UTF-8 too: the invalid byte becomes U+FFFD.
+    expect(latin1.hunks.map((h) => h.patch)).toEqual(['@@ -1 +1 @@\n-caf�\n+caf�s\n']);
+    // A byte order mark is valid UTF-8 and is kept, so lines and columns match the file.
+    expect(byPath(changes, 'bom.txt')).toMatchObject({
+      oldContent: '﻿one\n',
+      contentOmitted: null,
+    });
   });
 
   it('lists binary files without content or hunks, even when Git printed no diff', async () => {

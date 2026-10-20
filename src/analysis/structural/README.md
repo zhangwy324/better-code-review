@@ -73,7 +73,7 @@ Entities under 16 tokens only match by name, since empty bodies hash alike. A ma
 | `binary` | Git reported a binary diff |
 | `too-large` | either side is over `MAX_PARSE_BYTES` (1 MiB), or #13 omitted the content |
 | `generated` | `*.min.js`, `*.generated.*`, `*_pb2.py`; a `@generated`, `DO NOT EDIT` or `auto-generated` comment in the first five lines; or a line over 2,000 characters (minified) |
-| `parse-error` | a changed line is inside an ERROR or MISSING node, where tree-sitter's recovery could put it in the wrong entity |
+| `parse-error` | a changed line is inside an ERROR or MISSING node, where tree-sitter's recovery could put it in the wrong entity; or a side is not valid UTF-8 (`contentOmitted: 'not-utf8'`) |
 
 A file without a built-in grammar on either side, a symlink or a submodule is `text-only` with `skipped: null`. Syntax errors away from the changed lines are tolerated.
 

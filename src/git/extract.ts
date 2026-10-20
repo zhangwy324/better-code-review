@@ -29,7 +29,9 @@
 // - Shallow clones and missing history fail with a message that says to fetch more history,
 //   rather than diff against an empty tree: a commit at the shallow boundary, or a merge base
 //   that is not in the clone.
-// Not handled: non-UTF-8 text is decoded as UTF-8, so its content and patch text are lossy.
+// - Text that is not valid UTF-8 on either side (Latin-1, UTF-16, ...) is listed without content,
+//   `contentOmitted` `not-utf8`, so nothing parses or shows garbled text. Its hunks are kept, but
+//   their patch text is decoded as UTF-8 too, with U+FFFD for the invalid bytes.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -505,7 +507,24 @@ async function fillContents(
       change.file.contentOmitted = 'binary';
       continue;
     }
-    sides(change).forEach((s, i) => s.set(contents[i]?.toString('utf8') ?? ''));
+    const texts = contents.map(decodeUtf8);
+    if (texts.includes(null)) {
+      change.file.contentOmitted = 'not-utf8';
+      continue;
+    }
+    sides(change).forEach((s, i) => s.set(texts[i] ?? ''));
+  }
+}
+
+/** Strict UTF-8 that keeps a byte order mark, so lines and columns match the file. */
+const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+/** The text of a blob, or null when it is not valid UTF-8. */
+function decodeUtf8(content: Buffer): string | null {
+  try {
+    return UTF8.decode(content);
+  } catch {
+    return null;
   }
 }
 
