@@ -112,7 +112,7 @@ export async function analyzeStructure(
   const entries: { entity: ChangedEntity; order: [number, number] }[] = [];
   for (const [index, hunkIds] of moduleHunks) {
     const change = changeSet.files[index]!;
-    const moved =
+    const otherPath =
       change.oldPath !== null && change.newPath !== null && change.oldPath !== change.newPath;
     const entity: ChangedEntity = {
       id: stableId('ent', [filePath(change), null, 'module', null]),
@@ -120,13 +120,13 @@ export async function analyzeStructure(
       name: null,
       container: null,
       path: filePath(change),
-      oldPath: moved ? change.oldPath : null,
+      oldPath: otherPath ? change.oldPath : null,
       change:
         change.status === 'added'
           ? 'added'
           : change.status === 'deleted'
             ? 'deleted'
-            : moved
+            : change.status === 'renamed'
               ? 'moved'
               : 'modified',
       oldRange: null,
@@ -303,8 +303,10 @@ function toChangedEntity(changeSet: ChangeSet, pair: EntityPair, hunkIds: string
   let change: ChangedEntity['change'];
   if (pair.old === null) change = 'added';
   else if (pair.new === null) change = 'deleted';
-  else if (oldPath !== path || pair.reparented) change = 'moved';
-  else if (pair.old.entity.name !== pair.new.entity.name) change = 'renamed';
+  // A copy's old side is its source, which stays where it was: nothing moved.
+  else if ((oldPath !== path && newChange?.status !== 'copied') || pair.reparented) {
+    change = 'moved';
+  } else if (pair.old.entity.name !== pair.new.entity.name) change = 'renamed';
   else change = 'modified';
   return {
     id: stableId('ent', [path, entity.container, entity.kind, entity.name]),

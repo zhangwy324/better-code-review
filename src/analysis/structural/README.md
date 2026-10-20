@@ -64,7 +64,7 @@ Known query gaps (re-exports, CommonJS `require`) are tracked in #60. `Declarati
 3. Same file, kind and container, same parameters and return type, and at least 50% token similarity.
 4. Same file, kind and container, and at least 80% token similarity (Dice over code tokens), best pairs first.
 
-Entities under 16 tokens only match by name, since empty bodies hash alike. A matched pair is `moved` when its file or its parent changed, `renamed` when its name changed, and `modified` otherwise; unmatched entities are `added` or `deleted`. Only entities with a hunk on either side are reported.
+Entities under 16 tokens only match by name, since empty bodies hash alike. A matched pair is `moved` when its file or its parent changed (a copied file's source does not count: the source stays where it was), `renamed` when its name changed, and `modified` otherwise; unmatched entities are `added` or `deleted`. Only entities with a hunk on either side are reported.
 
 **Files without structure** have no entities. Their hunks go to `unattributedHunkIds`, and the graph gives them a file node (D2):
 

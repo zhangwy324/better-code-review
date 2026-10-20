@@ -215,6 +215,39 @@ describe('analyzeStructure', () => {
     expect(byName.get('sum')).toBeUndefined();
   });
 
+  it('does not call the edits in a copied file moves', async () => {
+    const source = lines(
+      "import { Item } from './item';",
+      '',
+      'export function sum(items: Item[]): number {',
+      '  const total = items.reduce((s, x) => s + x.price, 0);',
+      '  return total;',
+      '}',
+      '',
+      'export function count(items: Item[]): number {',
+      '  const n = items.length;',
+      '  return n;',
+      '}',
+    );
+    const { changes, structure } = await analyse(
+      { 'src/a.ts': source },
+      {
+        'src/b.ts': source
+          .replace('./item', './item.js')
+          .replace('return total;', 'return Math.round(total);'),
+      },
+    );
+    expect(changes.files.map((f) => [f.status, f.oldPath, f.newPath])).toEqual([
+      ['copied', 'src/a.ts', 'src/b.ts'],
+    ]);
+    expect(summary(structure)).toEqual(['modified module <module>', 'modified function sum']);
+    // The source is still named, so the reader can see what the copy was compared with.
+    expect(structure.entities.map((e) => [e.path, e.oldPath])).toEqual([
+      ['src/b.ts', 'src/a.ts'],
+      ['src/b.ts', 'src/a.ts'],
+    ]);
+  });
+
   it('matches members of a renamed class by name', async () => {
     const shop = (name: string, size: number) =>
       lines(
