@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -21,11 +21,13 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 const request: AiRequest = {
-  task: 'plan',
+  task: 'skill',
   fixture: 'signature',
   model: 'claude-haiku-5-5',
   prompt: 'Write a plan.',
   cwd: root,
+  outputFile: join(root, 'plan.json'),
+  env: { PATH: '/opt/bcr/bin' },
   inputHash: HASH,
 };
 const usage = {
@@ -54,10 +56,14 @@ function stream(result: Record<string, unknown>): string {
     .join('\n');
 }
 
-function fakeSpawn(stdout: string, exitCode = 0) {
+/** A `claude` that prints `stdout` and, like the agent, leaves `output` in the output file. */
+function fakeSpawn(stdout: string, exitCode = 0, output: string | null = '{"ok":true}') {
   const calls: { command: string; args: readonly string[]; cwd: string; input: string }[] = [];
-  const spawn: Spawn = (command, args, { cwd, input }) => {
+  const spawn: Spawn = (command, args, { cwd, input, env }) => {
     calls.push({ command, args, cwd, input });
+    expect(env).toEqual(request.env);
+    rmSync(request.outputFile, { force: true });
+    if (output !== null) writeFileSync(request.outputFile, output);
     return Promise.resolve({ exitCode, stdout, stderr: '' });
   };
   return { spawn, calls };
@@ -76,7 +82,7 @@ describe('stubRunner', () => {
 describe('replayRunner', () => {
   const dir = join(root, 'recordings');
   writeRecording(dir, {
-    task: 'plan',
+    task: 'skill',
     fixture: 'signature',
     model: 'claude-haiku-5-5',
     inputHash: HASH,
@@ -127,6 +133,7 @@ describe('liveRunner', () => {
     const args = call?.args.join(' ');
     expect(args).toContain('-p --model claude-haiku-5-5 --max-turns 10 --max-budget-usd 0.25');
     expect(args).toContain('--output-format stream-json --verbose');
+    expect(args).toContain('--allowedTools Read,Write,Edit,Bash(better-code-review:*)');
 
     expect(run.output).toEqual({ ok: true });
     expect(run.costUsd).toBe(0.0123);
@@ -139,10 +146,11 @@ describe('liveRunner', () => {
     expect(() => liveArgs(request, { maxBudgetUsd: 0, maxTurns: 10 })).toThrow('--max-budget-usd');
   });
 
-  it('accepts an answer wrapped in a code fence', async () => {
-    const { spawn } = fakeSpawn(stream({ result: '```json\n{"ok":true}\n```' }));
-    const run = await liveRunner({ maxBudgetUsd: 0.25, maxTurns: 10, spawn }).run(request);
-    expect(run.output).toEqual({ ok: true });
+  it('fails a run that wrote no output file', async () => {
+    const { spawn } = fakeSpawn(stream({}), 0, null);
+    await expect(
+      liveRunner({ maxBudgetUsd: 0.25, maxTurns: 10, spawn }).run(request),
+    ).rejects.toThrow('the agent wrote no');
   });
 
   it('fails a run that hit its budget, with what it cost', async () => {
@@ -158,8 +166,8 @@ describe('liveRunner', () => {
     expect((err as LiveRunError).run.costUsd).toBe(0.0123);
   });
 
-  it('fails a run whose answer is not JSON', async () => {
-    const { spawn } = fakeSpawn(stream({ result: 'Here is the plan you asked for.' }));
+  it('fails a run whose output file is not JSON', async () => {
+    const { spawn } = fakeSpawn(stream({}), 0, 'Here is the plan you asked for.');
     await expect(
       liveRunner({ maxBudgetUsd: 0.25, maxTurns: 10, spawn }).run(request),
     ).rejects.toThrow('not JSON');

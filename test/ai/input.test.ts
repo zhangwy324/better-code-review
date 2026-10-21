@@ -1,4 +1,4 @@
-// The plan step's model input on every portfolio fixture: a deterministic hash, and a size
+// The skill's model input on every portfolio fixture: a deterministic hash, and a size
 // ceiling so input bloat fails a normal test instead of a bill (#85). Sizes are `estimateTokens`
 // (characters ÷ 4); no API is called.
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -12,31 +12,32 @@ const root = mkdtempSync(join(tmpdir(), 'bcr-ai-input-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 /**
- * Estimated tokens per fixture: the measured size plus about 10%. Raise one only after reading
+ * Estimated tokens per fixture: the measured size plus about 10%. About 3,800 of each is the
+ * skill (SKILL.md and its references), which every run reads. Raise one only after reading
  * why it grew (planner-input.md's selection policy is in src/planner/README.md).
  */
 const CEILINGS: Record<string, number> = {
-  signature: 2_250, // measured 2,021
-  'ten-callers': 2_350, // 2,128
-  'unchanged-caller': 800, // 723
-  'removed-calls': 1_350, // 1,207
-  'rename-move': 1_150, // 1,034
-  'independent-roots': 1_000, // 893
-  'feature-flow': 1_900, // 1,701
-  'interface-impl': 2_500, // 2,238
-  'override-dispatch': 950, // 839
-  'override-dispatch-python': 950, // 837
-  'same-name': 1_550, // 1,396
-  'tests-and-config': 1_250, // 1,109
-  'dynamic-calls': 1_100, // 965
-  'unsupported-binary': 1_100, // 991
-  'large-generated': 10_500, // 9,504
+  signature: 6_450, // measured 5,857
+  'ten-callers': 6_600, // 5,964
+  'unchanged-caller': 5_050, // 4,559
+  'removed-calls': 5_550, // 5,043
+  'rename-move': 5_400, // 4,870
+  'independent-roots': 5_250, // 4,729
+  'feature-flow': 6_100, // 5,537
+  'interface-impl': 6_700, // 6,074
+  'override-dispatch': 5_150, // 4,675
+  'override-dispatch-python': 5_150, // 4,673
+  'same-name': 5_800, // 5,232
+  'tests-and-config': 5_450, // 4,945
+  'dynamic-calls': 5_300, // 4,801
+  'unsupported-binary': 5_350, // 4,827
+  'large-generated': 14_700, // 13,340
 };
 
-describe.each(FIXTURES)('plan input for $name', (fixture) => {
+describe.each(FIXTURES)('skill input for $name', (fixture) => {
   it('has a stable hash and stays under its size ceiling', async () => {
-    const input = await modelInput('plan', fixture, join(root, fixture.name));
-    const again = await modelInput('plan', fixture, join(root, `${fixture.name}-again`));
+    const input = await modelInput('skill', fixture, join(root, fixture.name));
+    const again = await modelInput('skill', fixture, join(root, `${fixture.name}-again`));
     expect(again.inputHash).toBe(input.inputHash);
     const ceiling = CEILINGS[fixture.name];
     expect(ceiling, `add a size ceiling for ${fixture.name}`).toBeDefined();

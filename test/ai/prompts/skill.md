@@ -1,0 +1,1 @@
+Use the better-code-review skill to review commit HEAD in this repository. Run `generate` with `--no-lsp`. The skill is in `.claude/skills/better-code-review/`: read its `SKILL.md` first and follow it, including its references. When `validate` passes, or the skill says to stop, reply with one line: the review directory.

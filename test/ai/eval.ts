@@ -1,4 +1,4 @@
-// `npm run eval` (#85): live, budget-capped runs of an AI step on portfolio fixtures. It spends
+// `npm run eval` (#85): live, budget-capped runs of the skill (#25) on portfolio fixtures. It spends
 // real AI usage, so it is opt-in and never part of `npm run check` or CI (AGENTS.md: ask first).
 // Each run:
 // - passes `--max-budget-usd` to `claude -p`, always;
@@ -27,11 +27,12 @@ export type Tier = keyof typeof TIERS;
 export const DEFAULT_BUDGET_USD = 0.25;
 /** A per-run budget above this needs `--allow-large-budget`. */
 export const LARGE_BUDGET_USD = 1;
-export const DEFAULT_MAX_TURNS = 10;
+/** The skill takes about ten tool calls (generate, read, write, validate, repair). */
+export const DEFAULT_MAX_TURNS = 30;
 
 export const EVAL_USAGE = `Usage: npm run eval -- [options]
 
-Live runs of the plan step with claude -p. This spends real AI usage.
+Live runs of the better-code-review skill with claude -p. This spends real AI usage.
 
 Options:
   --tier smoke|quality     smoke (default): ${TIERS.smoke.model} on ${TIERS.smoke.fixtures.join(', ')}
@@ -92,7 +93,7 @@ export function parseEvalArgs(argv: string[]): EvalArgs {
   }
   return {
     tier: values.tier,
-    task: 'plan',
+    task: 'skill',
     fixtures,
     model: values.model ?? tier.model,
     maxBudgetUsd,
