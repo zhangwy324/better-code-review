@@ -139,33 +139,6 @@ describe('validatePlan: valid plans', () => {
     const hunks = new Set(f.graph.nodes.filter((n) => placed.has(n.id)).flatMap((n) => n.hunkIds));
     expect(hunks.size).toBe(f.changes.files.flatMap((file) => file.hunks).length);
   });
-
-  it("add homeless nodes to the plan's own Ungrouped group", async () => {
-    const f = await fixture();
-    const homeless = f.plan.groups[1]!.nodeIds;
-    const partial = tamper(
-      f.plan,
-      (p) => {
-        p.groups[1]!.nodeIds = [];
-        p.groups.push({
-          id: 'ungrouped',
-          title: 'Leftovers',
-          description: '',
-          nodeIds: [],
-          referenceNodeIds: [],
-          childGroupIds: [],
-        });
-        p.groupOrder.unshift('ungrouped');
-      },
-      f.graph,
-    );
-    const result = await validatePlan(partial, f.graph, f.files);
-    expect(result.valid && result.plan.groups.find((g) => g.id === 'ungrouped')).toMatchObject({
-      title: 'Leftovers',
-      nodeIds: homeless,
-    });
-    expect(result.valid && result.plan.groupOrder).toEqual(partial.groupOrder);
-  });
 });
 
 describe('validatePlan: crafted invalid plans fail', () => {
@@ -277,6 +250,15 @@ describe('validatePlan: crafted invalid plans fail', () => {
       },
       { path: '/groups/1/childGroupIds/0', code: 'nesting' },
       /already a child of group g0/,
+    ],
+    [
+      'an Ungrouped group in an agent plan',
+      (p) => {
+        p.groups[1]!.id = 'ungrouped';
+        p.groupOrder[1] = 'ungrouped';
+      },
+      { path: '/groups/1/id', code: 'reserved-id' },
+      /is reserved; rename the group, or leave its nodes out/,
     ],
     [
       'a nested Ungrouped group',
