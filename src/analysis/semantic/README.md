@@ -73,7 +73,7 @@ In the order #42 settled (`docs/research/candidate-adjudication.md`):
 7. **Test files** (MVP spec D2) keep one edge per (test file, changed entity), with one hit per side: the most decided (LSP-confirmed, then import-confirmed, then undecided), so the edge still says whether the call was added, removed or kept. Its detail says how many hits it stands for.
 8. **Caps** (D1): at most `maxCandidatesPerEntity` (default 100) source entities per (target, relation), a test file counting as one. The rest are dropped from the records and reported in `caps` as "Showing N of M".
 
-AI adjudication of what is still undecided (#43) is not here; it labels these candidates and never adds one.
+AI adjudication of what is still undecided (#43) is not here; it labels these candidates and never adds one. The planner selects them and writes their context ([`src/planner/README.md`](../../planner/README.md#caller-candidates-43)).
 
 ### Output
 

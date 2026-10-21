@@ -12,26 +12,26 @@ const root = mkdtempSync(join(tmpdir(), 'bcr-ai-input-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 /**
- * Estimated tokens per fixture: the measured size plus about 10%. About 3,800 of each is the
+ * Estimated tokens per fixture: the measured size plus about 10%. About 4,200 of each is the
  * skill (SKILL.md and its references), which every run reads. Raise one only after reading
  * why it grew (planner-input.md's selection policy is in src/planner/README.md).
  */
 const CEILINGS: Record<string, number> = {
-  signature: 6_450, // measured 5,857
-  'ten-callers': 6_600, // 5,964
-  'unchanged-caller': 5_050, // 4,559
-  'removed-calls': 5_550, // 5,043
-  'rename-move': 5_400, // 4,870
-  'independent-roots': 5_250, // 4,729
-  'feature-flow': 6_100, // 5,537
-  'interface-impl': 6_700, // 6,074
-  'override-dispatch': 5_150, // 4,675
-  'override-dispatch-python': 5_150, // 4,673
-  'same-name': 5_800, // 5,232
-  'tests-and-config': 5_450, // 4,945
-  'dynamic-calls': 5_300, // 4,801
-  'unsupported-binary': 5_350, // 4,827
-  'large-generated': 14_700, // 13,340
+  signature: 7_600, // measured 6,897
+  'ten-callers': 7_100, // 6,423
+  'unchanged-caller': 5_500, // 4,995
+  'removed-calls': 6_100, // 5,501
+  'rename-move': 5_900, // 5,328
+  'independent-roots': 5_700, // 5,165
+  'feature-flow': 6_600, // 5,995
+  'interface-impl': 8_550, // 7,772
+  'override-dispatch': 6_200, // 5,608
+  'override-dispatch-python': 6_200, // 5,600
+  'same-name': 7_100, // 6,433
+  'tests-and-config': 5_950, // 5,381
+  'dynamic-calls': 5_800, // 5,238
+  'unsupported-binary': 5_800, // 5,263
+  'large-generated': 15_200, // 13,799
 };
 
 describe.each(FIXTURES)('skill input for $name', (fixture) => {

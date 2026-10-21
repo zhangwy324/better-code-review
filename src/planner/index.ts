@@ -1,5 +1,19 @@
 // The planner's model input (#22): planner-input.md, on-demand context and secret avoidance; the
-// validator for the plan it writes (#23); and the deterministic fallback plan (#24).
+// validator for the plan it writes (#23); the deterministic fallback plan (#24); and the caller
+// candidates the agent judges (#43).
+export {
+  CANDIDATES_DIR,
+  candidateBatches,
+  edgeStatuses,
+  MAX_ADJUDICATED_EDGES,
+  MAX_GROUPS_PER_BATCH,
+  selectCandidates,
+  type CandidateBatch,
+  type CandidateOptions,
+  type Candidates,
+  type CandidateSelection,
+  type EdgeStatus,
+} from './candidates.ts';
 export { fallbackPlan, NO_AGENT_REASON } from './fallback.ts';
 export {
   DEFAULT_MAX_HUNK_LINES,

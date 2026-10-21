@@ -57,7 +57,12 @@ import { changeSetFiles, type SnapshotFiles } from './snapshot-files.ts';
 /** Source entities kept per (changed entity, relation); the rest is reported as a cap (D1). */
 export const MAX_CANDIDATES_PER_ENTITY = 100;
 /** Files parsed to count a name's definitions; beyond this the name counts as ambiguous. */
-const MAX_DEFINITION_FILES = 200;
+export const MAX_DEFINITION_FILES = 200;
+/**
+ * The text-search detail of a hit the unambiguous rule accepted (step 3). Such a hit needs no
+ * verdict from the AI step (#43), which looks for this note.
+ */
+export const UNAMBIGUOUS_NOTE = 'unambiguous: one definition, plain call';
 
 /** The part of `LspSession` the analyzer uses. Tests pass a fake. */
 export type ReferenceProvider = Pick<LspSession, 'references' | 'projectHealth' | 'capabilities'>;
@@ -515,7 +520,7 @@ async function decidePair(
   if (!hit.chaining) {
     const plain = hit.call && hit.receiver === null && !alias;
     if (plain && (await definitions.count(file.side, file.family, hit.name)) === 1) {
-      notes.push('unambiguous: one definition, plain call');
+      notes.push(UNAMBIGUOUS_NOTE);
     } else {
       imports = await resolver.decide(file.side, file.path, file.info, hit, side.key);
     }

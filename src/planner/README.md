@@ -1,6 +1,6 @@
 # Planner
 
-What the agent sees when it writes `plan.json` (issue #22; design reference §8.6, §11.2, §14.2–14.3), how that plan is checked (#23, [below](#plan-validation-validate)), and the plan used without an agent (#24, [below](#fallback-plan)). `generate` writes the input as `planner-input.md` and the fallback plan as `plan.json`, next to `changes.json` and `graph.json`. `better-code-review show` fetches anything it leaves out, and `better-code-review validate` checks the plan. The CLI still makes no model calls (MVP spec D8): these are files and commands the agent reads.
+What the agent sees when it writes `plan.json` (issue #22; design reference §8.6, §11.2, §14.2–14.3), how that plan is checked (#23, [below](#plan-validation-validate)), the plan used without an agent (#24, [below](#fallback-plan)), and the caller candidates the agent judges (#43, [below](#caller-candidates-43)). `generate` writes the input as `planner-input.md` and the fallback plan as `plan.json`, next to `changes.json` and `graph.json`. `better-code-review show` fetches anything it leaves out, and `better-code-review validate` checks the plan. The CLI still makes no model calls (MVP spec D8): these are files and commands the agent reads.
 
 | File | Contents |
 |---|---|
@@ -9,6 +9,7 @@ What the agent sees when it writes `plan.json` (issue #22; design reference §8.
 | `secrets.ts` | `sensitiveFile()` and `redactSecrets()`, used by both |
 | `validate.ts` | `validatePlan()`: the plan's rules, and the `ungrouped` group for nodes with no home |
 | `fallback.ts` | `fallbackPlan()`: a plan made from the graph alone, with no model |
+| `candidates.ts` | `selectCandidates()`, `candidateBatches()` and `edgeStatuses()`: which `possible` edges need a verdict, their context, and the label each edge gets |
 
 ## Format of `planner-input.md`
 
@@ -20,7 +21,8 @@ Compact Markdown, one line per item, with the IDs the plan must cite. JSON would
 4. **Files:** `- path (from old): status, language, tier[, test][, skipped: …][, diffs not inlined: …], +added −removed`.
 5. **Nodes:** `- n_… <kind> <name> @ path:start-end (was a-b): h_… h_…`. Ranges are on the new side. `(was …)` appears only when the old range or path differs, and `(deleted)` marks an entity that exists only on the old side.
 6. **Code edges:** `- e_… callee ← caller: relation, provenance, sides …, N hits (first path:line side; method outcome ×n, …)`. A test-file edge reads `← path (test file)`.
-7. **Diffs**, by file in diff order: each hunk is either `- h_… (node names)` followed by a fenced `diff`, or `- h_… (…): N lines not shown (reason)`.
+7. **Caller candidates** (written by `generate` only): how many `possible` edges need a verdict, the batch files that hold them, how many were settled without AI, and how many are over the cap ([below](#caller-candidates-43)).
+8. **Diffs**, by file in diff order: each hunk is either `- h_… (node names)` followed by a fenced `diff`, or `- h_… (…): N lines not shown (reason)`.
 
 Fences are always longer than any backtick run inside them, so quoted text can't close them. The output is deterministic: the same snapshot always gives the same bytes.
 
@@ -121,6 +123,29 @@ All errors are reported at once. Schema errors come alone, since the other rules
 **Ungrouped.** Nodes the plan gives no home are not an error. `validatePlan()` puts them in the `ungrouped` group ("Ungrouped / requires review", D1), making it last in `groupOrder` if the plan has none, and `validate` lists them so the agent can place them. Since the graph puts every hunk on a node, every hunk is then visible. A valid plan with every node placed comes back unchanged.
 
 **Citations** may point at unchanged files, because `show --file` lets the agent read them. The line must exist on that side of the snapshot. Files with omitted content (binary, too large, not UTF-8) can't be cited.
+
+## Caller candidates (#43)
+
+The AI step of the analysis pipeline (`docs/research/existing-tools.md` § "Analysis approach"): the agent judges the `possible` edges the deterministic steps left open, and each verdict is labelled `inferred` (`yes`) or `rejected` (`no`), with a reason and a cited line. `unsure` leaves the edge `possible`. The CLI makes no model call. `generate` writes `candidates/batch-<n>.md` next to `planner-input.md`, whose Caller candidates section names them, and the agent puts its verdicts in `plan.json` `edgeVerdicts`, which `validate` checks. The numbers and choices below are #42's ([`candidate-adjudication.md`](../../docs/research/candidate-adjudication.md#pipeline-changes)).
+
+**Selection** (`selectCandidates()`, from the graph alone). A `possible` edge is asked about unless one of its hits was accepted by import-path resolution (an `import-resolution` `confirmed` record) or the unambiguous rule (`UNAMBIGUOUS_NOTE` in its text-search detail). `verified` edges are never asked about, and hits a server or import resolution rejected made no edge. Test files are already one edge per (test file, changed entity) (D2). At most `MAX_ADJUDICATED_EDGES` (1,000) edges are asked about per review, in graph order; the rest are **not adjudicated** and stay `possible`. The largest #42 PR needed 528.
+
+**Context** (`candidateBatches()`). Each batch starts with the verdict rules, including that type uses count as references for a changed class, interface or type (the only real false rejections in #42 were return types). Then:
+- **Changed entities**, once per batch: the declaration line on each side, and up to 10 other definitions of the searched name in the snapshot, marked "NOT the changed entity" (git grep plus parsing, up to 200 files, as the unambiguous rule counts them).
+- **Candidates, grouped by enclosing function** on one side: the new side when the edge has a hit there, else the old. A test-file edge is a group of its own, with up to 3 hits. Each group shows:
+  - the file's imports;
+  - **declarations the occurrences depend on**, when the code shown doesn't hold them: the receiver's declaration (`f` in `f.m()`, the field in `this.f.m()` or `self.f.m()`), the last one in the enclosing entity before the hit, else the first in the file; and, for a hit through an alias, the line elsewhere that names the target under it (`export { formatPrice as fmt }`). Most of #42's `unsure` answers lacked one of these;
+  - the code: the whole entity up to 60 lines, else its first line and 4 lines around each hit, capped at `DEFAULT_MAX_HUNK_LINES` (150) with a `show --file` pointer; hits are marked `>>`;
+  - the edges to decide, with each hit's line and shape (`call; on f`).
+- **Batching:** up to `MAX_GROUPS_PER_BATCH` (12) groups per batch, within `DEFAULT_TOKEN_BUDGET` (24,000 estimated tokens). A group larger than the budget gets a batch of its own.
+
+The same rules as the planner input apply: repository text is fenced and untrusted, secrets are redacted, sensitive files are not shown, and the output is deterministic. A rerun deletes the old `candidates/` first.
+
+**Labels** (`edgeStatuses()`, for the artifact). `verified` (LSP); `inferred` or `rejected` (a `yes` or `no` verdict); otherwise `possible`, with why: `unsure`, `settled` (accepted without AI), `not-adjudicated` (over the cap) or `not-judged` (no verdict; every candidate with no agent, or with the fallback plan, D8). Rejected and unsure edges stay in graph.json, so the viewer can show or collapse them. Nothing is ever labelled `verified` from a verdict.
+
+**Validation.** The rules #43 needs were already in `validate` (#23): a verdict only on an existing `possible` edge (`unknown-id`, `verdict`), one per edge, never `verified` (the schema), and a cited line that exists (`citation`). A verdict on a settled edge is allowed; the skill asks for none.
+
+**Measuring.** `npm run eval` keeps every plan it gets, and `npm run score:adjudication` scores their verdicts against ground truth ([CONTRIBUTING](../../CONTRIBUTING.md#testing-ai-steps)).
 
 ## Fallback plan
 

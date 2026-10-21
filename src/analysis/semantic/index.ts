@@ -3,9 +3,12 @@
 export {
   analyzeSemantics,
   MAX_CANDIDATES_PER_ENTITY,
+  MAX_DEFINITION_FILES,
   type ReferenceProvider,
   type SemanticOptions,
+  UNAMBIGUOUS_NOTE,
 } from './analyze.ts';
+export { findHits, type Hit } from './hits.ts';
 export { MAX_REEXPORT_DEPTH } from './imports.ts';
 export { changeSetFiles, gitSnapshotFiles, type SnapshotFiles } from './snapshot-files.ts';
 export {

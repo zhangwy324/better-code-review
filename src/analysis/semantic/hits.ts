@@ -115,6 +115,11 @@ export type SkipReason = 'not-code' | 'declaration' | 'key' | 'import';
 export interface FileHits {
   hits: Hit[];
   skipped: Record<SkipReason, number>;
+  /**
+   * Where the words are declared (parameters, variables, fields, functions, classes), in source
+   * order. The AI step (#43) shows a receiver's declaration from these.
+   */
+  declared: { name: string; line: number; column: number }[];
 }
 
 /** Every occurrence of the `words` in the file, classified. In source order. */
@@ -122,6 +127,7 @@ export function findHits(file: ParsedFile, source: string, words: Iterable<strin
   const result: FileHits = {
     hits: [],
     skipped: { 'not-code': 0, declaration: 0, key: 0, import: 0 },
+    declared: [],
   };
   const unique = [...new Set(words)].filter((w) => w.length > 0);
   if (unique.length === 0) return result;
@@ -136,6 +142,9 @@ export function findHits(file: ParsedFile, source: string, words: Iterable<strin
       const verdict = node === null ? 'not-code' : classify(node, match[0]);
       if (typeof verdict === 'string') {
         result.skipped[verdict]++;
+        if (verdict === 'declaration') {
+          result.declared.push({ name: match[0], line: row + 1, column: match.index + 1 });
+        }
         continue;
       }
       result.hits.push({

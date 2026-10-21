@@ -20,6 +20,7 @@ import type { ChangeSet, DiffHunk, FileChange } from '../schemas/changeset.ts';
 import type { ChangeGraph, ChangeNode, CodeEdge, GraphFile } from '../schemas/graph.ts';
 import type { SourceRange } from '../schemas/common.ts';
 import { count, list, tally } from '../text/index.ts';
+import type { Candidates } from './candidates.ts';
 import { redactSecrets, sensitiveFile } from './secrets.ts';
 
 /** The whole input's size budget, in estimated tokens. */
@@ -40,6 +41,8 @@ export function estimateTokens(text: string): number {
 export interface PlannerInputOptions {
   tokenBudget?: number;
   maxHunkLines?: number;
+  /** The caller candidates `generate` writes (#43), listed after the code edges. */
+  candidates?: Pick<Candidates, 'selection' | 'batches'>;
 }
 
 export interface PlannerInput {
@@ -167,6 +170,7 @@ export function plannerInput(
     const name = (id: string) => nodeById.get(id)?.displayName ?? id;
     for (const edge of graph.codeEdges) head.push(`- ${edgeLine(edge, name, graph)}`);
   }
+  if (options.candidates) head.push('', ...candidateLines(options.candidates));
 
   // The diffs: pick hunks by priority within the budget, then print them in diff order.
   interface Entry {
@@ -281,6 +285,39 @@ export function plannerInput(
   return { text, estimatedTokens, tokenBudget, hunks, redactions: redactedKinds.length };
 }
 
+/** The Caller candidates section (#43): what to judge, and where its context is. */
+function candidateLines({
+  selection,
+  batches,
+}: Pick<Candidates, 'selection' | 'batches'>): string[] {
+  const { open, notAdjudicated, settled } = selection;
+  const possible = open.length + notAdjudicated.length + settled.length;
+  const out = ['## Caller candidates', ''];
+  if (open.length === 0) {
+    out.push('No possible edge needs a verdict.');
+  } else {
+    const files = batches.map((b) => `\`${b.file}\``);
+    out.push(
+      `${open.length} of ${count(possible, 'possible edge')} ${open.length === 1 ? 'needs' : 'need'} a verdict. Read ` +
+        `${files.length === 1 ? files[0] : `each of ${files.join(', ')}`} and judge every edge ` +
+        'under its Decide lines.',
+    );
+  }
+  if (settled.length > 0) {
+    out.push(
+      `${count(settled.length, 'edge')} ${settled.length === 1 ? 'was' : 'were'} settled by import ` +
+        'resolution or the unambiguous rule, and need no verdict.',
+    );
+  }
+  if (notAdjudicated.length > 0) {
+    out.push(
+      `${count(notAdjudicated.length, 'more edge')} ${notAdjudicated.length === 1 ? 'is' : 'are'} ` +
+        `over the cap of ${open.length.toLocaleString('en')} decisions: not adjudicated, they stay possible.`,
+    );
+  }
+  return out;
+}
+
 function noteLines(changeSet: ChangeSet, graph: ChangeGraph): string[] {
   const notes = [
     'Only relationships between changed code are shown. Unchanged callers are not analysed.',
@@ -349,7 +386,7 @@ export function edgeLine(edge: CodeEdge, name: (id: string) => string, graph: Ch
 }
 
 /** A Markdown fence around `text` that no backtick run inside it can close. */
-function fence(text: string, info: string): string {
+export function fence(text: string, info: string): string {
   const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length));
   const ticks = '`'.repeat(Math.max(3, longest + 1));
   return `${ticks}${info}\n${text}\n${ticks}`;
