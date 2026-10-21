@@ -1,0 +1,59 @@
+{
+  "task": "skill",
+  "fixture": "independent-roots",
+  "model": "claude-sonnet-5-5",
+  "inputHash": "sha256:bc2ffad979d9d2e8688531ce9fc0377493a2090ae64c60b54259906d66a61c23",
+  "usage": {
+    "inputTokens": 12,
+    "outputTokens": 2009,
+    "cacheCreationInputTokens": 12797,
+    "cacheReadInputTokens": 60929
+  },
+  "costUsd": 0.0773949,
+  "output": {
+    "schemaVersion": 1,
+    "snapshotId": "f87662b8cb5844cb369d8a8c86a772cc2f166478ec6d664583dafc1c1afb83c9",
+    "origin": "agent",
+    "fallbackReason": null,
+    "summary": "Three independent one-line behaviour changes in unrelated modules: cart totals are rounded, the welcome message wording changes, and the default log level moves from debug to info. No code edges link them.",
+    "groups": [
+      {
+        "id": "cart-rounding",
+        "title": "cartTotal rounds to cents",
+        "description": "cartTotal now rounds the sum to two decimals. Check that rounding at this point is intended and that callers don't also round.",
+        "nodeIds": [
+          "n_2505d1bd3cd66c9d"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "log-default",
+        "title": "Default log level becomes info",
+        "description": "logLevel falls back to 'info' instead of 'debug' when LOG_LEVEL is unset. Confirm that quieter default is intended for all environments.",
+        "nodeIds": [
+          "n_323d278aeb647787"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "welcome-text",
+        "title": "Welcome message wording changes",
+        "description": "welcomeMessage now reads 'Welcome back' with an exclamation mark. It looks unrelated to the other changes; check that tests or translations depending on the old text are updated.",
+        "nodeIds": [
+          "n_3991ee7c96ba838b"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      }
+    ],
+    "groupOrder": [
+      "cart-rounding",
+      "log-default",
+      "welcome-text"
+    ],
+    "edgeVerdicts": [],
+    "inferredRelationships": []
+  }
+}

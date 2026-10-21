@@ -1,0 +1,80 @@
+{
+  "task": "skill",
+  "fixture": "tests-and-config",
+  "model": "claude-sonnet-5-5",
+  "inputHash": "sha256:16896200f860dafbc6930ce1735eb06652d3e1a2e1cd17004df7fe026c4053fd",
+  "usage": {
+    "inputTokens": 10,
+    "outputTokens": 1664,
+    "cacheCreationInputTokens": 13249,
+    "cacheReadInputTokens": 47221
+  },
+  "costUsd": 0.0743781,
+  "output": {
+    "schemaVersion": 1,
+    "snapshotId": "bb0f22c688b862d403e3afd08365db1a20d7e62496452fcccfb131362ef63390",
+    "origin": "agent",
+    "fallbackReason": null,
+    "summary": "The commit adds a rounding test for formatPrice and changes build and test configuration. The configuration changes bump the CI Node version, the package version and test script, and tighten TypeScript checking. The edits are mostly independent of one another.",
+    "groups": [
+      {
+        "id": "rounding-test",
+        "title": "New formatPrice rounding test",
+        "description": "Adds a 'rounds half up' case to the formatPrice tests. Check that the expected value matches the intended rounding behaviour, since 0.125 is a floating-point edge case.",
+        "nodeIds": [
+          "n_b2fea183ff569239",
+          "n_911220e4f7631ef9"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "test-tooling",
+        "title": "Test script and package version",
+        "description": "The test script now runs vitest with coverage and the package version is bumped to 1.0.1. Check that the coverage provider is available, since only vitest is listed as a dev dependency, and that the version bump is intended.",
+        "nodeIds": [
+          "n_b151a93cb26cc97f"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "ci-node",
+        "title": "CI uses Node 22",
+        "description": "The CI workflow moves from Node 20 to Node 22. Check this matches the Node version supported by the project and that dependencies work on it.",
+        "nodeIds": [
+          "n_4b97cb45d69b33df"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "ts-strictness",
+        "title": "Stricter TypeScript indexing",
+        "description": "Enables noUncheckedIndexedAccess in tsconfig. This is unrelated to the other edits and may surface new type errors in indexed accesses elsewhere, so check the code still type-checks.",
+        "nodeIds": [
+          "n_56a6af5ea21f0b8e"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      }
+    ],
+    "groupOrder": [
+      "rounding-test",
+      "test-tooling",
+      "ci-node",
+      "ts-strictness"
+    ],
+    "edgeVerdicts": [],
+    "inferredRelationships": [
+      {
+        "id": "tests-and-ci",
+        "kind": "logically-related",
+        "from": "n_b151a93cb26cc97f",
+        "to": "n_4b97cb45d69b33df",
+        "explanation": "CI runs npm test, so the changed test script and the Node version both affect how CI runs the tests.",
+        "citedLines": []
+      }
+    ]
+  }
+}

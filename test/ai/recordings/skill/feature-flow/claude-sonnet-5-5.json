@@ -1,0 +1,156 @@
+{
+  "task": "skill",
+  "fixture": "feature-flow",
+  "model": "claude-sonnet-5-5",
+  "inputHash": "sha256:7764d2b5c261c3eeb1c8ddd9626938984a62c9ebe70ef6627ad43094c87d5f80",
+  "usage": {
+    "inputTokens": 12,
+    "outputTokens": 4160,
+    "cacheCreationInputTokens": 16376,
+    "cacheReadInputTokens": 65107
+  },
+  "costUsd": 0.1136387,
+  "output": {
+    "schemaVersion": 1,
+    "snapshotId": "2a70235c0e04ef20afa88c830a13cd0373bd679c8cb68cbfd74425d089cd9c4e",
+    "origin": "agent",
+    "fallbackReason": null,
+    "summary": "Adds a POST /orders feature across route, service and in-memory storage layers, with one service test. The route is registered in app.ts. Check validation and error handling at the route boundary.",
+    "groups": [
+      {
+        "id": "entry",
+        "title": "POST /orders route registered",
+        "description": "registerRoutes wires postOrder to POST /orders, and postOrder casts the untyped body and calls createOrder. Check that the body is not validated before use.",
+        "nodeIds": [
+          "n_0221592932c560d6",
+          "n_764183546019d2b0",
+          "n_ecf9e2aa11b9018f",
+          "n_b155e65b14e5eb00"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "service",
+        "title": "createOrder service",
+        "description": "createOrder rejects quantities below 1 and delegates to insertOrder. Check whether sku and non-integer quantities need validation too.",
+        "nodeIds": [
+          "n_bd95ada67ac20c23",
+          "n_08b6d4a46ecc6429"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "storage",
+        "title": "In-memory order storage",
+        "description": "Adds the OrderRow type and insertOrder, which assigns ids from an in-memory array length. Check that this is acceptable as persistence and for id uniqueness.",
+        "nodeIds": [
+          "n_f72eb98a16847bf6",
+          "n_f489806d07d925c0",
+          "n_7f0a02949e1c4925"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "tests",
+        "title": "createOrder test",
+        "description": "One test checks that the first order gets id 1. It does not cover the invalid quantity path or the route.",
+        "nodeIds": [
+          "n_fbbb4d69f31b2f42",
+          "n_c890adb73f05e0b9",
+          "n_5d8446452b0fd11a"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      }
+    ],
+    "groupOrder": [
+      "entry",
+      "service",
+      "storage",
+      "tests"
+    ],
+    "edgeVerdicts": [
+      {
+        "edgeId": "e_12c14bb43d5ce6c2",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "app.ts imports postOrder and registers it as the POST handler.",
+        "citedLine": {
+          "path": "src/app.ts",
+          "side": "new",
+          "line": 7
+        }
+      },
+      {
+        "edgeId": "e_44546d6c1eca7535",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "postOrder calls createOrder imported from the service module.",
+        "citedLine": {
+          "path": "src/routes/orders.ts",
+          "side": "new",
+          "line": 5
+        }
+      },
+      {
+        "edgeId": "e_bfcd8f2f5473a42c",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "createOrder calls insertOrder imported from the db module.",
+        "citedLine": {
+          "path": "src/services/orders.ts",
+          "side": "new",
+          "line": 5
+        }
+      },
+      {
+        "edgeId": "e_321b982d10d1c4ad",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "The test imports createOrder and calls it.",
+        "citedLine": {
+          "path": "test/orders.test.ts",
+          "side": "new",
+          "line": 6
+        }
+      },
+      {
+        "edgeId": "e_97c7e8d2962ec231",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "createOrder imports OrderRow as a type and returns it.",
+        "citedLine": {
+          "path": "src/services/orders.ts",
+          "side": "new",
+          "line": 3
+        }
+      },
+      {
+        "edgeId": "e_8a61f5b792966ade",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "insertOrder returns OrderRow.",
+        "citedLine": {
+          "path": "src/db/orders.ts",
+          "side": "new",
+          "line": 9
+        }
+      },
+      {
+        "edgeId": "e_e4ffbc1296ada5e2",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "The module-level rows array is typed OrderRow[].",
+        "citedLine": {
+          "path": "src/db/orders.ts",
+          "side": "new",
+          "line": 7
+        }
+      }
+    ],
+    "inferredRelationships": []
+  }
+}

@@ -121,7 +121,8 @@ export const featureFlow: Fixture = {
       'test/orders.test.ts calls createOrder [src/services/orders.ts] (new)',
     ],
   },
-  // The flow in order: route, service, persistence, test.
+  // The flow in order: route, service, persistence, test (decided in #26: entry point first, not
+  // callee first).
   plan: {
     order: [
       [

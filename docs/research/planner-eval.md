@@ -1,15 +1,33 @@
 # Planner evaluation on the fixture portfolio
 
-**Status:** Plan ready, live runs not yet made · **Issue:** #26 (part of #1, Milestone M2)
+**Status:** First round done; one prompt iteration proposed, not yet run · **Date:** 2026-10-20 · **Issue:** #26 (part of #1, Milestone M2)
 **Refs:** design reference §17.3 (Milestone 2 acceptance focus), §13.5 (heterogeneous edits) · [MVP spec](../mvp-spec.md) M2 · [fixture portfolio](../../test/fixtures/README.md) · [skill](../../skills/better-code-review/SKILL.md)
+
+## Summary
+
+`claude-sonnet-5-5`, following the skill with no language server, wrote a valid plan on all five fixtures. It invented nothing and judged every `possible` edge correctly. It also put each contract before its callers and read the feature flow in order.
+
+| Fixture | Case | Automated | Manual | Result |
+|---|---|---|---|---|
+| `signature` | Signature propagation | 6/8 | M1 fail | **Fail** |
+| `ten-callers` | Signature propagation, wide | 4/4 | Pass | **Pass** |
+| `feature-flow` | New-feature flow | 4/4 | Pass | **Pass** |
+| `independent-roots` | Unrelated changes | 6/6 | Pass | **Pass** |
+| `tests-and-config` | Unrelated changes | 5/6 | Pass | **Fail** (the check is likely too strict, see below) |
+
+The two failures:
+- **`signature`:** the same-name edits `viaMethod` and `use_calc` are homed in the callers groups. The plan's own verdicts say they are not callers.
+- **`tests-and-config`:** the plan splits the three config files into three groups by purpose. The check asks for one group, but the split reads better. I propose relaxing the check rather than the plan, an open question.
+
+Cost: **$0.49** for the five runs. The cap was $0.50 per run, so $2.50 at worst. Two of the first five runs hit the account's session limit and were run again after it reset; they cost $0.01. Input was 60–140k tokens a run, mostly cache reads.
 
 ## Question
 
 Given the deterministic graph of a fixture, does the agent following the skill (#25) write a `plan.json` that a reviewer can use? §17.3 names four things to check:
-1. **Central vs supporting organization.** The roots of the change are their own groups, and what follows from them (callers, tests, config, unrelated edits) is grouped apart from them.
-2. **Useful ordering.** `groupOrder` follows the reading order the skill describes: a contract before its callers, a feature from entry point to persistence, then tests, then config and unrelated edits.
+1. **Central vs supporting organization.** The roots of the change are their own groups. What follows from them (callers, tests, config, unrelated edits) is grouped apart from them.
+2. **Useful ordering.** `groupOrder` follows the reading order the skill describes: a contract before its callers, and a feature from entry point to persistence. Then tests, then config and unrelated edits.
 3. **No invented code nodes.** The plan names only IDs from the input, adds no code edges and holds no code text.
-4. **Transparent confidence and provenance.** Verdicts on `possible` edges stay verdicts, each with a reason and a cited line, and the plan's text never presents a `possible` edge as proven.
+4. **Transparent confidence and provenance.** Verdicts on `possible` edges stay verdicts, each with a reason and a cited line. The plan's text never presents a `possible` edge as proven.
 
 ## Fixtures
 
@@ -21,12 +39,20 @@ The issue's four cases, mapped to the TypeScript-only portfolio (#9):
 | Signature propagation, wide | `ten-callers` | `parseDate` contract, then its ten callers, in one group or split into children |
 | New-feature flow | `feature-flow` | Route (`postOrder`), then service (`createOrder`), then persistence (`insertOrder`), then the test |
 | Unrelated changes (§13.5) | `independent-roots` | Three groups with no forced link between them |
-| Unrelated changes (§13.5) | `tests-and-config` | A test group and a configuration group. No code group, since no code under test changed |
-| Mixed-language | `signature` | Its TypeScript and Python halves are independent roots and are grouped apart |
+| Unrelated changes (§13.5) | `tests-and-config` | Tests apart from configuration. No code group, since no code under test changed |
 
-A real mixed-language HTTP/API fixture (a TypeScript client calling a Python route, say) is #77 and doesn't exist yet. Until it does, the mixed-language case is only the signature fixture's two halves, which share no code. The cross-language link an agent would have to infer (D6: inferred only) is not tested.
+The other ten fixtures get only the general checks below.
 
-The other ten fixtures get the general checks below and no fixture-specific ones.
+### Decisions
+
+- **Each contract before its own callers.** When a change has several roots, the plan doesn't have to lead with any particular one. On `signature`, either `formatPrice` or `tax` may come first, as long as each is read before its callers.
+- **Feature flow from the entry point.** `feature-flow` is read route → service → persistence → test, the order the skill gives for implementation flow. Note that this is the reverse of "callee first", which the fallback plan uses (see [Baseline](#baseline-the-fallback-plan)).
+
+### Out of scope
+
+- **Mixed-language changes.** These are covered in depth by #77, which adds Python, Java, Go and multi-language fixtures, including a cross-language HTTP/API change. Here the only mixed-language input is `signature`, whose TypeScript and Python halves share no code. Its plan facts keep the two halves apart. A cross-language link, which only an agent can infer (D6), is not tested.
+- **Codex CLI.** The MVP spec's M2 acceptance names Claude Code and Codex CLI. Codex is deferred until after v0.1, and the harness only drives `claude -p`.
+- **Verdict accuracy.** Verdicts are counted here, but whether they are right is #43's measurement. In this round every verdict was right by inspection.
 
 ## Criteria
 
@@ -34,7 +60,7 @@ A fixture **passes** when every automated check passes and every manual criterio
 
 ### Automated: `test/ai/score.ts`
 
-Run on every live eval and asserted by `replay.test.ts` on every committed recording.
+`npm run eval` runs these on every live run. `replay.test.ts` runs them on every committed recording, against its list of known failures (`KNOWN_FAILS`).
 
 | Check | Criterion it covers | Passes when |
 |---|---|---|
@@ -49,68 +75,137 @@ The fixture facts:
 
 | Fixture | Facts |
 |---|---|
-| `signature` | order `formatPrice` → its 4 callers; order `tax` → `order_total`, `refund`; apart: TypeScript propagation, Python propagation, same-name edits |
-| `ten-callers` | order `parseDate` → its 10 callers |
-| `feature-flow` | order `postOrder` → `createOrder` → `insertOrder` → `createOrder.assigns an id` |
-| `independent-roots` | apart: `cartTotal`, `logLevel`, `welcomeMessage` |
-| `tests-and-config` | together and apart: the 2 test nodes, the 3 config files |
-
-`npm run eval` also prints how many `possible` edges got a verdict and how they split. That is for the record only; whether verdicts are right is #43's measurement.
+| `signature` | Order: `formatPrice` → its 4 callers, and `tax` → `order_total`, `refund`. Apart: the TypeScript propagation, the Python propagation and the same-name edits |
+| `ten-callers` | Order: `parseDate` → its 10 callers |
+| `feature-flow` | Order: `postOrder` → `createOrder` → `insertOrder` → `createOrder.assigns an id` |
+| `independent-roots` | Apart: `cartTotal`, `logLevel`, `welcomeMessage` |
+| `tests-and-config` | Together and apart: the 2 test nodes, and the 3 config files |
 
 ### Manual: read each plan
 
 | # | Criterion | Pass | Fail |
 |---|---|---|---|
-| M1 | Central vs supporting | Group titles name the roots. Supporting groups say what they follow from. Unrelated edits are labelled as looking unrelated | A root is buried in a supporting group, or unrelated edits are described as part of the main change |
-| M2 | Ordering | A reviewer reading groups in order never meets a caller before its contract or a layer before the one that calls it | The order is file order or arbitrary where a better one is obvious |
+| M1 | Central vs supporting | Group titles name the roots. Supporting groups say what they follow from. Unrelated edits are labelled as looking unrelated | A root is buried in a supporting group, or unrelated edits are described or grouped as part of the main change |
+| M2 | Ordering | A reviewer reading groups in order never meets a caller before its contract, or a layer before the one that calls it | The order is file order or arbitrary where a better one is obvious |
 | M3 | Grounded text | Summary and descriptions mention only code in the change, say what to check rather than claiming correctness, and quote no code | A claim the diff doesn't support, a "this is correct" or "complete", or code copied into text |
 | M4 | Provenance | Text calls `possible` edges candidates or the agent's judgement. Each verdict's `citedLine` is the line that decides it | Text says a relationship is verified or proven. A cited line that doesn't show what the reason says |
-| M5 | Size | 2 to 7 top-level groups (the skill's target), no group of one unless it is a root | One group per node, or one group for everything |
+| M5 | Size | 2 to 7 top-level groups (the skill's target), and no group of one unless it is a root | One group per node, or one group for everything |
 
 ## Baseline: the fallback plan
 
-The deterministic plan (`generate` with no agent, #24) scored by the same checks, at no cost. It clusters by code edges and files, so it is the bar an agent plan has to beat.
+The deterministic plan (`generate` with no agent, #24), scored by the same checks at no cost. It is the bar an agent plan has to beat. It fails `agent` by definition; the table counts the other checks.
 
-| Fixture | Checks passed | Fails, besides `agent` |
-|---|---|---|
-| `signature` | 2/8 | `homed` (config.json, legacyLabel), both `order` checks (callers are listed before their contract within one group), and `apart` twice: the same-name edits share groups with the callers |
-| `ten-callers` | 3/4 | None |
-| `feature-flow` | 2/4 | `order`: `insertOrder` is listed before `createOrder` in the one group |
-| `independent-roots` | 1/6 | `homed`: all three changes are in Ungrouped, so `apart` fails three times |
-| `tests-and-config` | 4/6 | `homed`: the three config files are in Ungrouped |
+During #26 the fallback plan changed in two ways:
+- Within a group, each callee now comes before its callers.
+- A code node with no edge and no other change in its file is now a group of its own. Lone files (config, docs, binaries) share an "Other changed files" group, last. Before, both went to Ungrouped.
+
+| Fixture | Before (`agent` aside) | After (`agent` aside) | Still failing |
+|---|---|---|---|
+| `signature` | 2/7 | 5/7 | `apart` twice: the same-name edits share clusters with the callers, since a `possible` edge joins them |
+| `ten-callers` | 3/3 | 3/3 | |
+| `feature-flow` | 2/3 | 2/3 | `order`: callee first reads persistence → service → route, the reverse of the decided flow |
+| `independent-roots` | 1/5 | 5/5 | |
+| `tests-and-config` | 4/5 | 5/5 | |
+
+Every fixture in the portfolio now passes `homed` with the fallback plan.
 
 ## Runs
 
 | Date | Command | Model | Fixtures | Cap per run | Cost | Notes |
 |---|---|---|---|---|---|---|
-| 2026-10-20 | `npm run eval` (smoke, #25) | `claude-haiku-5-5` | `signature` | $0.25 | $0.0091 | Before #26. Passes all 8 automated checks (replay) |
-| | | `claude-sonnet-5-5` | | | | |
+| 2026-10-20 | `npm run eval` (smoke, #25) | `claude-haiku-5-5` | `signature` | $0.25 | $0.0091 | Before #26. Passes all 8 checks on replay |
+| 2026-10-20 | `npm run eval -- --model claude-sonnet-5-5 --max-budget-usd 0.5 --fixture signature --fixture ten-callers --fixture feature-flow --fixture independent-roots --fixture tests-and-config` | `claude-sonnet-5-5` | All five | $0.50 | $0.3406 | `independent-roots` and `tests-and-config` hit the session usage limit (HTTP 429) after 2 turns and 0 turns |
+| 2026-10-20 | The same command, with only `--fixture independent-roots --fixture tests-and-config` | `claude-sonnet-5-5` | The two cut off | $0.50 | $0.1518 | After the limit reset |
 
 ## Results
 
-One row per fixture and model. Automated is `passed/total`; manual is pass or fail per criterion, with a note for each fail.
+Automated is `passed/total`. Verdicts are `judged/possible`.
 
-| Fixture | Model | Automated | M1 | M2 | M3 | M4 | M5 | Verdicts judged | Result |
+| Fixture | Model | Automated | M1 | M2 | M3 | M4 | M5 | Verdicts | Result |
 |---|---|---|---|---|---|---|---|---|---|
-| `signature` | `claude-haiku-5-5` | 8/8 | | | | | | 8/8 (6 yes, 2 no) | |
-| `signature` | `claude-sonnet-5-5` | | | | | | | | |
-| `ten-callers` | `claude-sonnet-5-5` | | | | | | | | |
-| `feature-flow` | `claude-sonnet-5-5` | | | | | | | | |
-| `independent-roots` | `claude-sonnet-5-5` | | | | | | | | |
-| `tests-and-config` | `claude-sonnet-5-5` | | | | | | | | |
+| `signature` | `claude-haiku-5-5` | 8/8 | Pass | Pass | Pass | Pass | Pass (5 groups) | 8/8 (6 yes, 2 no) | Pass |
+| `signature` | `claude-sonnet-5-5` | 6/8 | **Fail** | Pass | Pass | Pass | Pass (5 groups) | 8/8 (6 yes, 2 no) | **Fail** |
+| `ten-callers` | `claude-sonnet-5-5` | 4/4 | Pass | Pass | Pass | Pass | Pass (2 groups) | 10/10 (10 yes) | Pass |
+| `feature-flow` | `claude-sonnet-5-5` | 4/4 | Pass | Pass | Pass | Pass | Pass (4 groups) | 7/7 (7 yes) | Pass |
+| `independent-roots` | `claude-sonnet-5-5` | 6/6 | Pass | Pass | Pass | Pass | Pass (3 roots) | none possible | Pass |
+| `tests-and-config` | `claude-sonnet-5-5` | 5/6 | Pass | Pass | Pass | Pass | Pass (4 groups) | none possible | **Fail** (automated) |
+
+Workflow notes, from the transcripts in `.cache/eval/transcripts/`:
+- Each run took 6 to 10 tool calls.
+- In `feature-flow` and `independent-roots`, the agent first tried to write `plan.json` with a shell heredoc. Claude Code's permission check refused it ("brace with quote character"), and the agent used `Write` instead. That costs a turn but does no harm.
+
+The failing recordings are committed so they can be reviewed. `replay.test.ts` lists their failed checks in `KNOWN_FAILS`.
 
 ### Per fixture
 
-<!-- For each fixture: the group order (titles), what was good, what failed and why. -->
+**`signature` (Sonnet): fail.** Groups, in order:
+1. formatPrice gains a currency parameter
+2. Callers pass 'USD' (5 nodes)
+3. tax gains an optional rate
+4. Callers pass a 0.2 rate (3 nodes)
+5. Config currency and legacy label
+
+- **Good:**
+  - Each contract comes first, and both read as roots.
+  - All 8 verdicts are right. `viaMethod` → `formatPrice` and `use_calc` → `tax` are `no`, each citing the receiver call.
+  - It notices that `config.json` now says EUR while the callers hardcode 'USD'. It adds that as a `logically-related` inferred relationship rather than a code edge, which is what D6 asks for.
+  - `legacyLabel` and the config change are labelled as looking unrelated.
+- **Fail (M1, `apart` ×2):** `viaMethod` is homed in "Callers pass 'USD'" and `use_calc` in "Callers pass a 0.2 rate". The descriptions add that each "calls a different" method, but a reviewer skimming the titles is told they are callers. The groups follow the candidate edges, not the verdicts.
+- **Comparison:** Haiku, on the same input, put all three same-name edits in its unrelated group and passes.
+
+**`ten-callers`: pass.** Groups, in order:
+1. parseDate gains a zone parameter
+2. Reports pass 'UTC' (10 nodes)
+
+The summary reminds the reviewer that unchanged callers were not analysed (D12). The contract's description raises a real question: what happens for zones other than UTC?
+
+**`feature-flow`: pass.** Groups, in order:
+1. POST /orders route registered (`registerRoutes`, `postOrder` and their modules)
+2. createOrder service
+3. In-memory order storage
+4. createOrder test
+
+The order is exactly the decided flow. Each description ends with a concrete check:
+- the route body isn't validated;
+- the service doesn't validate `sku`;
+- ids come from the array length;
+- the test misses the invalid-quantity path.
+
+All 7 edges are `yes`, including the type references, with `via: direct`.
+
+**`independent-roots`: pass.** There are three one-node groups, each a root, and no forced link: the summary says "No code edges link them". `welcomeMessage` is labelled as looking unrelated.
+
+**`tests-and-config`: fail on the automated check; the plan itself reads well.** Groups, in order:
+1. New formatPrice rounding test
+2. Test script and package version (`package.json`)
+3. CI uses Node 22 (`ci.yml`)
+4. Stricter TypeScript indexing (`tsconfig.json`)
+
+- **The fail:** the plan splits the config by purpose and says the edits are "mostly independent". It links two of them with a `logically-related` relationship: CI runs the test script.
+- **Why I count it as a pass on M1:** this is the §13.5 behaviour we want, and arguably better than one "configuration" group. The `together` fact for the three config files is probably too strict.
+- **Other notes:** the test group comes first, and the 0.125 rounding case is flagged as a floating-point edge.
 
 ## Prompt iterations
 
-A change to `SKILL.md` or a reference makes every recording stale (input hash, #85), so each iteration is re-run on every fixture it could affect.
+A change to `SKILL.md` or a reference makes every recording stale (input hash, #85). So each iteration is re-run on every fixture it could affect, and each re-run needs approval.
 
-| # | Change | Why (which fail) | Fixtures re-run | Effect |
+| # | Change | Why (which fail) | Fixtures to re-run | Effect |
 |---|---|---|---|---|
-| | | | | |
+| 1 (proposed, not made) | In `analysis-workflow.md` § Grouping, add: "A node whose only edges to a root you judged `no` is not a caller of it. Group it with the unrelated edits, not with the callers." | `signature` (Sonnet): same-name edits homed with callers | `signature` with Sonnet (≈$0.12) and Haiku (≈$0.01). Others to confirm no regression: `ten-callers`, `feature-flow` (≈$0.21) | Not run |
+
+The skill text is unchanged in this round. A parallel session (#43) is editing the skill's verdict guidance, and any skill edit makes every recording stale, so iteration 1 waits for #43 to land and for approval.
+
+## Open questions
+
+1. **Should `tests-and-config` check only that tests and config are apart, and drop the "config together" fact?** I'd say yes. If so, the recording passes and comes off `KNOWN_FAILS`.
+2. **Should iteration 1 run?** It would run after #43 merges, on the fixtures listed, with the same $0.50 cap.
 
 ## Conclusion
 
-<!-- Pass/fail for the M2 acceptance focus, what to change in the skill, and what is left for #43 and #77. -->
+On the M2 acceptance focus (§17.3), with Sonnet and no language server:
+- **No invented nodes (3) and provenance (4):** met on every fixture.
+  - Every Sonnet plan passed `validate` the first time, with no repair round.
+  - Verdicts were all right, each with a reason and a real cited line.
+  - Nothing claimed `verified`.
+- **Useful ordering (2):** met on every fixture.
+- **Central vs supporting (1):** met except on `signature`. There, the grouping follows the candidate edges instead of the agent's own `no` verdicts. That is the one real weakness, and prompt iteration 1 targets it.

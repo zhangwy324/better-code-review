@@ -1,0 +1,168 @@
+{
+  "task": "skill",
+  "fixture": "ten-callers",
+  "model": "claude-sonnet-5-5",
+  "inputHash": "sha256:04e42cf01d462999db6e9a360e67ee8bead21416a7a491a043cc5ab6a5de1479",
+  "usage": {
+    "inputTokens": 10,
+    "outputTokens": 2441,
+    "cacheCreationInputTokens": 16250,
+    "cacheReadInputTokens": 49747
+  },
+  "costUsd": 0.0944047,
+  "output": {
+    "schemaVersion": 1,
+    "snapshotId": "68a9426859fd81a2867416ed0f585fee7cd13defc91a33546373caa60d5bcd6a",
+    "origin": "agent",
+    "fallbackReason": null,
+    "summary": "parseDate gains a required zone parameter that appends 'Z' when the zone is 'UTC'. All ten report functions are updated to pass 'UTC'. Check that no unchanged caller still calls parseDate with one argument, since only changed code was analysed.",
+    "groups": [
+      {
+        "id": "contract",
+        "title": "parseDate gains a zone parameter",
+        "description": "The signature now requires a zone, and the parsed string gets a 'Z' suffix only when the zone is 'UTC'. Check how other zone values should be handled and whether the template string yields valid dates.",
+        "nodeIds": [
+          "n_48c95b5bed81aab5"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "callers",
+        "title": "Reports pass 'UTC'",
+        "description": "Each of the ten report functions makes the same one-line change to pass 'UTC'. Confirm they are identical and that UTC is the intended zone for every report.",
+        "nodeIds": [
+          "n_1ae9a4a0b16ea109",
+          "n_76ac6ffd26596480",
+          "n_ce4d34eae1dc9a47",
+          "n_673aeefc72af73ec",
+          "n_fbd93b5ab9c4a24a",
+          "n_3dc4b3ad518e365b",
+          "n_abe7a35cdee91487",
+          "n_0f6e60a3148f79c6",
+          "n_5f719ac1e2049a9d",
+          "n_67563af690b681d0"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      }
+    ],
+    "groupOrder": [
+      "contract",
+      "callers"
+    ],
+    "edgeVerdicts": [
+      {
+        "edgeId": "e_ceacaaa3e08a23eb",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "report1.ts imports parseDate from ../dates.ts and calls it.",
+        "citedLine": {
+          "path": "src/reports/report1.ts",
+          "side": "new",
+          "line": 4
+        }
+      },
+      {
+        "edgeId": "e_bdd9af747e03a725",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "report10.ts imports parseDate from ../dates.ts and calls it.",
+        "citedLine": {
+          "path": "src/reports/report10.ts",
+          "side": "new",
+          "line": 4
+        }
+      },
+      {
+        "edgeId": "e_547f50c328aabc13",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "report2.ts imports parseDate from ../dates.ts and calls it.",
+        "citedLine": {
+          "path": "src/reports/report2.ts",
+          "side": "new",
+          "line": 4
+        }
+      },
+      {
+        "edgeId": "e_b37ac50190de0862",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "report3.ts imports parseDate from ../dates.ts and calls it.",
+        "citedLine": {
+          "path": "src/reports/report3.ts",
+          "side": "new",
+          "line": 4
+        }
+      },
+      {
+        "edgeId": "e_5d503e5f20501496",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "report4.ts imports parseDate from ../dates.ts and calls it.",
+        "citedLine": {
+          "path": "src/reports/report4.ts",
+          "side": "new",
+          "line": 4
+        }
+      },
+      {
+        "edgeId": "e_71f9cf5b4d5ca212",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "report5.ts imports parseDate from ../dates.ts and calls it.",
+        "citedLine": {
+          "path": "src/reports/report5.ts",
+          "side": "new",
+          "line": 4
+        }
+      },
+      {
+        "edgeId": "e_bb537fdf35b35bc9",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "report6.ts imports parseDate from ../dates.ts and calls it.",
+        "citedLine": {
+          "path": "src/reports/report6.ts",
+          "side": "new",
+          "line": 4
+        }
+      },
+      {
+        "edgeId": "e_b6f76c0ca1bebc10",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "report7.ts imports parseDate from ../dates.ts and calls it.",
+        "citedLine": {
+          "path": "src/reports/report7.ts",
+          "side": "new",
+          "line": 4
+        }
+      },
+      {
+        "edgeId": "e_4f4858e38cc22b4b",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "report8.ts imports parseDate from ../dates.ts and calls it.",
+        "citedLine": {
+          "path": "src/reports/report8.ts",
+          "side": "new",
+          "line": 4
+        }
+      },
+      {
+        "edgeId": "e_4179bfe356a32ff3",
+        "verdict": "yes",
+        "via": "direct",
+        "reason": "report9.ts imports parseDate from ../dates.ts and calls it.",
+        "citedLine": {
+          "path": "src/reports/report9.ts",
+          "side": "new",
+          "line": 4
+        }
+      }
+    ],
+    "inferredRelationships": []
+  }
+}
