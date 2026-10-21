@@ -93,7 +93,9 @@ Since #7, the `dependency licences` CI job runs `npm run licenses` ([`scripts/li
 
 The machine-readable policy is [`scripts/license-policy.json`](../../scripts/license-policy.json). A test fails if its allowlist drifts from the **Allowed** row above. An approved exception is added to both that file and [Approved exceptions](#approved-exceptions) in the same PR.
 
-Not yet automated: dev-only dependency licences (still checked in the PR by whoever adds them), notices inside `review.html` (#28), and grammar licences in language bundles (#45).
+Since #28, the viewer build embeds the notices for the code bundled into each `review.html`: this project's `LICENSE` and the licences Vite's `build.license` collects (`vite.config.ts`, [`src/renderer/README.md`](../../src/renderer/README.md)).
+
+Not yet automated: dev-only dependency licences (still checked in the PR by whoever adds them) and grammar licences in language bundles (#45).
 
 ## Consequences
 

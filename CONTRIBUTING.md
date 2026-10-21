@@ -17,7 +17,7 @@ npm run check   # format check, lint, typecheck, build, tests: the same steps CI
 
 | Script | What it does |
 |---|---|
-| `npm run build` | Compiles `src/` to `dist/` with `tsc`, and bundles the viewer into `dist/viewer/` with Vite |
+| `npm run build` | Compiles `src/` to `dist/` with `tsc`, and bundles the viewer into one page, `dist/viewer/index.html`, with Vite ([`src/renderer/README.md`](src/renderer/README.md)) |
 | `npm run typecheck` | Type-checks `src/` and `scripts/` without emitting, and the viewer with its own browser tsconfig |
 | `npm run lint` | ESLint with type-aware `typescript-eslint` rules |
 | `npm run format` / `format:check` | Prettier (Markdown is excluded and formatted by hand) |
