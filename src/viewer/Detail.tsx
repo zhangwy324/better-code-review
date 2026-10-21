@@ -1,7 +1,9 @@
-// The detail pane: the selected group, node or hunk. The diff component (#29) replaces the plain
-// patch text shown for a hunk. All code shown comes from changes.json (spec invariant 5).
+// The detail pane: the selected group, node or hunk. A node or hunk shows its real diff (Diff.tsx).
+// All code shown comes from changes.json (spec invariant 5).
+import type { FileChange } from '../schemas/changeset.ts';
 import type { ChangeNode } from '../schemas/graph.ts';
 import type { ReviewGroup } from '../schemas/plan.ts';
+import { Diff } from './Diff.tsx';
 import { filePath, hunkHeader, lineCounts } from './model.ts';
 import { type Selection, useModel, useSelection } from './state.tsx';
 
@@ -80,6 +82,7 @@ function NodeDetail({ node }: { node: ChangeNode }) {
           );
         })}
       </ul>
+      <Diffs hunkIds={node.hunkIds} />
     </>
   );
 }
@@ -95,9 +98,29 @@ function HunkDetail({ id }: { id: string }) {
       </h2>
       <p className="path">{filePath(entry.file)}</p>
       <NodeLinks ids={(model.hunkNodes.get(id) ?? []).map((n) => n.id)} />
-      <pre className="patch">{entry.hunk.patch}</pre>
+      <Diffs hunkIds={[id]} />
     </>
   );
+}
+
+/** One diff per file the hunks are in, in the order the files first appear. */
+function Diffs({ hunkIds }: { hunkIds: readonly string[] }) {
+  const model = useModel();
+  const { select } = useSelection();
+  const files = new Map<FileChange, string[]>();
+  for (const id of hunkIds) {
+    const file = model.hunks.get(id)?.file;
+    if (file !== undefined) files.set(file, [...(files.get(file) ?? []), id]);
+  }
+  return [...files].map(([file, ids], i) => (
+    <Diff
+      key={i}
+      file={file}
+      hunkIds={ids}
+      language={model.languages.get(filePath(file)) ?? null}
+      onSelectHunk={hunkIds.length > 1 ? (id) => select({ kind: 'hunk', id }) : undefined}
+    />
+  ));
 }
 
 function NodeLinks({ ids }: { ids: string[] }) {

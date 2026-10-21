@@ -42,6 +42,7 @@ Sources: `npm view <pkg> license` and ADR 0001.
 | `react`, `react-dom` 19.x | MIT | Bundled in `review.html` |
 | `@xyflow/react` (React Flow) 12.x | MIT | Bundled in `review.html` (candidate, §15.2) |
 | `codemirror`, `@codemirror/merge` 6.x | MIT | Bundled in `review.html` (candidate, §15.2) |
+| `@lezer/{common,lr,highlight,javascript,python,java}` 1.x | MIT | Bundled in `review.html` (#29: syntax highlighting in place of CodeMirror) |
 | `zod` 4.x | MIT | Bundled in the CLI (candidate, §15.2) |
 | **`elkjs` 0.12.0** | **EPL-2.0 OR GPL-3.0-or-later** | Bundled in `review.html` (candidate, §15.2). See [elkjs](#elkjs) |
 | `typescript-language-server`, `typescript` | Apache-2.0 | Detected on the user's machine; never bundled |

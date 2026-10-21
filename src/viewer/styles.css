@@ -9,6 +9,15 @@
   --fg-muted: #5c6370;
   --border: #d5d9e0;
   --accent: #2f5fd0;
+  --diff-added: #e6f6ea;
+  --diff-removed: #fdecec;
+  --diff-trailing-ws: #f7c6c6;
+  --tok-keyword: #a626a4;
+  --tok-string: #2e7d32;
+  --tok-comment: #6a737d;
+  --tok-literal: #b35900;
+  --tok-type: #00749e;
+  --tok-definition: #2f5fd0;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -23,6 +32,15 @@
     --fg-muted: #9aa1ad;
     --border: #343944;
     --accent: #8fb0ff;
+    --diff-added: #1b3324;
+    --diff-removed: #3d1f22;
+    --diff-trailing-ws: #6b2b2f;
+    --tok-keyword: #d197f0;
+    --tok-string: #98c379;
+    --tok-comment: #8b929e;
+    --tok-literal: #e5a66b;
+    --tok-type: #6cc4e0;
+    --tok-definition: #8fb0ff;
   }
 }
 
@@ -207,12 +225,123 @@ button {
   text-decoration: underline;
 }
 
-.patch {
-  padding: 8px;
-  overflow: auto;
+/* The diff (Diff.tsx). Lines never wrap: a long line scrolls the diff sideways. */
+.diff {
+  margin: 12px 0;
+}
+
+.diff-scroll {
+  overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: 4px;
+}
+
+.diff-table {
+  min-width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.diff-table td {
+  padding: 0 6px;
+  vertical-align: top;
+  white-space: pre;
+  tab-size: 4;
+}
+
+.diff-table .num {
+  min-width: 3.5em;
+  text-align: right;
+  color: var(--fg-muted);
+  user-select: none;
+}
+
+.diff-table .prefix {
+  padding: 0 2px;
+  user-select: none;
+}
+
+.diff-table .code {
+  width: 100%;
+}
+
+.added {
+  background: var(--diff-added);
+}
+
+.removed {
+  background: var(--diff-removed);
+}
+
+.marker,
+.expanded {
+  color: var(--fg-muted);
+}
+
+.hunk-header,
+.expand,
+.skipped {
   background: var(--bg-pane);
+  color: var(--fg-muted);
+}
+
+.hunk-header .link {
+  font-family: inherit;
+  white-space: pre;
+}
+
+.expand .link {
+  margin-left: 8px;
+}
+
+.trailing-ws {
+  background: var(--diff-trailing-ws);
+}
+
+.cr::before {
+  content: '␍';
+  color: var(--fg-muted);
+}
+
+/* Syntax highlighting: the class names of Lezer's classHighlighter (highlight.ts). */
+.tok-keyword,
+.tok-modifier,
+.tok-operatorKeyword,
+.tok-controlKeyword,
+.tok-definitionKeyword {
+  color: var(--tok-keyword);
+}
+
+.tok-string,
+.tok-string2,
+.tok-regexp {
+  color: var(--tok-string);
+}
+
+.tok-comment,
+.tok-meta {
+  color: var(--tok-comment);
+  font-style: italic;
+}
+
+.tok-number,
+.tok-bool,
+.tok-atom,
+.tok-null {
+  color: var(--tok-literal);
+}
+
+.tok-typeName,
+.tok-className,
+.tok-namespace {
+  color: var(--tok-type);
+}
+
+.tok-definition,
+.tok-function {
+  color: var(--tok-definition);
 }
 
 .load-error {

@@ -97,7 +97,9 @@ describe('App', () => {
       .flatMap((f) => f.hunks)
       .find((h) => h.id === node.hunkIds[0])!;
     fireEvent.click(within(detail).getByText(hunkHeader(hunk)));
-    expect(within(detail).getByText((_, e) => e?.tagName === 'PRE').textContent).toBe(hunk.patch);
+    const shown = detail.querySelectorAll(`tbody[data-hunk-id="${hunk.id}"]`);
+    expect(shown).toHaveLength(1);
+    expect(shown[0]!.querySelector('.hunk-header')!.textContent).toBe(hunk.patch.split('\n')[0]);
   });
 
   it('renders repository and plan text as text, never as HTML', () => {
