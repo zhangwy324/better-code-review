@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { SIGNATURE_BASE, SIGNATURE_HEAD } from '../analysis/semantic/fixture.test-helper.ts';
 import type { GhRunner } from '../git/pr.ts';
 import { TestRepo } from '../git/test-repo.test-helper.ts';
-import { ChangeGraph, ChangeSet } from '../schemas/index.ts';
+import { ChangeGraph, ChangeSet, ReviewPlan } from '../schemas/index.ts';
 import { type GenerateOptions } from './generate.ts';
 import { EXIT, run } from './main.ts';
 
@@ -58,7 +58,7 @@ function edges(graph: ChangeGraph): string[] {
 }
 
 describe('generate', () => {
-  it('writes changes.json, graph.json, planner-input.md and summary.txt for a commit, with no LSP', async () => {
+  it('writes changes.json, graph.json, planner-input.md, plan.json and summary.txt for a commit, with no LSP', async () => {
     const { repo, head } = signatureRepo();
     const result = await generate(repo.path, ['--commit', head, '--no-lsp']);
     expect(result.stderr).not.toContain('error');
@@ -88,6 +88,12 @@ describe('generate', () => {
     );
     const input = readFileSync(join(dir, 'planner-input.md'), 'utf8');
     for (const node of graph.nodes) expect(input).toContain(node.id);
+    // The fallback plan (#24), until an agent replaces it.
+    const plan = ReviewPlan.parse(JSON.parse(readFileSync(join(dir, 'plan.json'), 'utf8')));
+    expect(plan.origin).toBe('fallback');
+    expect(summary).toContain(
+      'Plan      fallback, 2 groups, 2 nodes ungrouped (an agent replaces plan.json with its own)',
+    );
     expect(result.stdout).toBe(
       `${summary}\nWritten to ${join('.better-code-review', 'reviews', `commit-${head.slice(0, 7)}`)}\n`,
     );
@@ -107,7 +113,13 @@ describe('generate', () => {
     expect(
       (await generate(repo.path, ['--commit', head, '--no-lsp', '--out', out(2)])).exitCode,
     ).toBe(0);
-    for (const file of ['changes.json', 'graph.json', 'planner-input.md', 'summary.txt']) {
+    for (const file of [
+      'changes.json',
+      'graph.json',
+      'planner-input.md',
+      'plan.json',
+      'summary.txt',
+    ]) {
       expect(readFileSync(join(out(1), file), 'utf8')).toBe(
         readFileSync(join(out(2), file), 'utf8'),
       );

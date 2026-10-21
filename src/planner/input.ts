@@ -19,6 +19,7 @@ import { describeTarget } from '../git/describe.ts';
 import type { ChangeSet, DiffHunk, FileChange } from '../schemas/changeset.ts';
 import type { ChangeGraph, ChangeNode, CodeEdge, GraphFile } from '../schemas/graph.ts';
 import type { SourceRange } from '../schemas/common.ts';
+import { count, list, tally } from '../text/index.ts';
 import { redactSecrets, sensitiveFile } from './secrets.ts';
 
 /** The whole input's size budget, in estimated tokens. */
@@ -366,22 +367,6 @@ function lineCounts(hunks: readonly DiffHunk[]): { added: number; removed: numbe
   return { added, removed };
 }
 
-/** `items` joined with commas, the first three and a count of the rest. */
-function list(items: readonly string[]): string {
-  const shown = items.slice(0, 3).join(', ');
-  return items.length > 3 ? `${shown} and ${items.length - 3} more` : shown;
-}
-
 function filePath(file: FileChange): string {
   return (file.newPath ?? file.oldPath)!;
-}
-
-function count(n: number, one: string, many = `${one}s`): string {
-  return `${n.toLocaleString('en')} ${n === 1 ? one : many}`;
-}
-
-function tally(items: readonly string[]): string {
-  const counts = new Map<string, number>();
-  for (const item of items) counts.set(item, (counts.get(item) ?? 0) + 1);
-  return [...counts].map(([k, n]) => (n === 1 ? k : `${k} ×${n}`)).join(', ');
 }

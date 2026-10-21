@@ -1,5 +1,6 @@
-// The planner's model input (#22): planner-input.md, on-demand context and secret avoidance; and
-// the validator for the plan it writes (#23).
+// The planner's model input (#22): planner-input.md, on-demand context and secret avoidance; the
+// validator for the plan it writes (#23); and the deterministic fallback plan (#24).
+export { fallbackPlan, NO_AGENT_REASON } from './fallback.ts';
 export {
   DEFAULT_MAX_HUNK_LINES,
   DEFAULT_TOKEN_BUDGET,
@@ -11,7 +12,6 @@ export {
 export { redactSecrets, sensitiveFile } from './secrets.ts';
 export { MAX_SHOW_LINES, show, ShowError, type ShowQuery } from './show.ts';
 export {
-  UNGROUPED_TITLE,
   validatePlan,
   type PlanError,
   type PlanErrorCode,

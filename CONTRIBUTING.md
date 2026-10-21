@@ -40,6 +40,7 @@ One package, one language (ADR 0001). Modules are folders under `src/`, created 
 | `src/analysis/` | Structural (tree-sitter) and semantic (LSP) analysis |
 | `src/graph/` | Deterministic change graph builder |
 | `src/planner/` | Planner model input, plan validation and fallback plan |
+| `src/text/` | Counts, lists and tallies in the text written for people and agents |
 | `src/schemas/` | Versioned data contracts; conventions and versioning policy in its [`README.md`](src/schemas/README.md) |
 | `src/renderer/` | `review.html` bundling |
 | `src/viewer/` | The React viewer |

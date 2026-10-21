@@ -26,9 +26,12 @@
 import type { SnapshotFiles } from '../analysis/semantic/snapshot-files.ts';
 import type { LineRef } from '../schemas/common.ts';
 import type { ChangeGraph } from '../schemas/graph.ts';
-import { ReviewPlan, UNGROUPED_GROUP_ID, type ReviewGroup } from '../schemas/plan.ts';
-
-export const UNGROUPED_TITLE = 'Ungrouped / requires review';
+import {
+  ReviewPlan,
+  UNGROUPED_GROUP_ID,
+  UNGROUPED_TITLE,
+  type ReviewGroup,
+} from '../schemas/plan.ts';
 
 export type PlanErrorCode =
   | 'json'

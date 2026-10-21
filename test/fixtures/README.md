@@ -49,10 +49,11 @@ When several nodes share a display name, each one is written with its path after
 The tests also check, for every fixture (Milestone 1 acceptance, #21):
 - **Coverage:** every hunk is on a node, and nothing is `verified` without a language server.
 - **Exact diffs:** each side's content in `changes.json` is the fixture's file, byte for byte, and its hunks applied to the old content give the new content.
-- **Stable IDs:** a second repository built from the same fixture gives byte-identical `changes.json`, `graph.json`, `planner-input.md` and `summary.txt`.
+- **Stable IDs:** a second repository built from the same fixture gives byte-identical `changes.json`, `graph.json`, `planner-input.md`, `plan.json` and `summary.txt`.
 - **Source mapping:** each symbol node's range holds its name, and each of its hunks changes a line in that range.
 - **Missing capabilities:** without a language server, every parsed language is reported `disabled` with guidance, in `graph.json` and `summary.txt`. With one, every language is `ok`.
 - **Planner input** (#22): `planner-input.md` lists every node and hunk and stays within its token budget.
+- **Fallback plan** (#24): `plan.json` passes the plan validator (#23) unchanged, with every node already in a group.
 
 `later` lists facts for a later milestone or issue. They are not checked yet; #26 turns the planner ones into assertions.
 

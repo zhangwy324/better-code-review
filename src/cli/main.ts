@@ -34,8 +34,9 @@ const USAGE = `Usage: better-code-review [--help] [--version]
        better-code-review show --dir <dir> (<id> | --file <path> [--side old|new] [--lines a-b])
        better-code-review validate --dir <dir> [--plan <file>]
 
-generate writes changes.json, graph.json, planner-input.md and summary.txt for a Git change,
-with no AI involved. show prints more context from a generated review for the planner: a hunk,
+generate writes changes.json, graph.json, planner-input.md, plan.json and summary.txt for a Git
+change, with no AI involved. Its plan.json groups the changes deterministically, for an agent to
+replace with its own. show prints more context from a generated review for the planner: a hunk,
 node or edge by ID, or lines of any file in the snapshot. Secrets are redacted in both.
 validate checks the planner's plan.json against the review and prints the result as JSON:
 {"valid": true, "ungroupedNodeIds": [...]} or {"valid": false, "errors": [{"path", "code",

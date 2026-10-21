@@ -16,6 +16,7 @@ export const PLAN_SCHEMA_VERSION = 1;
 
 /** The group that holds every node without a home (D1). */
 export const UNGROUPED_GROUP_ID = 'ungrouped';
+export const UNGROUPED_TITLE = 'Ungrouped / requires review';
 
 export const ReviewGroup = z.strictObject({
   id: LocalId,
