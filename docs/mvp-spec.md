@@ -1,7 +1,7 @@
 # MVP specification (v0.1)
 
 **Status:** Accepted · **Date:** 2026-10-18 · **Issue:** #6 (part of #1, Milestone M0)
-**Amended:** 2026-10-19 by #42 (D12: relationships between changed entities only)
+**Amended:** 2026-10-19 by #42 (D12: relationships between changed entities only); 2026-10-21 by #29 (D3: our own diff component instead of CodeMirror merge view)
 **Refs:** design reference §17.1–17.2, §19.3, §19.4, §19.5, §19.6 step 1 · `docs/research/existing-tools.md` § "Implications for MVP" · [ADR 0001](adr/0001-analyzer-runtime.md) · [ADR 0002](adr/0002-project-license.md)
 
 This spec turns the design reference into a testable scope for v0.1. Where it and the design reference disagree, this spec wins. Questions it does not settle are listed in [Deferred questions](#deferred-questions), each with the issue that owns it.
@@ -58,7 +58,8 @@ From §17.1, except item 5 (narrowed by D12). A reviewer can do all of the follo
 
 ### D3. Diffs open in a wide reading panel (§19.3 Q5)
 
-- Selecting a node opens its real diff in a **resizable reading panel** that can take most of the screen. The panel uses CodeMirror merge view (#29), lets the reviewer expand context up to the whole file, and is also where comments are written.
+- Selecting a node opens its real diff in a **resizable reading panel** that can take most of the screen. The panel uses the viewer's diff component (#29), lets the reviewer expand context up to the whole file, and is also where comments are written.
+  - **Not CodeMirror merge view (#29).** A merge view computes its own diff from the two files, so its chunks need not be Git's hunks, and it normalises CRLF. The component shows each hunk's `patch` line for line, takes expanded context from the file content (D7), and highlights syntax with the Lezer parsers CodeMirror is built on. It adds about 230 kB to `review.html` (87 kB gzipped).
 - **Graph nodes show only a compact preview:** signature before/after where known, `+a −d` line counts, and status badges.
 - Full diffs *inside* graph nodes are **deferred**. Embedding editors in pannable, zoomable React Flow nodes is costly for MVP. This deliberately narrows §6.2's "expandable inline in graph nodes".
 - The guided and file views use the same diff component, so selection, comments and progress are shared across all three views.

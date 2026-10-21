@@ -13,6 +13,8 @@ export interface ReviewModel extends ReviewData {
   homeGroup: Map<string, ReviewGroup>;
   /** The nodes each hunk belongs to, in graph order. */
   hunkNodes: Map<string, ChangeNode[]>;
+  /** Each changed file's grammar name, by `newPath ?? oldPath`; null when none matched. */
+  languages: Map<string, string | null>;
   coverage: { mapped: number; total: number };
 }
 
@@ -33,6 +35,7 @@ export function buildModel(data: ReviewData): ReviewModel {
     groups: new Map(plan.groups.map((g) => [g.id, g])),
     homeGroup,
     hunkNodes,
+    languages: new Map(graph.files.map((f) => [f.path, f.language])),
     coverage: hunkCoverage(graph, changeSet),
   };
 }

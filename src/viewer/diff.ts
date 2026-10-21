@@ -1,0 +1,117 @@
+// The diff view's model (#29): the rows of a hunk, taken from its patch text unchanged, and the
+// unchanged lines around it that the reviewer can expand, taken from the file's content (spec D3,
+// D7). Nothing here reconstructs or re-diffs code: every hunk line is a line of `hunk.patch`.
+import type { DiffHunk, FileChange } from '../schemas/changeset.ts';
+import type { Side } from '../schemas/common.ts';
+
+export interface DiffRow {
+  /** `marker` is a "\ No newline at end of file" line, which belongs to neither side. */
+  kind: 'context' | 'added' | 'removed' | 'marker';
+  /** The patch line's first character, e.g. `+`. A space for expanded context. */
+  prefix: string;
+  /** The rest of the line, without its newline: `prefix + text` is the patch line. */
+  text: string;
+  oldLine: number | null;
+  newLine: number | null;
+}
+
+const KINDS: Record<string, DiffRow['kind']> = {
+  ' ': 'context',
+  '+': 'added',
+  '-': 'removed',
+  '\\': 'marker',
+};
+
+/**
+ * The hunk's `@@` line and its other lines, in patch order. Joining the header and each row's
+ * `prefix + text` with newlines gives back `hunk.patch` without its final newline.
+ */
+export function hunkRows(hunk: DiffHunk): { header: string; rows: DiffRow[] } {
+  const lines = hunk.patch.split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  let oldLine = hunk.oldStart;
+  let newLine = hunk.newStart;
+  const rows = lines.slice(1).map((line): DiffRow => {
+    const prefix = line.slice(0, 1);
+    const kind = KINDS[prefix] ?? 'marker';
+    const old = kind === 'context' || kind === 'removed' ? oldLine++ : null;
+    const nu = kind === 'context' || kind === 'added' ? newLine++ : null;
+    return { kind, prefix, text: line.slice(1), oldLine: old, newLine: nu };
+  });
+  return { header: lines[0]!, rows };
+}
+
+/**
+ * The unchanged lines between two hunks of a file (or a hunk and the file's start or end), on the
+ * side whose content `contextSide()` chose. Line `n` of that side is line `n + offset` of the other.
+ */
+export interface Gap {
+  /** 1-based and inclusive; empty when `from > to`. */
+  from: number;
+  to: number;
+  offset: number;
+}
+
+/**
+ * The side expanded context is read from: the new side, or the old one for a deleted file. Null
+ * when the file's content wasn't captured (binary, over the size cap or not UTF-8), so there is
+ * no context to show beyond the patch.
+ */
+export function contextSide(file: FileChange): Side | null {
+  if (file.newContent !== null) return 'new';
+  if (file.oldContent !== null) return 'old';
+  return null;
+}
+
+/** A file's lines, split on `\n` only, so a `\r` stays at the end of its line as in the patch. */
+export function contentLines(content: string): string[] {
+  const lines = content.split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  return lines;
+}
+
+/**
+ * The gaps of `file` on `side`: gap `i` is the one before `file.hunks[i]`, and the last gap is the
+ * one after the last hunk. Hunks are in diff order, so their ranges ascend on both sides.
+ */
+export function gaps(file: FileChange, side: Side, lineCount: number): Gap[] {
+  // For each hunk, the number of lines before it and the line it ends on, on each side. Git gives
+  // an empty range the number of the line before it, e.g. `-0,0` for an added file.
+  const bounds = file.hunks.map((h) => {
+    const oldBefore = h.oldLines > 0 ? h.oldStart - 1 : h.oldStart;
+    const newBefore = h.newLines > 0 ? h.newStart - 1 : h.newStart;
+    return {
+      old: { before: oldBefore, end: oldBefore + h.oldLines },
+      new: { before: newBefore, end: newBefore + h.newLines },
+    };
+  });
+  const other: Side = side === 'new' ? 'old' : 'new';
+  const result: Gap[] = [];
+  for (let i = 0; i <= bounds.length; i++) {
+    const above = bounds[i - 1];
+    const below = bounds[i];
+    result.push({
+      from: (above?.[side].end ?? 0) + 1,
+      to: below?.[side].before ?? lineCount,
+      offset:
+        below !== undefined
+          ? below[other].before - below[side].before
+          : above !== undefined
+            ? above[other].end - above[side].end
+            : 0,
+    });
+  }
+  return result;
+}
+
+/** The context row for line `line` of `side`, whose text is `text`. */
+export function contextRow(gap: Gap, side: Side, line: number, text: string): DiffRow {
+  const other = line + gap.offset;
+  return {
+    kind: 'context',
+    prefix: ' ',
+    text,
+    oldLine: side === 'old' ? line : other,
+    newLine: side === 'new' ? line : other,
+  };
+}
