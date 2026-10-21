@@ -31,6 +31,7 @@
     "grammars": "node scripts/grammars.ts",
     "fixtures": "node scripts/fixtures.ts",
     "eval": "node scripts/eval.ts",
+    "score:adjudication": "node scripts/score-adjudication.ts",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm test",
     "prepack": "npm run build && npm run licenses"
   },

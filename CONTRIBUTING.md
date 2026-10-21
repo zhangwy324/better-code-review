@@ -27,6 +27,7 @@ npm run check   # format check, lint, typecheck, build, tests: the same steps CI
 | `npm run licenses` | Checks production dependency and vendored grammar licences and writes `THIRD_PARTY_NOTICES` |
 | `npm run fixtures` | Lists the test fixture portfolio, or builds one fixture as a repository to try by hand ([`test/fixtures/README.md`](test/fixtures/README.md)) |
 | `npm run eval` | Live, budget-capped runs of the AI steps. **Spends real AI usage**; never part of `check` or CI ([Testing AI steps](#testing-ai-steps)) |
+| `npm run score:adjudication` | Scores the caller verdicts of the runs `eval` kept against ground truth (#43). Reads files only ([Testing AI steps](#testing-ai-steps)) |
 | `npm run grammars` | Re-vendors the built-in tree-sitter grammars from their pins ([`src/analysis/structural/README.md`](src/analysis/structural/README.md)) |
 
 ## Layout
@@ -90,6 +91,7 @@ npm run eval -- --tier quality --max-budget-usd 2 --allow-large-budget
 - **Cost log.** Each run's cost and token usage are printed and appended to `.cache/eval/costs.jsonl`.
 - **Transcripts.** Each run's full stream-json transcript goes to `.cache/eval/transcripts/` for debugging bad runs. It is gitignored and costs no extra tokens.
 - **Recordings.** A run that returns a schema-valid plan is recorded to `test/ai/recordings/<task>/<fixture>/<model>.json`. Commit it with the change that needed it. A run that fails is not recorded. Its transcript path is printed instead.
+- **Caller verdicts (#43).** Every valid plan is also kept in `.cache/eval/outputs/`, and `--runs <n>` repeats each fixture. `npm run score:adjudication` scores their `edgeVerdicts` on the edges the batches asked about, as #42 did: precision, recall, false rejections, `unsure`, run-to-run consistency and tokens. Ground truth is the fixture's `withLsp` facts. For any other change, such as a #42 pull request, pass `--graph <no-LSP graph.json> --truth <graph.json generated with servers> <plan.json>…`. LSP truth over-counts dispatch (#42), so audit disagreements before trusting a score.
 
 ## Dependencies
 

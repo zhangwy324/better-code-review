@@ -20,6 +20,7 @@ describe('parseEvalArgs', () => {
       model: TIERS.smoke.model,
       maxBudgetUsd: DEFAULT_BUDGET_USD,
       maxTurns: 30,
+      runs: 1,
     });
   });
 
@@ -45,6 +46,7 @@ describe('parseEvalArgs', () => {
     expect(() => parseEvalArgs(['--max-budget-usd', 'lots'])).toThrow('positive');
     expect(() => parseEvalArgs(['--fixture', 'nope'])).toThrow('Unknown fixture nope');
     expect(() => parseEvalArgs(['--tier', 'huge'])).toThrow('Unknown tier');
+    expect(() => parseEvalArgs(['--runs', '0'])).toThrow('--runs must be a positive integer');
   });
 });
 
@@ -110,7 +112,7 @@ describe('runEval', () => {
     });
 
     expect(ok).toBe(true);
-    expect(printed).toContain('at most $0.25 each');
+    expect(printed).toContain('at most $0.25 per run');
     expect(printed).toMatch(/ok {3}signature {2}claude-haiku-5-5 {2}\$0\.0100/);
     expect(printed).toContain('Total cost: $0.0100');
 
@@ -135,6 +137,28 @@ describe('runEval', () => {
     });
     expect(readdirSync(join(dir, 'local', 'transcripts'))).toEqual([
       '2026-10-20T12-00-00.000Z-signature.jsonl',
+    ]);
+    // Every valid plan is kept for scoring (#43).
+    expect(readdirSync(join(dir, 'local', 'outputs'))).toEqual([
+      '2026-10-20T12-00-00.000Z-signature.json',
+    ]);
+  });
+
+  it('repeats each fixture with --runs, keeping every output', async () => {
+    const dir = join(root, 'runs');
+    let printed = '';
+    const ok = await runEval(parseEvalArgs(['--runs', '2']), {
+      out: (t) => (printed += t),
+      localDir: join(dir, 'local'),
+      recordingsDir: join(dir, 'recordings'),
+      spawn: fakeClaude(validPlan),
+      now: () => new Date('2026-10-20T12:00:00Z'),
+    });
+    expect(ok).toBe(true);
+    expect(printed).toContain('2 runs each, at most $0.25 per run ($0.50 in all)');
+    expect(readdirSync(join(dir, 'local', 'outputs')).sort()).toEqual([
+      '2026-10-20T12-00-00.000Z-signature-run1.json',
+      '2026-10-20T12-00-00.000Z-signature-run2.json',
     ]);
   });
 
