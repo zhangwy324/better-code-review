@@ -60,11 +60,13 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^2.0.4",
     "@lezer/common": "^1.5.3",
     "@lezer/highlight": "^1.2.5",
     "@lezer/java": "^1.1.5",
     "@lezer/javascript": "^1.5.6",
     "@lezer/python": "^1.1.19",
+    "@xyflow/react": "^12.12.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-resizable-panels": "^4.14.8",

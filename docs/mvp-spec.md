@@ -200,7 +200,7 @@ These come from §9.8, and every milestone's tests must keep them:
 | §19.5 Q4 Communicating permission boundaries | SKILL.md says what runs locally, what goes to the model and when LSP runs project code | #25 |
 | §19.5 Q6 Leaking code through shared artifacts | Warning in the artifact and docs | #35, #38 |
 | §19.5 Q7 Which differentiator to emphasise | Decide after real-PR validation | #37 |
-| Elk vs dagre for layout | ADR 0002 | #30 |
+| Elk vs dagre for layout | dagre (MIT): good enough for collapsed groups and one level of expansion, with no licence exception (ADR 0002) | #30 |
 
 ## Assumptions recorded
 

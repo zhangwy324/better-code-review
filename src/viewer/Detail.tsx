@@ -1,10 +1,20 @@
-// The detail pane: the selected group, node or hunk. A node or hunk shows its real diff (Diff.tsx).
-// All code shown comes from changes.json (spec invariant 5).
+// The detail pane: the selected group, node, hunk or canvas edge. A node or hunk shows its real diff
+// (Diff.tsx), and a node its related changes, to navigate along edges. An edge shows its links'
+// direction, provenance and evidence (spec D6). All code shown comes from changes.json (spec
+// invariant 5).
 import type { FileChange } from '../schemas/changeset.ts';
 import type { ChangeNode } from '../schemas/graph.ts';
 import type { ReviewGroup } from '../schemas/plan.ts';
 import { Diff } from './Diff.tsx';
-import { filePath, hunkHeader, lineCounts } from './model.ts';
+import {
+  filePath,
+  hunkHeader,
+  type Link,
+  lineCounts,
+  linkLabel,
+  linkSentence,
+  STYLE_DESCRIPTIONS,
+} from './model.ts';
 import { type Selection, useModel, useSelection } from './state.tsx';
 
 export function Detail() {
@@ -26,6 +36,12 @@ function DetailBody({ selection }: { selection: Selection }) {
   if (selection.kind === 'node') {
     const node = model.nodes.get(selection.id);
     return node === undefined ? null : <NodeDetail node={node} />;
+  }
+  if (selection.kind === 'links') {
+    return selection.ids.map((id) => {
+      const link = model.links.get(id);
+      return link === undefined ? null : <LinkDetail key={id} link={link} />;
+    });
   }
   return <HunkDetail id={selection.id} />;
 }
@@ -82,8 +98,125 @@ function NodeDetail({ node }: { node: ChangeNode }) {
           );
         })}
       </ul>
+      <RelatedChanges node={node} />
       <Diffs hunkIds={node.hunkIds} />
     </>
+  );
+}
+
+/** The changes linked to `node`, each a step along an edge (design reference §6.3). */
+function RelatedChanges({ node }: { node: ChangeNode }) {
+  const model = useModel();
+  const { select } = useSelection();
+  const links = [...model.links.values()].filter(
+    (l) => l.source === node.id || l.target === node.id,
+  );
+  if (links.length === 0) return null;
+  return (
+    <>
+      <h3>Related changes</h3>
+      <ul className="related">
+        {links.map((link) => {
+          const outgoing = link.source === node.id;
+          const other = model.nodes.get(outgoing ? link.target : link.source);
+          if (other === undefined) return null;
+          return (
+            <li key={link.id} className={`link-${link.style}`}>
+              {outgoing
+                ? `${linkLabel(link)} `
+                : link.kind === 'code'
+                  ? `${link.edge.relation} `
+                  : `${linkLabel(link)} from `}
+              <button
+                type="button"
+                className="link"
+                onClick={() => select({ kind: 'node', id: other.id })}
+              >
+                {other.displayName}
+              </button>{' '}
+              <button
+                type="button"
+                className="link evidence"
+                title={STYLE_DESCRIPTIONS[link.style]}
+                onClick={() => select({ kind: 'links', ids: [link.id] })}
+              >
+                {link.style}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
+/** One code edge or inferred relationship: direction, provenance and evidence. */
+function LinkDetail({ link }: { link: Link }) {
+  const model = useModel();
+  const ends = [link.source, link.target].flatMap((id) => {
+    const node = model.nodes.get(id);
+    return node === undefined ? [] : [node];
+  });
+  return (
+    <section className={`link-detail link-${link.style}`}>
+      <h2>{linkSentence(model, link)}</h2>
+      <p>{STYLE_DESCRIPTIONS[link.style]}</p>
+      <NodeLinks ids={ends.map((n) => n.id)} />
+      {link.kind === 'code' ? (
+        <>
+          <p>
+            {link.edge.sides === 'both'
+              ? 'In the old and new code.'
+              : link.edge.sides === 'new'
+                ? 'Only in the new code (added).'
+                : 'Only in the old code (removed).'}
+          </p>
+          {link.verdict !== null && (
+            <p>
+              Agent verdict: <strong>{link.verdict.verdict}</strong>
+              {link.verdict.via !== null && ` (${link.verdict.via})`}. {link.verdict.reason}{' '}
+              <CitedLine line={link.verdict.citedLine} />
+            </p>
+          )}
+          <h3>Evidence</h3>
+          <ul className="evidence-list">
+            {link.edge.evidenceIds.map((id) => {
+              const record = model.evidence.get(id);
+              if (record === undefined) return null;
+              const { path, side, range } = record.location;
+              return (
+                <li key={id}>
+                  {record.method} · {record.outcome}
+                  {record.detail !== null && ` · ${record.detail}`} ·{' '}
+                  <span className="path">
+                    {path}:{range.startLine} ({side})
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      ) : (
+        <>
+          <p>{link.relationship.explanation}</p>
+          <ul className="evidence-list">
+            {link.relationship.citedLines.map((line, i) => (
+              <li key={i}>
+                <CitedLine line={line} />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+function CitedLine({ line }: { line: { path: string; side: string; line: number } }) {
+  return (
+    <span className="path">
+      {line.path}:{line.line} ({line.side})
+    </span>
   );
 }
 
