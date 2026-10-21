@@ -21,5 +21,7 @@
     "forceConsistentCasingInFileNames": true,
     "noEmit": true
   },
-  "include": ["src", "scripts", "test/fixtures", "test/ai", "test/skill"]
+  "include": ["src", "scripts", "test/fixtures", "test/ai", "test/skill"],
+  // The viewer runs in a browser and has its own tsconfig (src/viewer/tsconfig.json).
+  "exclude": ["src/viewer"]
 }

@@ -19,8 +19,8 @@
     "THIRD_PARTY_NOTICES"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.ts",
-    "typecheck": "tsc",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.ts && vite build",
+    "typecheck": "tsc && tsc -p src/viewer",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -30,6 +30,7 @@
     "licenses": "node scripts/licenses.ts",
     "grammars": "node scripts/grammars.ts",
     "fixtures": "node scripts/fixtures.ts",
+    "viewer": "node scripts/viewer.ts",
     "eval": "node scripts/eval.ts",
     "score:adjudication": "node scripts/score-adjudication.ts",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm test",
@@ -37,19 +38,30 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "ajv": "^8.20.0",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
+    "jsdom": "^30.1.3",
     "license-checker-rseidelsohn": "^5.0.1",
     "prettier": "^3.9.10",
     "spdx-satisfies": "^6.0.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.2",
+    "vite": "^8.3.5",
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-resizable-panels": "^4.14.8",
     "web-tree-sitter": "0.27.1",
     "zod": "^4.6.7"
   }

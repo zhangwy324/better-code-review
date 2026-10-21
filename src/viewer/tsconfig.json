@@ -1,0 +1,13 @@
+{
+  // The viewer (README.md): browser code, bundled by Vite (vite.config.ts at the repository root).
+  // It imports the schemas from src/schemas, which are type-checked here too.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2024", "dom", "dom.iterable"],
+    // `node` for the tests, which build fixtures; eslint keeps Node imports out of viewer code.
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx"
+  },
+  "include": ["."],
+  "exclude": []
+}

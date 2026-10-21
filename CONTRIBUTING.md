@@ -17,8 +17,8 @@ npm run check   # format check, lint, typecheck, build, tests: the same steps CI
 
 | Script | What it does |
 |---|---|
-| `npm run build` | Compiles `src/` to `dist/` with `tsc` |
-| `npm run typecheck` | Type-checks `src/` and `scripts/` without emitting |
+| `npm run build` | Compiles `src/` to `dist/` with `tsc`, and bundles the viewer into `dist/viewer/` with Vite |
+| `npm run typecheck` | Type-checks `src/` and `scripts/` without emitting, and the viewer with its own browser tsconfig |
 | `npm run lint` | ESLint with type-aware `typescript-eslint` rules |
 | `npm run format` / `format:check` | Prettier (Markdown is excluded and formatted by hand) |
 | `npm test` | Vitest, once. The language-server integration suites skip when no server is installed |
@@ -26,6 +26,7 @@ npm run check   # format check, lint, typecheck, build, tests: the same steps CI
 | `npm run schemas` | Regenerates the JSON Schema files in `schemas/` from `src/schemas/` |
 | `npm run licenses` | Checks production dependency and vendored grammar licences and writes `THIRD_PARTY_NOTICES` |
 | `npm run fixtures` | Lists the test fixture portfolio, or builds one fixture as a repository to try by hand ([`test/fixtures/README.md`](test/fixtures/README.md)) |
+| `npm run viewer` | Serves the viewer with a review directory's data, for development ([`src/viewer/README.md`](src/viewer/README.md)) |
 | `npm run eval` | Live, budget-capped runs of the AI steps. **Spends real AI usage**; never part of `check` or CI ([Testing AI steps](#testing-ai-steps)) |
 | `npm run score:adjudication` | Scores the caller verdicts of the runs `eval` kept against ground truth (#43). Reads files only ([Testing AI steps](#testing-ai-steps)) |
 | `npm run grammars` | Re-vendors the built-in tree-sitter grammars from their pins ([`src/analysis/structural/README.md`](src/analysis/structural/README.md)) |
@@ -44,7 +45,7 @@ One package, one language (ADR 0001). Modules are folders under `src/`, created 
 | `src/text/` | Counts, lists and tallies in the text written for people and agents |
 | `src/schemas/` | Versioned data contracts; conventions and versioning policy in its [`README.md`](src/schemas/README.md) |
 | `src/renderer/` | `review.html` bundling |
-| `src/viewer/` | The React viewer |
+| `src/viewer/` | The React viewer, which runs in a browser; see its [`README.md`](src/viewer/README.md) |
 
 - `skills/better-code-review/` is the Agent Skill (#25): `SKILL.md` and its `references/`. It drives the CLI and writes `plan.json`. `test/skill/` checks that the flags it names exist and that it explains every validator error code.
 - `schemas/` holds the generated JSON Schema files. Don't edit them; change `src/schemas/` and run `npm run schemas`.
