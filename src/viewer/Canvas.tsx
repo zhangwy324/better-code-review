@@ -23,7 +23,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { count } from '../text/index.ts';
+import { count, UNCHANGED_CALLERS_NOTE } from '../text/index.ts';
 import {
   type CanvasEdge,
   type CanvasItem,
@@ -32,14 +32,16 @@ import {
   changeItemId,
   type GroupItem,
   groupItemId,
-  nodesIn,
 } from './canvas.ts';
-import { groupHunkIds, type Link, lineCounts, linkSentence, STYLE_DESCRIPTIONS } from './model.ts';
+import {
+  groupHunkIds,
+  groupNodeIds,
+  type Link,
+  lineCounts,
+  linkSentence,
+  STYLE_DESCRIPTIONS,
+} from './model.ts';
 import { useIsSelected, useModel, useSelection } from './state.tsx';
-
-/** What a reader must know about the graph's edges (spec D12). */
-export const UNCHANGED_CALLERS_NOTE =
-  'Only relationships between changed code are shown. Unchanged callers are not analysed.';
 
 const LEGEND: Record<Link['style'], string> = {
   verified: 'verified',
@@ -168,7 +170,7 @@ function GroupNode({ data }: NodeProps<GroupItem>) {
   const toggle = useContext(ExpandContext);
   const selected = useIsSelected('group', data.groupId);
   const group = model.groups.get(data.groupId)!;
-  const changes = nodesIn(model, group).length;
+  const changes = groupNodeIds(model, group).length;
   return (
     <div className="canvas-group" aria-current={selected || undefined}>
       <Handle type="target" position={Position.Left} />

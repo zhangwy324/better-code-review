@@ -49,7 +49,7 @@ import {
   type ReviewRequest,
   type ReviewTarget,
 } from '../schemas/index.ts';
-import { count, occurrences } from '../text/index.ts';
+import { count, occurrences, UNCHANGED_CALLERS_NOTE } from '../text/index.ts';
 
 /** A ReviewRequest whose output directory may be left to the D9 default. */
 export type GenerateRequest = Omit<ReviewRequest, 'outputDirectory'> & {
@@ -327,9 +327,7 @@ export function summarise(
     );
   }
   for (const warning of changeSet.warnings) notes.push(`Extraction warning: ${warning}.`);
-  notes.push(
-    'Only relationships between changed code are shown. Unchanged callers are not analysed.',
-  );
+  notes.push(UNCHANGED_CALLERS_NOTE);
   lines.push('', ...notes);
   return `${lines.join('\n')}\n`;
 }

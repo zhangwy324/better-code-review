@@ -2,10 +2,8 @@
 // The diff component (#29 acceptance: every hunk renders byte-for-byte from the ChangeSet) on a real
 // extraction of awkward content: tabs, trailing whitespace, CRLF, no newline at the end, unicode,
 // a very long line and HTML-looking text. Expanded context must be the file's own unchanged lines,
-// with the right numbers on both sides, and never a changed line. `generate` runs in a child
-// process, as in App.test.tsx.
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+// with the right numbers on both sides, and never a changed line.
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cleanup, fireEvent, render } from '@testing-library/react';
@@ -15,6 +13,7 @@ import type { ChangeSet, FileChange } from '../schemas/changeset.ts';
 import type { ChangeGraph } from '../schemas/graph.ts';
 import { Diff } from './Diff.tsx';
 import { contentLines } from './diff.ts';
+import { generateReview } from './testing.tsx';
 
 const numbered = (n: number, f: (i: number) => string) =>
   Array.from({ length: n }, (_, i) => f(i + 1));
@@ -69,16 +68,7 @@ beforeAll(() => {
   repo.git('config', 'core.autocrlf', 'false');
   const baseCommit = repo.commit([], base);
   const headCommit = repo.commit([baseCommit], head);
-  const out = join(root, 'out');
-  const main = join(import.meta.dirname, '..', 'cli', 'main.ts');
-  execFileSync(
-    process.execPath,
-    [main, 'generate', '--commit', headCommit, '--no-lsp', '--out', out],
-    { cwd: dir, stdio: 'ignore' },
-  );
-  const read = (file: string): unknown => JSON.parse(readFileSync(join(out, file), 'utf8'));
-  changeSet = read('changes.json') as ChangeSet;
-  graph = read('graph.json') as ChangeGraph;
+  ({ changeSet, graph } = generateReview(dir, headCommit, join(root, 'out')));
 });
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 afterEach(cleanup);

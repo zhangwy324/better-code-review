@@ -1,5 +1,10 @@
-// Small helpers for the text the tool writes for people and agents: summary.txt, the planner input
-// and the fallback plan. Numbers always get thousands separators (`1,234`), whatever the locale.
+// Small helpers for the text the tool writes for people and agents: summary.txt, the planner input,
+// the fallback plan and the viewer. Numbers always get thousands separators (`1,234`), whatever the
+// locale.
+
+/** What a reader must know about the graph's edges (spec D12). */
+export const UNCHANGED_CALLERS_NOTE =
+  'Only relationships between changed code are shown. Unchanged callers are not analysed.';
 
 /** `n` and the noun for it, e.g. `1 file`, `1,234 files`. */
 export function count(n: number, one: string, many = `${one}s`): string {

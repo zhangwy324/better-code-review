@@ -19,7 +19,7 @@ import { describeTarget } from '../git/describe.ts';
 import type { ChangeSet, DiffHunk, FileChange } from '../schemas/changeset.ts';
 import type { ChangeGraph, ChangeNode, CodeEdge, GraphFile } from '../schemas/graph.ts';
 import type { SourceRange } from '../schemas/common.ts';
-import { count, list, tally } from '../text/index.ts';
+import { count, list, tally, UNCHANGED_CALLERS_NOTE } from '../text/index.ts';
 import type { Candidates } from './candidates.ts';
 import { redactSecrets, sensitiveFile } from './secrets.ts';
 
@@ -319,9 +319,7 @@ function candidateLines({
 }
 
 function noteLines(changeSet: ChangeSet, graph: ChangeGraph): string[] {
-  const notes = [
-    'Only relationships between changed code are shown. Unchanged callers are not analysed.',
-  ];
+  const notes = [UNCHANGED_CALLERS_NOTE];
   for (const l of graph.languages) {
     const side = l.side === 'old' ? ' (old side)' : '';
     const server = l.server === null ? '' : ` via ${l.server.name}`;
