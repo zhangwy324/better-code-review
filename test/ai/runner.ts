@@ -246,8 +246,14 @@ export function parseStream(stdout: string): StreamSummary {
       };
       summary.costUsd = event.total_cost_usd ?? 0;
       summary.result = event.result ?? '';
+      // An API error (a usage limit, say) ends with subtype `success` and `is_error`; its
+      // `result` says why.
       summary.error =
-        event.subtype === 'success' && event.is_error !== true ? null : (event.subtype ?? 'error');
+        event.is_error !== true && event.subtype === 'success'
+          ? null
+          : event.subtype === 'success'
+            ? (event.result ?? 'error')
+            : (event.subtype ?? 'error');
     }
   }
   return summary;
