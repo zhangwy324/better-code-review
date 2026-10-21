@@ -10,6 +10,7 @@
 // disagreement is a lead to audit, not proof of a wrong verdict.
 import type { CandidateSelection } from '../../src/planner/index.ts';
 import type { ChangeGraph, EdgeVerdict } from '../../src/schemas/index.ts';
+import { edgeLabels } from '../fixtures/facts.ts';
 import type { Fixture } from '../fixtures/fixture.ts';
 
 /** True for a real relationship, false for none, null when the truth source cannot tell. */
@@ -116,26 +117,13 @@ export function consistency(
   return out;
 }
 
-/**
- * A fixture's ground truth, by edge ID, from its `withLsp` facts. Edges are named as in
- * `test/fixtures/facts.ts`: `from relation to (sides)`, with a path after a shared display name.
- */
+/** A fixture's ground truth, by edge ID, from its `withLsp` facts (test/fixtures/facts.ts). */
 export function fixtureTruth(fixture: Fixture, graph: ChangeGraph): Truth {
   const rejected = new Set(fixture.withLsp?.rejected ?? []);
   const possible = new Set(fixture.withLsp?.possible ?? []);
-  const counts = new Map<string, number>();
-  for (const n of graph.nodes) counts.set(n.displayName, (counts.get(n.displayName) ?? 0) + 1);
-  const label = new Map(
-    graph.nodes.map((n) => [
-      n.id,
-      counts.get(n.displayName)! > 1 ? `${n.displayName} [${n.path}]` : n.displayName,
-    ]),
-  );
   const truth: Truth = new Map();
-  for (const e of graph.codeEdges) {
-    const from = e.granularity === 'entity' ? label.get(e.from) : e.fromPath;
-    const name = `${from} ${e.relation} ${label.get(e.to)} (${e.sides})`;
-    truth.set(e.id, possible.has(name) ? null : !rejected.has(name));
+  for (const [id, name] of edgeLabels(graph)) {
+    truth.set(id, possible.has(name) ? null : !rejected.has(name));
   }
   return truth;
 }

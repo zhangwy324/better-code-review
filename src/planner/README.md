@@ -49,25 +49,25 @@ Fences are always longer than any backtick run inside them, so quoted text can't
 
 From `generate --no-lsp` on each fixture (`test/fixtures/`). `portfolio.test.ts` checks that every input lists all nodes and hunks and stays within budget.
 
-| Fixture | Nodes | Edges | Hunks shown | Est. tokens |
-|---|--:|--:|--:|--:|
-| `signature` | 12 | 8 | 12/12 | 1,648 |
-| `ten-callers` | 11 | 10 | 11/11 | 1,755 |
-| `unchanged-caller` | 1 | 0 | 1/1 | 350 |
-| `removed-calls` | 7 | 3 | 4/4 | 834 |
-| `rename-move` | 5 | 1 | 3/3 | 661 |
-| `independent-roots` | 3 | 0 | 3/3 | 520 |
-| `feature-flow` | 12 | 7 | 5/5 | 1,328 |
-| `interface-impl` | 14 | 15 | 5/5 | 1,865 |
-| `override-dispatch` | 2 | 1 | 2/2 | 466 |
-| `override-dispatch-python` | 2 | 1 | 2/2 | 464 |
-| `same-name` | 6 | 5 | 5/5 | 1,023 |
-| `tests-and-config` | 5 | 0 | 4/4 | 736 |
-| `dynamic-calls` | 3 | 0 | 3/3 | 592 |
-| `unsupported-binary` | 5 | 0 | 4/4 | 618 |
-| `large-generated` | 153 | 129 | 3/5 (1 truncated) | 9,131 |
+| Fixture | Nodes | Edges | Hunks shown | Est. tokens | Candidates (#43) | Batch tokens |
+|---|--:|--:|--:|--:|--:|--:|
+| `signature` | 12 | 8 | 12/12 | 1,704 | 2 | 562 |
+| `ten-callers` | 11 | 10 | 11/11 | 1,869 | 0 | - |
+| `unchanged-caller` | 1 | 0 | 1/1 | 364 | 0 | - |
+| `removed-calls` | 7 | 3 | 4/4 | 891 | 0 | - |
+| `rename-move` | 5 | 1 | 3/3 | 704 | 0 | - |
+| `independent-roots` | 3 | 0 | 3/3 | 534 | 0 | - |
+| `feature-flow` | 12 | 7 | 5/5 | 1,385 | 0 | - |
+| `interface-impl` | 14 | 15 | 5/5 | 1,921 | 8 | 1,220 |
+| `override-dispatch` | 2 | 1 | 2/2 | 500 | 1 | 477 |
+| `override-dispatch-python` | 2 | 1 | 2/2 | 498 | 1 | 471 |
+| `same-name` | 6 | 5 | 5/5 | 1,079 | 3 | 723 |
+| `tests-and-config` | 5 | 0 | 4/4 | 750 | 0 | - |
+| `dynamic-calls` | 3 | 0 | 3/3 | 607 | 0 | - |
+| `unsupported-binary` | 5 | 0 | 4/4 | 632 | 0 | - |
+| `large-generated` | 153 | 129 | 3/5 (1 truncated) | 10,168 | 0 | - |
 
-In `large-generated`, the generated file and the JSON file over the size cap are not shown, and the 120-function hunk is truncated. About 7,000 of its tokens are node and edge lines.
+In `large-generated`, the generated file and the JSON file over the size cap are not shown, and the 120-function hunk is truncated. About 8,000 of its tokens are node and edge lines. Candidates are the `possible` edges the agent is asked to judge; the batch tokens are those of `candidates/`, read on top of the input.
 
 ## On-demand context: `show`
 
@@ -128,7 +128,7 @@ All errors are reported at once. Schema errors come alone, since the other rules
 
 The AI step of the analysis pipeline (`docs/research/existing-tools.md` § "Analysis approach"): the agent judges the `possible` edges the deterministic steps left open, and each verdict is labelled `inferred` (`yes`) or `rejected` (`no`), with a reason and a cited line. `unsure` leaves the edge `possible`. The CLI makes no model call. `generate` writes `candidates/batch-<n>.md` next to `planner-input.md`, whose Caller candidates section names them, and the agent puts its verdicts in `plan.json` `edgeVerdicts`, which `validate` checks. The numbers and choices below are #42's ([`candidate-adjudication.md`](../../docs/research/candidate-adjudication.md#pipeline-changes)).
 
-**Selection** (`selectCandidates()`, from the graph alone). A `possible` edge is asked about unless one of its hits was accepted by import-path resolution (an `import-resolution` `confirmed` record) or the unambiguous rule (`UNAMBIGUOUS_NOTE` in its text-search detail). `verified` edges are never asked about, and hits a server or import resolution rejected made no edge. Test files are already one edge per (test file, changed entity) (D2). At most `MAX_ADJUDICATED_EDGES` (1,000) edges are asked about per review, in graph order; the rest are **not adjudicated** and stay `possible`. The largest #42 PR needed 528.
+**Selection** (`selectCandidates()`, from the graph alone). A `possible` edge is asked about unless one of its hits was accepted by import-path resolution or the unambiguous rule (an `import-resolution` or `unambiguous-rule` `confirmed` record). `verified` edges are never asked about, and hits a server or import resolution rejected made no edge. Test files are already one edge per (test file, changed entity) (D2). At most `MAX_ADJUDICATED_EDGES` (1,000) edges are asked about per review, in graph order; the rest are **not adjudicated** and stay `possible`. The largest #42 PR needed 528.
 
 **Context** (`candidateBatches()`). Each batch starts with the verdict rules, including that type uses count as references for a changed class, interface or type (the only real false rejections in #42 were return types). Then:
 - **Changed entities**, once per batch: the declaration line on each side, and up to 10 other definitions of the searched name in the snapshot, marked "NOT the changed entity" (git grep plus parsing, up to 200 files, as the unambiguous rule counts them).
@@ -143,7 +143,11 @@ The same rules as the planner input apply: repository text is fenced and untrust
 
 **Labels** (`edgeStatuses()`, for the artifact). `verified` (LSP); `inferred` or `rejected` (a `yes` or `no` verdict); otherwise `possible`, with why: `unsure`, `settled` (accepted without AI), `not-adjudicated` (over the cap) or `not-judged` (no verdict; every candidate with no agent, or with the fallback plan, D8). Rejected and unsure edges stay in graph.json, so the viewer can show or collapse them. Nothing is ever labelled `verified` from a verdict.
 
-**Validation.** The rules #43 needs were already in `validate` (#23): a verdict only on an existing `possible` edge (`unknown-id`, `verdict`), one per edge, never `verified` (the schema), and a cited line that exists (`citation`). A verdict on a settled edge is allowed; the skill asks for none.
+**Validation.** The rules #43 needs were already in `validate` (#23): a verdict only on an existing `possible` edge (`unknown-id`, `verdict`), one per edge, never `verified` (the schema), and a cited line that exists (`citation`).
+
+**Decisions (#43, simplest for now; revisit if the viewer or real PRs show a need):**
+- **Settled edges are not judged.** An edge import resolution or the unambiguous rule accepted stays `possible` with the reason `settled`, and the AI is not asked about it. It is not shown as `inferred`, which stays reserved for the agent's verdicts (D6).
+- **The validator accepts a verdict on any `possible` edge**, including one the batches did not ask about (settled, or over the cap). The skill asks for none, but an agent that adds one is not sent round the repair loop for it. Its label then follows the verdict.
 
 **Measuring.** `npm run eval` keeps every plan it gets, and `npm run score:adjudication` scores their verdicts against ground truth ([CONTRIBUTING](../../CONTRIBUTING.md#testing-ai-steps)).
 

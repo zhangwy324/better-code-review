@@ -14,15 +14,8 @@ export function facts(
   graph: ChangeGraph,
   { provenance = false } = {},
 ): Required<ExpectedFacts> {
-  // A display name shared by several nodes gets its path, so the facts say which one is meant.
-  const counts = new Map<string, number>();
-  for (const n of graph.nodes) counts.set(n.displayName, (counts.get(n.displayName) ?? 0) + 1);
-  const label = new Map(
-    graph.nodes.map((n) => [
-      n.id,
-      counts.get(n.displayName)! > 1 ? `${n.displayName} [${n.path}]` : n.displayName,
-    ]),
-  );
+  const label = nodeLabels(graph);
+  const edge = edgeLabels(graph);
   const byEntity = new Map(graph.nodes.map((n) => [n.entityId, label.get(n.id)!]));
   const omitted = new Map(changeSet.files.map((f) => [f.newPath ?? f.oldPath, f.contentOmitted]));
   return {
@@ -36,16 +29,38 @@ export function facts(
       .sort(),
     nodes: graph.nodes.map((n) => `${n.kind} ${label.get(n.id)}`).sort(),
     edges: graph.codeEdges
-      .map((e) => {
-        const from = e.granularity === 'entity' ? label.get(e.from) : e.fromPath;
-        const edge = `${from} ${e.relation} ${label.get(e.to)} (${e.sides})`;
-        return provenance ? `${edge} ${e.provenance}` : edge;
-      })
+      .map((e) => (provenance ? `${edge.get(e.id)} ${e.provenance}` : edge.get(e.id)!))
       .sort(),
     caps: graph.caps
       .map((c) => `${byEntity.get(c.entityId)} ${c.relation} ${c.shown}/${c.total}`)
       .sort(),
   };
+}
+
+/**
+ * Each node's display name, with its path after it when several nodes share the name, so the
+ * facts say which one is meant, e.g. `validate [src/users/validate.ts]`.
+ */
+export function nodeLabels(graph: ChangeGraph): Map<string, string> {
+  const counts = new Map<string, number>();
+  for (const n of graph.nodes) counts.set(n.displayName, (counts.get(n.displayName) ?? 0) + 1);
+  return new Map(
+    graph.nodes.map((n) => [
+      n.id,
+      counts.get(n.displayName)! > 1 ? `${n.displayName} [${n.path}]` : n.displayName,
+    ]),
+  );
+}
+
+/** Each code edge in the facts notation, `from relation to (sides)`, by edge ID. */
+export function edgeLabels(graph: ChangeGraph): Map<string, string> {
+  const label = nodeLabels(graph);
+  return new Map(
+    graph.codeEdges.map((e) => {
+      const from = e.granularity === 'entity' ? label.get(e.from) : e.fromPath;
+      return [e.id, `${from} ${e.relation} ${label.get(e.to)} (${e.sides})`];
+    }),
+  );
 }
 
 /**

@@ -23,7 +23,7 @@
 //
 // Repository text is untrusted (§14.2): it is fenced, secrets are redacted, and the batch says it
 // is data. Output is deterministic: it follows the order of the graph.
-import { findHits, MAX_DEFINITION_FILES, UNAMBIGUOUS_NOTE } from '../analysis/semantic/index.ts';
+import { findHits, MAX_DEFINITION_FILES } from '../analysis/semantic/index.ts';
 import { familyOf } from '../analysis/semantic/imports.ts';
 import { escapeRegExp, type SnapshotFiles } from '../analysis/semantic/snapshot-files.ts';
 import { extractFacts, type Entity } from '../analysis/structural/entities.ts';
@@ -87,8 +87,8 @@ export function selectCandidates(
 function isSettled(records: EvidenceRecord[]): boolean {
   return records.some(
     (r) =>
-      (r.method === 'import-resolution' && r.outcome === 'confirmed') ||
-      (r.method === 'text-search' && r.detail?.includes(UNAMBIGUOUS_NOTE)),
+      (r.method === 'import-resolution' || r.method === 'unambiguous-rule') &&
+      r.outcome === 'confirmed',
   );
 }
 

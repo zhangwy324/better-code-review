@@ -75,7 +75,12 @@ export const EvidenceRecord = z.strictObject({
   targetEntityId: EntityId,
   /** Where the hit is. */
   location: CodeLocation,
-  method: z.enum(['text-search', 'import-resolution', 'lsp']),
+  /**
+   * `unambiguous-rule` marks a plain call of a name with one definition in the snapshot, accepted
+   * without further work (#17, #42); it is always `confirmed` and, like `import-resolution`,
+   * never makes an edge `verified`.
+   */
+  method: z.enum(['text-search', 'unambiguous-rule', 'import-resolution', 'lsp']),
   /** `candidate` for text search; `confirmed` or `rejected` for the methods that decide. */
   outcome: z.enum(['candidate', 'confirmed', 'rejected']),
   /** Free-form provider detail, e.g. the LSP request used. */

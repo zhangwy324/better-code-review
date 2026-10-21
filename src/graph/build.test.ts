@@ -219,7 +219,7 @@ describe('buildGraph on the signature fixture (M1 acceptance)', () => {
       },
     );
     const graph = full(result);
-    expect(edgeSummary(graph)).toEqual(['verified calls total -> formatPrice (2)']);
+    expect(edgeSummary(graph)).toEqual(['verified calls total -> formatPrice (3)']);
     expect(graph.codeEdges[0]!.sides).toBe('old');
   });
 });
@@ -292,7 +292,7 @@ describe('buildGraph: edges', () => {
       { 'src/price.ts': price('amount: number'), 'src/total.ts': total('formatPrice(n)') },
       { 'src/price.ts': price('amount: number, c: string'), 'src/total.ts': total('String(n)') },
     );
-    expect(edgeSummary(full(result))).toEqual(['possible calls total -> formatPrice (1)']);
+    expect(edgeSummary(full(result))).toEqual(['possible calls total -> formatPrice (2)']);
 
     // The analyzer does not ask a server about the old side yet; add what it would record.
     const [hit] = result.evidence.records;
@@ -362,7 +362,7 @@ describe('buildGraph: nodes', () => {
     const graph = full(result);
     // The analyzer keeps one hit per (test file, entity) and side, so the edge cites two records.
     expect(edgeSummary(graph)).toEqual([
-      'possible calls file test/price.test.ts -> formatPrice (2)',
+      'possible calls file test/price.test.ts -> formatPrice (4)',
     ]);
     expect(graph.codeEdges[0]!.sides).toBe('both');
     // The test still has its own node, so its hunk is covered.

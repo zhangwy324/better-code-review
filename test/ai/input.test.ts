@@ -18,12 +18,12 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
  */
 const CEILINGS: Record<string, number> = {
   signature: 7_600, // measured 6,897
-  'ten-callers': 7_100, // 6,423
+  'ten-callers': 7_200, // 6,500
   'unchanged-caller': 5_500, // 4,995
-  'removed-calls': 6_100, // 5,501
-  'rename-move': 5_900, // 5,328
+  'removed-calls': 6_100, // 5,522
+  'rename-move': 5_900, // 5,335
   'independent-roots': 5_700, // 5,165
-  'feature-flow': 6_600, // 5,995
+  'feature-flow': 6_650, // 6,016
   'interface-impl': 8_550, // 7,772
   'override-dispatch': 6_200, // 5,608
   'override-dispatch-python': 6_200, // 5,600
@@ -31,7 +31,7 @@ const CEILINGS: Record<string, number> = {
   'tests-and-config': 5_950, // 5,381
   'dynamic-calls': 5_800, // 5,238
   'unsupported-binary': 5_800, // 5,263
-  'large-generated': 15_200, // 13,799
+  'large-generated': 16_300, // 14,799
 };
 
 describe.each(FIXTURES)('skill input for $name', (fixture) => {

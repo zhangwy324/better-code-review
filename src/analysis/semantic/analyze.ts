@@ -58,11 +58,6 @@ import { changeSetFiles, type SnapshotFiles } from './snapshot-files.ts';
 export const MAX_CANDIDATES_PER_ENTITY = 100;
 /** Files parsed to count a name's definitions; beyond this the name counts as ambiguous. */
 export const MAX_DEFINITION_FILES = 200;
-/**
- * The text-search detail of a hit the unambiguous rule accepted (step 3). Such a hit needs no
- * verdict from the AI step (#43), which looks for this note.
- */
-export const UNAMBIGUOUS_NOTE = 'unambiguous: one definition, plain call';
 
 /** The part of `LspSession` the analyzer uses. Tests pass a fake. */
 export type ReferenceProvider = Pick<LspSession, 'references' | 'projectHealth' | 'capabilities'>;
@@ -133,6 +128,8 @@ interface Pair {
   notes: string[];
   imports: Decision | null;
   lsp: { outcome: 'confirmed' | 'rejected'; detail: string } | null;
+  /** Accepted by the unambiguous rule (step 3): an `unambiguous-rule` `confirmed` record. */
+  unambiguous: boolean;
 }
 
 export async function analyzeSemantics(
@@ -517,15 +514,16 @@ async function decidePair(
   if (alias) notes.push(`through the alias ${hit.name}`);
 
   let imports: Decision | null = null;
+  let unambiguous = false;
   if (!hit.chaining) {
     const plain = hit.call && hit.receiver === null && !alias;
     if (plain && (await definitions.count(file.side, file.family, hit.name)) === 1) {
-      notes.push(UNAMBIGUOUS_NOTE);
+      unambiguous = true;
     } else {
       imports = await resolver.decide(file.side, file.path, file.info, hit, side.key);
     }
   }
-  return { target, source, file, hit, relation, notes, imports, lsp: null };
+  return { target, source, file, hit, relation, notes, imports, lsp: null, unambiguous };
 }
 
 /** The innermost changed entity containing the hit, or null when it is in unchanged code. */
@@ -757,7 +755,7 @@ function collapseTestFiles(pairs: Pair[]): Pair[] {
 function rank(pair: Pair): number {
   return pair.lsp?.outcome === 'confirmed'
     ? 0
-    : pair.imports?.verdict === 'yes'
+    : pair.imports?.verdict === 'yes' || pair.unambiguous
       ? 1
       : isRejected(pair)
         ? 3
@@ -822,6 +820,9 @@ function records(pair: Pair): EvidenceRecord[] {
     detail,
   });
   const out = [record('text-search', 'candidate', pair.notes.join('; '))];
+  if (pair.unambiguous) {
+    out.push(record('unambiguous-rule', 'confirmed', 'one definition, plain call'));
+  }
   if (pair.imports) {
     const outcome = pair.imports.verdict === 'yes' ? 'confirmed' : 'rejected';
     out.push(record('import-resolution', outcome, pair.imports.detail));
