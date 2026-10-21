@@ -40,11 +40,12 @@ Sources: `npm view <pkg> license` and ADR 0001.
 | `tree-sitter-{typescript,javascript,python,java}` | MIT | `.wasm` built in; query files derived from their `tags.scm` |
 | `tree-sitter-kotlin` (fwcd) | MIT | Language bundle |
 | `react`, `react-dom` 19.x | MIT | Bundled in `review.html` |
-| `@xyflow/react` (React Flow) 12.x | MIT | Bundled in `review.html` (candidate, §15.2) |
+| `@xyflow/react` (React Flow) 12.x | MIT | Bundled in `review.html` (#30: the graph canvas) |
+| `@dagrejs/dagre` 2.x, `@dagrejs/graphlib` 3.x | MIT | Bundled in `review.html` (#30: graph layout in place of elkjs) |
 | `codemirror`, `@codemirror/merge` 6.x | MIT | Bundled in `review.html` (candidate, §15.2) |
 | `@lezer/{common,lr,highlight,javascript,python,java}` 1.x | MIT | Bundled in `review.html` (#29: syntax highlighting in place of CodeMirror) |
 | `zod` 4.x | MIT | Bundled in the CLI (candidate, §15.2) |
-| **`elkjs` 0.12.0** | **EPL-2.0 OR GPL-3.0-or-later** | Bundled in `review.html` (candidate, §15.2). See [elkjs](#elkjs) |
+| **`elkjs` 0.12.0** | **EPL-2.0 OR GPL-3.0-or-later** | Not used (#30 chose dagre). See [elkjs](#elkjs) |
 | `typescript-language-server`, `typescript` | Apache-2.0 | Detected on the user's machine; never bundled |
 | `pyright` | MIT | Detected on the user's machine; never bundled |
 | `serena-agent` (SolidLSP) | GPL-3.0-or-later | Not used (ADR 0001) |
@@ -79,7 +80,7 @@ MIT, BSD and Apache-2.0 all require the licence notice to travel with copies of 
 - Modifying elkjs files would require publishing those modifications under EPL-2.0.
 - This is my reading of the licence, not legal advice.
 
-**Decision deferred to the graph-layout work (#30):** either record elkjs as an approved exception with those obligations, or choose a permissive layout library (e.g. `dagre` / `@dagrejs/dagre`, MIT) if it is good enough.
+**Decided in the graph-layout work (#30): dagre (`@dagrejs/dagre`, MIT), not elkjs.** dagre's layered layout with compound nodes is good enough for v0.1's graph: collapsed groups, and one level of expanded groups with their changes inside (spec D1, D2). It needs no licence exception, and it adds far less to `review.html` than elkjs's 1.6 MB bundle (`elk.bundled.js`). elkjs can be revisited, as an approved exception, if dagre's layouts prove too poor on real PRs (#37).
 
 ### Approved exceptions
 

@@ -3,7 +3,9 @@
 import { createContext, type ReactNode, useContext, useMemo, useState } from 'react';
 import type { ReviewModel } from './model.ts';
 
-export type Selection = { kind: 'group' | 'node' | 'hunk'; id: string } | null;
+/** A group, node or hunk, or the links one canvas edge stands for (model.ts `links`). */
+export type Selection =
+  { kind: 'group' | 'node' | 'hunk'; id: string } | { kind: 'links'; ids: string[] } | null;
 
 interface SelectionState {
   selection: Selection;
@@ -36,7 +38,7 @@ export function useSelection(): SelectionState {
 }
 
 /** Whether `kind`/`id` is selected, for `aria-current` and styling. */
-export function useIsSelected(kind: NonNullable<Selection>['kind'], id: string): boolean {
+export function useIsSelected(kind: 'group' | 'node' | 'hunk', id: string): boolean {
   const { selection } = useSelection();
   return selection?.kind === kind && selection.id === id;
 }

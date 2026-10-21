@@ -5,10 +5,11 @@ The interactive review workspace inside `review.html` (design reference §6, §8
 | File | Contents |
 |---|---|
 | `data.ts` | `loadReviewData()`: reads and validates the embedded `changes.json`, `graph.json` and `plan.json` |
-| `model.ts` | `buildModel()`: lookups by ID, home groups and coverage, built once |
-| `state.tsx` | `ReviewProvider`, `useModel()`, and the selection every view shares (`useSelection()`) |
+| `model.ts` | `buildModel()`: lookups by ID, home groups, coverage and links (code edges and inferred relationships), built once |
+| `state.tsx` | `ReviewProvider`, `useModel()`, and the selection every view shares (`useSelection()`): a group, node, hunk or the links of one canvas edge |
 | `App.tsx` | The layout: header over three resizable panes, or the load error |
-| `Header.tsx`, `Outline.tsx`, `Canvas.tsx`, `Detail.tsx` | The panes. `Canvas.tsx` is a placeholder until #30 |
+| `Header.tsx`, `Outline.tsx`, `Canvas.tsx`, `Detail.tsx` | The panes |
+| `canvas.ts` | `canvasGraph()`: the graph's groups, nodes and edges for the groups expanded, laid out with dagre (below) |
 | `Diff.tsx`, `diff.ts` | The diff component and its model: hunks exactly as the patch has them, with expandable context (below) |
 | `highlight.ts` | Syntax highlighting with the Lezer parsers, by `GraphFile.language` |
 | `main.tsx`, `index.html`, `styles.css` | The entry point, page and styles |
@@ -19,6 +20,18 @@ The interactive review workspace inside `review.html` (design reference §6, §8
 The page carries each document in an inert element, `<script type="application/json" id="bcr-changes">` and likewise `bcr-graph` and `bcr-plan` (spec D7). [`src/renderer/embed.ts`](../renderer/embed.ts) defines them, for the viewer and the writers: its `scriptJson()` escapes every `<`, so no repository text can close the element. The viewer never fetches anything.
 
 `loadReviewData()` parses each document with `parseContract()` and checks that all three share one snapshot. A missing element, bad JSON, another build's `schemaVersion` or a schema mismatch shows an error page instead of the app. The viewer imports the schemas from `src/schemas/contracts.ts`, not `index.ts`, because `index.ts` also exports the Node-only `ids.ts`.
+
+## Graph
+
+`Canvas.tsx` draws the graph with React Flow (design reference §6.1, §6.4; spec D1, D6, D12). `canvasGraph(model, expanded)` in `canvas.ts` decides what it shows, as a pure function the tests call directly:
+
+- **Groups start collapsed**, one node each, numbered in the plan's reading order (MVP has no reading-order edges, spec D6). Expanding one replaces it with a box holding its changes and child groups. Selecting a group, or a change, in any pane expands its groups and brings it into view.
+- **Edges go from a changed entity to its changed callers** (callee → callers, spec D1), labelled e.g. `called by`. An edge to or from a collapsed group stands for all its members' links, and is aggregated, e.g. `called by ×3`; links inside a collapsed group show when it is expanded. A test-file edge ends at the first node in the test file.
+- **Each layer and provenance has its own style** (`Link['style']` in `model.ts`, design reference §13.1): `verified` and `possible` code edges, `possible` ones the agent judged real (`inferred`) or not real (`rejected`, still shown), and the plan's inferred relationships. Hovering an edge shows each link's direction and provenance; clicking it shows them and the evidence in the detail pane.
+- **Navigation along edges:** a selected change's detail lists its related changes. Each selects the change at the other end (and the canvas moves to it) or the link's evidence.
+- **Only changed entities are nodes.** Unchanged callers are not analysed, and the canvas says so above the graph (spec D12).
+- **Layout** is dagre's layered layout, left to right, with expanded groups as compound nodes. It runs again on every expand or collapse; dragged positions last until then and are not saved (spec). Nodes have fixed sizes (`SIZES`, matching `styles.css`), so the layout needs no measuring. We use dagre rather than elkjs: it is MIT, and much smaller (ADR 0002).
+- **Change nodes show a preview, not the diff:** kind, path, `+a −d`, and "showing N of M" when the analyzer capped a relationship. Selecting one opens its diff in the detail pane (spec D3 defers diffs inside graph nodes).
 
 ## Diffs
 
@@ -47,6 +60,6 @@ Repository text (paths, code, PR titles) and model text (plan titles, descriptio
 
 ## Tests
 
-Viewer tests run under jsdom (`// @vitest-environment jsdom`) with Testing Library. `App.test.tsx` runs `generate` on the signature fixture in a child process, because jsdom replaces Node's `URL`, which the analyzers need. It then embeds the JSON as `review.html` would and checks the header, outline, shared selection, inert text and load errors, with `fetch` and `XMLHttpRequest` spied on to show nothing goes to the network.
+Viewer tests run under jsdom (`// @vitest-environment jsdom`) with Testing Library. `App.test.tsx` runs `generate` on the signature fixture in a child process, because jsdom replaces Node's `URL`, which the analyzers need. It then embeds the JSON as `review.html` would and checks the header, outline, shared selection, inert text and load errors, with `fetch` and `XMLHttpRequest` spied on to show nothing goes to the network. Its canvas tests check the #30 acceptance: `formatPrice` has edges to its changed callers, `emailSummary` is not shown, and the canvas says unchanged callers are not analysed. They also check collapsed groups, aggregation, expanding and navigation along edges to the evidence.
 
 `Diff.test.tsx` does the same on a repository of awkward content: tabs, trailing whitespace, CRLF, no newline at the end, unicode, a 20,000-character line, HTML-looking text and a file that is not UTF-8. It checks that every hunk's rows give back its patch byte for byte, that expanding everything shows each old and new line once with the right number, and that context never includes a changed line.

@@ -18,6 +18,11 @@
   --tok-literal: #b35900;
   --tok-type: #00749e;
   --tok-definition: #2f5fd0;
+  --edge-verified: #2f5fd0;
+  --edge-possible: #7a828f;
+  --edge-inferred: #8a3fc2;
+  --edge-rejected: #b8bec8;
+  --edge-relationship: #c26a00;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -41,6 +46,11 @@
     --tok-literal: #e5a66b;
     --tok-type: #6cc4e0;
     --tok-definition: #8fb0ff;
+    --edge-verified: #8fb0ff;
+    --edge-possible: #9aa1ad;
+    --edge-inferred: #c79bf0;
+    --edge-rejected: #4a505c;
+    --edge-relationship: #e5a66b;
   }
 }
 
@@ -342,6 +352,233 @@ button {
 .tok-definition,
 .tok-function {
   color: var(--tok-definition);
+}
+
+/* The graph canvas (Canvas.tsx). Node sizes match SIZES in canvas.ts, which the layout uses. */
+.canvas {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.canvas-flow {
+  flex: 1;
+  min-height: 0;
+}
+
+.react-flow {
+  --xy-background-color: var(--bg);
+  --xy-node-color: var(--fg);
+  --xy-controls-button-background-color: var(--bg-pane);
+  --xy-controls-button-background-color-hover: var(--bg-hover);
+  --xy-controls-button-color: var(--fg);
+  --xy-controls-button-border-color: var(--border);
+}
+
+.canvas-legend {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.canvas-legend p {
+  margin: 0 0 2px;
+}
+
+.canvas-legend ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.canvas-legend li {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--fg-muted);
+}
+
+/* Edges attach to handles, but nothing connects by dragging them. */
+.react-flow__handle {
+  visibility: hidden;
+}
+
+.canvas-group,
+.canvas-change {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-pane);
+}
+
+.canvas-group {
+  width: 240px;
+  height: 76px;
+  border-width: 2px;
+}
+
+.canvas-change {
+  width: 220px;
+  height: 68px;
+  background: var(--bg);
+}
+
+.canvas-group[aria-current],
+.canvas-change[aria-current],
+.canvas-cluster[aria-current] {
+  border-color: var(--accent);
+  background: var(--bg-selected);
+}
+
+.canvas-select {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.canvas-select > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-select .count {
+  font-size: 12px;
+}
+
+.order {
+  display: inline-block;
+  min-width: 1.5em;
+  margin-right: 6px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 11px;
+  text-align: center;
+}
+
+.toggle {
+  width: 24px;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: var(--bg-hover);
+}
+
+.canvas-cluster {
+  width: 100%;
+  height: 100%;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-pane) 50%, transparent);
+}
+
+.cluster-title {
+  position: absolute;
+  bottom: 100%;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 100%;
+  padding-bottom: 2px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.cluster-title .toggle {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.plus {
+  color: var(--tok-string);
+}
+
+.minus {
+  color: #c0392b;
+}
+
+/* Edge styles, one per layer and provenance (spec D6, design reference §13.1). */
+.link-verified {
+  --edge: var(--edge-verified);
+}
+
+.link-possible {
+  --edge: var(--edge-possible);
+  --dash: 6 4;
+}
+
+.link-inferred {
+  --edge: var(--edge-inferred);
+  --dash: 6 4;
+}
+
+.link-rejected {
+  --edge: var(--edge-rejected);
+  --dash: 2 4;
+}
+
+.link-relationship {
+  --edge: var(--edge-relationship);
+  --dash: 1 5;
+}
+
+.react-flow__edge .react-flow__edge-path,
+.canvas-legend line {
+  stroke: var(--edge);
+  stroke-width: 2;
+  stroke-dasharray: var(--dash, none);
+}
+
+.edge-label {
+  position: absolute;
+  /* Above the expanded groups' boxes, which are nodes. */
+  z-index: 1000;
+  padding: 0 4px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 11px;
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.link-rejected.edge-label {
+  text-decoration: line-through;
+}
+
+.related,
+.evidence-list {
+  padding-left: 18px;
+}
+
+.related .evidence {
+  font-size: 12px;
+}
+
+h3 {
+  font-size: 14px;
+  margin: 12px 0 4px;
 }
 
 .load-error {
