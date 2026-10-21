@@ -28,7 +28,7 @@ export default defineConfig(
   },
   {
     files: ['src/viewer/**/*.{ts,tsx}'],
-    ignores: ['src/viewer/**/*.test.{ts,tsx}'],
+    ignores: ['src/viewer/**/*.test.{ts,tsx}', 'src/viewer/testing.tsx'],
     rules: {
       // Repository and model text is untrusted (spec invariant 6). Tests may build pages directly.
       'no-restricted-syntax': [

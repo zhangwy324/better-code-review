@@ -143,18 +143,21 @@ export const STYLE_DESCRIPTIONS: Record<Link['style'], string> = {
   relationship: 'Inferred by the agent: a link between changes, not a code relationship',
 };
 
+/** The nodes whose home is `group` or a group inside it. */
+export function groupNodeIds(model: ReviewModel, group: ReviewGroup): string[] {
+  return [
+    ...group.nodeIds,
+    ...group.childGroupIds.flatMap((id) => {
+      const child = model.groups.get(id);
+      return child === undefined ? [] : groupNodeIds(model, child);
+    }),
+  ];
+}
+
 /** The hunks whose home is `group` or one of its child groups, each once. */
 export function groupHunkIds(model: ReviewModel, group: ReviewGroup): string[] {
-  const ids = new Set<string>();
-  const visit = (g: ReviewGroup) => {
-    for (const id of g.nodeIds) for (const h of model.nodes.get(id)?.hunkIds ?? []) ids.add(h);
-    for (const id of g.childGroupIds) {
-      const child = model.groups.get(id);
-      if (child !== undefined) visit(child);
-    }
-  };
-  visit(group);
-  return [...ids];
+  const ids = groupNodeIds(model, group).flatMap((id) => model.nodes.get(id)?.hunkIds ?? []);
+  return [...new Set(ids)];
 }
 
 /** What the review is of, for the header, e.g. `PR #123: Add currency` or `commit 1a2b3c4`. */

@@ -7,7 +7,7 @@
 import dagre, { type GraphLabel } from '@dagrejs/dagre';
 import { type Edge, MarkerType, type Node } from '@xyflow/react';
 import type { ReviewGroup } from '../schemas/plan.ts';
-import { type Link, linkLabel, type ReviewModel } from './model.ts';
+import { groupNodeIds, type Link, linkLabel, type ReviewModel } from './model.ts';
 
 export type GroupItem = Node<{ groupId: string; order: number | null }, 'collapsed' | 'cluster'>;
 export type ChangeItem = Node<{ nodeId: string }, 'change'>;
@@ -61,7 +61,7 @@ export function canvasGraph(
         parentId,
         SIZES.group,
       );
-      for (const nodeId of nodesIn(model, group)) shownAs.set(nodeId, id);
+      for (const nodeId of groupNodeIds(model, group)) shownAs.set(nodeId, id);
       return;
     }
     add({ id, type: 'cluster', data, position: { x: 0, y: 0 } }, parentId);
@@ -130,15 +130,4 @@ export function canvasGraph(
       : { ...item, position };
   });
   return { items: laidOut, edges: [...edges.values()] };
-}
-
-/** The nodes whose home is `group` or a group inside it. */
-export function nodesIn(model: ReviewModel, group: ReviewGroup): string[] {
-  return [
-    ...group.nodeIds,
-    ...group.childGroupIds.flatMap((id) => {
-      const child = model.groups.get(id);
-      return child === undefined ? [] : nodesIn(model, child);
-    }),
-  ];
 }
