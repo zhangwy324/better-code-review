@@ -82,8 +82,10 @@ if (values.graph !== undefined || values.truth !== undefined) {
         console.error(`Skipping ${fixtureName}: not in the portfolio`);
         continue;
       }
-      const input = await modelInput(runs[0]!.task as 'skill', fixture, join(work, fixtureName));
-      const graph = ChangeGraph.parse(readJson(join(work, fixtureName, 'review', 'graph.json')));
+      // One directory per (fixture, model): a fixture can have runs from several models.
+      const fixtureDir = join(work, `${fixtureName}-${model}`);
+      const input = await modelInput(runs[0]!.task as 'skill', fixture, fixtureDir);
+      const graph = ChangeGraph.parse(readJson(join(fixtureDir, 'review', 'graph.json')));
       reports.push(
         reportRuns(
           { fixture: fixtureName, model, inputHash: input.inputHash },
