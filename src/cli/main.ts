@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -10,6 +10,7 @@ import {
 } from '../analysis/semantic/index.ts';
 import { gitLine } from '../git/run.ts';
 import {
+  fallbackPlan,
   show,
   ShowError,
   validatePlan,
@@ -33,6 +34,7 @@ const USAGE = `Usage: better-code-review [--help] [--version]
        better-code-review generate <target> [options]
        better-code-review show --dir <dir> (<id> | --file <path> [--side old|new] [--lines a-b])
        better-code-review validate --dir <dir> [--plan <file>]
+       better-code-review fallback --dir <dir>
 
 generate writes changes.json, graph.json, planner-input.md, plan.json and summary.txt for a Git
 change, with no AI involved. Its plan.json groups the changes deterministically, for an agent to
@@ -40,7 +42,8 @@ replace with its own. show prints more context from a generated review for the p
 node or edge by ID, or lines of any file in the snapshot. Secrets are redacted in both.
 validate checks the planner's plan.json against the review and prints the result as JSON:
 {"valid": true, "ungroupedNodeIds": [...]} or {"valid": false, "errors": [{"path", "code",
-"message"}]}, where path is a JSON Pointer into the plan.
+"message"}]}, where path is a JSON Pointer into the plan. fallback rewrites plan.json as the
+deterministic plan from graph.json, for when the agent's plan still fails validation.
 
 Targets (exactly one):
   --local              The working tree (staged, unstaged and untracked) against HEAD
@@ -66,6 +69,9 @@ validate options:
   --dir <dir>          The directory generate wrote
   --plan <file>        The plan to check (default <dir>/plan.json)
 
+fallback options:
+  --dir <dir>          The directory generate wrote; its plan.json is replaced
+
 Exit codes: 0 success, 1 the run failed or the plan is invalid, 2 bad usage.
 `;
 
@@ -84,6 +90,7 @@ export async function run(argv: string[], io: Io, options: GenerateOptions = {})
     if (command === 'generate') return await runGenerate(rest, io, options);
     if (command === 'show') return await runShow(rest, io);
     if (command === 'validate') return await runValidate(rest, io);
+    if (command === 'fallback') return runFallback(rest, io);
     const { values } = parseArgs({
       args: argv,
       options: {
@@ -264,6 +271,35 @@ async function runValidate(argv: string[], io: Io): Promise<number> {
     : { valid: false, errors: result.errors };
   io.out(`${JSON.stringify(report, null, 2)}\n`);
   return result.valid ? EXIT.ok : EXIT.failed;
+}
+
+/** The `fallbackReason` when the agent's plan failed validation after the repair loop (D8). */
+export const REJECTED_PLAN_REASON =
+  "The agent's plan failed validation after the repair loop, so the changes were grouped without AI.";
+
+/**
+ * Rewrites `<dir>/plan.json` as the fallback plan (#24), from graph.json alone, without rerunning
+ * `generate` (whose snapshot may differ by now). The skill (#25) runs it after the repair loop.
+ */
+function runFallback(argv: string[], io: Io): number {
+  const { values } = parseArgs({
+    args: argv,
+    options: { help: { type: 'boolean', short: 'h' }, dir: { type: 'string' } },
+    strict: true,
+  });
+  if (values.help) {
+    io.out(USAGE);
+    return EXIT.ok;
+  }
+  if (values.dir === undefined) {
+    throw new UsageError('fallback needs --dir, the directory generate wrote');
+  }
+  const graph = ChangeGraph.parse(JSON.parse(readFileSync(join(values.dir, 'graph.json'), 'utf8')));
+  const plan = fallbackPlan(graph, REJECTED_PLAN_REASON);
+  const path = join(values.dir, 'plan.json');
+  writeFileSync(path, `${JSON.stringify(plan, null, 2)}\n`);
+  io.out(`Fallback plan written to ${displayPath(io.cwd, path)}\n`);
+  return EXIT.ok;
 }
 
 /** The ChangeSet and graph `generate` wrote to `dir`, and the snapshot's files. */

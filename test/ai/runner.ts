@@ -6,8 +6,10 @@
 // - `replayRunner`: a recorded real run (recording.ts). A missing or stale recording is an error;
 //   it never falls through to a live call.
 // - `liveRunner`: headless `claude -p`, always with `--max-budget-usd`. Only `npm run eval` uses
-//   it, never `npm run check` or CI.
+//   it, never `npm run check` or CI. The agent follows the skill (#25), and its output is the
+//   file it leaves at `outputFile`, not its final message.
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { readRecording, recordingPath, type Recording, type Usage } from './recording.ts';
 
 /** One AI step to run: the task, the fixture it runs on, and its full model input. */
@@ -19,6 +21,10 @@ export interface AiRequest {
   prompt: string;
   /** The directory the agent runs in, holding the files the prompt names. */
   cwd: string;
+  /** The JSON file the agent writes; its content is the run's output. */
+  outputFile: string;
+  /** Variables set for the agent on top of the current environment (PATH for the CLI). */
+  env: Record<string, string>;
   /** Hash of the model input (input.ts); a recording with another hash is stale. */
   inputHash: string;
 }
@@ -117,7 +123,7 @@ export function replayRunner(dir: string): Runner {
 export type Spawn = (
   command: string,
   args: readonly string[],
-  options: { cwd: string; input: string },
+  options: { cwd: string; input: string; env: Record<string, string> },
 ) => Promise<{ exitCode: number | null; stdout: string; stderr: string }>;
 
 export interface LiveOptions {
@@ -150,9 +156,12 @@ export function liveArgs(request: AiRequest, options: LiveOptions): string[] {
     '--output-format',
     'stream-json',
     '--verbose',
-    // Only reading the input files; no user settings, MCP servers or saved session.
+    // What the skill needs: read and write files in the repository, and run the CLI, nothing
+    // else. No user settings, MCP servers or saved session.
     '--tools',
-    'Read',
+    'Read,Write,Edit,Bash',
+    '--allowedTools',
+    'Read,Write,Edit,Bash(better-code-review:*)',
     '--strict-mcp-config',
     '--setting-sources',
     '',
@@ -169,6 +178,7 @@ export function liveRunner(options: LiveOptions): Runner {
       const { exitCode, stdout, stderr } = await run('claude', args, {
         cwd: request.cwd,
         input: request.prompt,
+        env: request.env,
       });
       const stream = parseStream(stdout);
       const spent = {
@@ -182,13 +192,17 @@ export function liveRunner(options: LiveOptions): Runner {
         const why = stream.error ?? `claude exited with ${exitCode}: ${stderr.trim()}`;
         throw new LiveRunError(`Live run failed: ${why}`, spent);
       }
-      let output: unknown;
+      let text: string;
       try {
-        output = JSON.parse(stripFence(stream.result));
+        text = readFileSync(request.outputFile, 'utf8');
       } catch {
-        throw new LiveRunError('Live run failed: the final answer is not JSON', spent);
+        throw new LiveRunError(`Live run failed: the agent wrote no ${request.outputFile}`, spent);
       }
-      return { ...spent, output };
+      try {
+        return { ...spent, output: JSON.parse(text) as unknown };
+      } catch {
+        throw new LiveRunError(`Live run failed: ${request.outputFile} is not JSON`, spent);
+      }
     },
   };
 }
@@ -254,15 +268,13 @@ interface StreamEvent {
   };
 }
 
-/** Drops a Markdown code fence around the whole answer, which models add despite being asked not to. */
-function stripFence(text: string): string {
-  const m = /^\s*```[a-z]*\n([\s\S]*?)\n```\s*$/.exec(text);
-  return m?.[1] ?? text;
-}
-
-const spawnProcess: Spawn = (command, args, { cwd, input }) =>
+const spawnProcess: Spawn = (command, args, { cwd, input, env }) =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(command, args, {
+      cwd,
+      env: { ...process.env, ...env },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.setEncoding('utf8').on('data', (d: string) => (stdout += d));

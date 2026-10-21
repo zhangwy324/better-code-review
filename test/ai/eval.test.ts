@@ -1,8 +1,9 @@
 // `npm run eval` with the `claude` process replaced: no model is called.
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { run } from '../../src/cli/main.ts';
 import { DEFAULT_BUDGET_USD, type EvalArgs, parseEvalArgs, runEval, TIERS } from './eval.ts';
 import { readRecording, recordingPath } from './recording.ts';
 import type { Spawn } from './runner.ts';
@@ -14,11 +15,11 @@ describe('parseEvalArgs', () => {
   it('defaults to the smoke tier with a low budget', () => {
     expect(parseEvalArgs([])).toEqual({
       tier: 'smoke',
-      task: 'plan',
+      task: 'skill',
       fixtures: ['signature'],
       model: TIERS.smoke.model,
       maxBudgetUsd: DEFAULT_BUDGET_USD,
-      maxTurns: 10,
+      maxTurns: 30,
     });
   });
 
@@ -47,12 +48,25 @@ describe('parseEvalArgs', () => {
   });
 });
 
-/** A `claude` that answers with `answer(planner-input.md)` and reports a cost. */
+/**
+ * A `claude` that does what the skill says without a model: it runs `generate` in the fixture's
+ * repository (in process, so it works on every OS), writes `answer(snapshot)` to the review's
+ * plan.json and reports a cost.
+ */
 function fakeClaude(answer: (snapshotId: string) => string): Spawn {
-  return (_command, args, { cwd }) => {
+  return async (_command, args, { cwd, env }) => {
     expect(args).toContain('--max-budget-usd');
-    const input = readFileSync(join(cwd, 'planner-input.md'), 'utf8');
+    expect(existsSync(join(cwd, '.claude/skills/better-code-review/SKILL.md'))).toBe(true);
+    const bin = env.PATH!.split(delimiter)[0]!;
+    expect(existsSync(join(bin, 'better-code-review'))).toBe(true);
+
+    let stdout = '';
+    const io = { cwd, out: (t: string) => (stdout += t), err: () => {} };
+    expect(await run(['generate', '--commit', 'HEAD', '--no-lsp'], io)).toBe(0);
+    const dir = join(cwd, /Written to (.+)$/m.exec(stdout)![1]!);
+    const input = readFileSync(join(dir, 'planner-input.md'), 'utf8');
     const snapshotId = /^Snapshot: (\S+)$/m.exec(input)?.[1] ?? '';
+    writeFileSync(join(dir, 'plan.json'), answer(snapshotId));
     const events = [
       { type: 'system', subtype: 'init', model: 'claude-haiku-5-5' },
       {
@@ -61,14 +75,10 @@ function fakeClaude(answer: (snapshotId: string) => string): Spawn {
         is_error: false,
         total_cost_usd: 0.01,
         usage: { input_tokens: 2000, output_tokens: 400 },
-        result: answer(snapshotId),
+        result: dir,
       },
     ];
-    return Promise.resolve({
-      exitCode: 0,
-      stdout: events.map((e) => JSON.stringify(e)).join('\n'),
-      stderr: '',
-    });
+    return { exitCode: 0, stdout: events.map((e) => JSON.stringify(e)).join('\n'), stderr: '' };
   };
 }
 
@@ -106,7 +116,7 @@ describe('runEval', () => {
 
     const recording = readRecording(
       recordingPath(join(dir, 'recordings'), {
-        task: 'plan',
+        task: 'skill',
         fixture: 'signature',
         model: 'claude-haiku-5-5',
       }),

@@ -45,6 +45,7 @@ One package, one language (ADR 0001). Modules are folders under `src/`, created 
 | `src/renderer/` | `review.html` bundling |
 | `src/viewer/` | The React viewer |
 
+- `skills/better-code-review/` is the Agent Skill (#25): `SKILL.md` and its `references/`. It drives the CLI and writes `plan.json`. `test/skill/` checks that the flags it names exist and that it explains every validator error code.
 - `schemas/` holds the generated JSON Schema files. Don't edit them; change `src/schemas/` and run `npm run schemas`.
 - Unit tests sit next to the code as `*.test.ts`. The fixture portfolio, Git changes that tests across milestones share, is in `test/fixtures/` ([`README.md`](test/fixtures/README.md)).
 - Relative imports use the `.ts` extension; `tsc` rewrites them to `.js` on build.
@@ -59,9 +60,15 @@ The CLI makes no model calls ([MVP spec D8](docs/mvp-spec.md)). `plan.json` and 
 |---|---|---|
 | `stubRunner(outputs)` | Unit tests. Returns scripted outputs in order, e.g. a bad plan then a good one | No |
 | `replayRunner(dir)` | Replay tests, against a recorded real run in [`test/ai/recordings/`](test/ai/recordings/README.md) | No |
-| `liveRunner(caps)` | `npm run eval` only. Headless `claude -p --model <m> --max-turns <n> --max-budget-usd <usd> --output-format stream-json --verbose`, with only the `Read` tool | Yes |
+| `liveRunner(caps)` | `npm run eval` only. Headless `claude -p --model <m> --max-turns <n> --max-budget-usd <usd> --output-format stream-json --verbose`, with only `Read`, `Write`, `Edit` and `Bash(better-code-review:*)` | Yes |
 
-- **Model input and staleness.** A recording stores the hash of its model input ([`test/ai/input.ts`](test/ai/input.ts)). The hash covers the task's prompt (`test/ai/prompts/`), the fixture's `planner-input.md` (#22) and the files in `HASHED_SOURCES`. Add the skill (#25) to that list when it lands. If the input changes, `npm test` fails the recording as stale and names the command that re-records it. It never falls back to a live call.
+- **What a run does.** The eval runs the skill itself (#25), not a copy of its instructions. [`test/ai/input.ts`](test/ai/input.ts) sets each run up:
+  - it builds the fixture's repository and copies `skills/better-code-review/` into its `.claude/skills/`
+  - it puts a `better-code-review` that runs this checkout's `src/cli/main.ts` first on PATH, so no build is needed
+  - it sends the short prompt in `test/ai/prompts/skill.md`
+
+  The agent follows SKILL.md. The run's output is the `plan.json` it leaves in the review directory.
+- **Model input and staleness.** A recording stores the hash of its model input. The hash covers the task's prompt, the skill's files (`HASHED_SOURCES`: `SKILL.md` and every reference) and the fixture's `planner-input.md` (#22). So any edit to the skill makes every recording stale. If the input changes, `npm test` fails the recording as stale and names the command that re-records it. It never falls back to a live call.
 - **Input size.** `test/ai/input.test.ts` estimates each fixture's input size (characters ÷ 4, no API call) and fails above a per-fixture ceiling, so input bloat fails a normal test.
 
 ### `npm run eval`
