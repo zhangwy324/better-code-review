@@ -12,7 +12,7 @@ import { buildFixtureRepo } from '../../test/fixtures/repo.ts';
 import { signature } from '../../test/fixtures/signature.ts';
 import { App } from './App.tsx';
 import { loadReviewData, type ReviewData } from './data.ts';
-import { dataScripts } from './embed.ts';
+import { dataScripts } from '../renderer/embed.ts';
 import { hunkHeader } from './model.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'bcr-viewer-'));

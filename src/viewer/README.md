@@ -4,17 +4,17 @@ The interactive review workspace inside `review.html` (design reference §6, §8
 
 | File | Contents |
 |---|---|
-| `embed.ts` | `DATA_ELEMENT_IDS` and `dataScripts()`: how the data is embedded. Shared with the writers |
 | `data.ts` | `loadReviewData()`: reads and validates the embedded `changes.json`, `graph.json` and `plan.json` |
 | `model.ts` | `buildModel()`: lookups by ID, home groups and coverage, built once |
 | `state.tsx` | `ReviewProvider`, `useModel()`, and the selection every view shares (`useSelection()`) |
 | `App.tsx` | The layout: header over three resizable panes, or the load error |
 | `Header.tsx`, `Outline.tsx`, `Canvas.tsx`, `Detail.tsx` | The panes. `Canvas.tsx` is a placeholder until #30 |
 | `main.tsx`, `index.html`, `styles.css` | The entry point, page and styles |
+| `zod-config.ts` | Turns off zod's `eval`, which the page's Content-Security-Policy forbids. `main.tsx` imports it first |
 
 ## Data
 
-The page carries each document in an inert element, `<script type="application/json" id="bcr-changes">` and likewise `bcr-graph` and `bcr-plan` (spec D7). `scriptJson()` escapes every `<`, so no repository text can close the element. The viewer never fetches anything.
+The page carries each document in an inert element, `<script type="application/json" id="bcr-changes">` and likewise `bcr-graph` and `bcr-plan` (spec D7). [`src/renderer/embed.ts`](../renderer/embed.ts) defines them, for the viewer and the writers: its `scriptJson()` escapes every `<`, so no repository text can close the element. The viewer never fetches anything.
 
 `loadReviewData()` parses each document with `parseContract()` and checks that all three share one snapshot. A missing element, bad JSON, another build's `schemaVersion` or a schema mismatch shows an error page instead of the app. The viewer imports the schemas from `src/schemas/contracts.ts`, not `index.ts`, because `index.ts` also exports the Node-only `ids.ts`.
 
@@ -24,7 +24,7 @@ Repository text (paths, code, PR titles) and model text (plan titles, descriptio
 
 ## Building and developing
 
-- `npm run build` bundles the app into `dist/viewer/` with Vite (`vite.config.ts`). The renderer (#28) inlines that bundle and the data into one `review.html`.
+- `npm run build` bundles the app into one page, `dist/viewer/index.html`, with Vite (`vite.config.ts`): the script, styles and licence notices are inline, and a Content-Security-Policy allows nothing else. The [renderer](../renderer/README.md) adds a review's data to it to make `review.html`.
 - `npm run typecheck` checks the viewer with `src/viewer/tsconfig.json`, which adds the DOM and JSX. The root tsconfig excludes this folder.
 - `npm run viewer -- <review-dir>` serves the app with hot reload and the data of a directory `generate` wrote. For a fixture:
 
