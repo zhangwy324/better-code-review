@@ -95,12 +95,10 @@ export const testsAndConfig: Fixture = {
     // The code under test is unchanged, so the test's call is not an edge (D12).
     edges: [],
   },
-  // A test group and a configuration group. No code changed, so there is no code group.
+  // Tests apart from configuration. No code changed, so there is no code group. The config files
+  // may be split by purpose (#26).
   plan: {
-    together: [
-      ['formatPrice', 'formatPrice.rounds half up'],
-      ['package.json', 'tsconfig.json', '.github/workflows/ci.yml'],
-    ],
+    together: [['formatPrice', 'formatPrice.rounds half up']],
     apart: [
       ['formatPrice', 'formatPrice.rounds half up'],
       ['package.json', 'tsconfig.json', '.github/workflows/ci.yml'],
