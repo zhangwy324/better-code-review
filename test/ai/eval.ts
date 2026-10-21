@@ -9,7 +9,7 @@
 //   `scripts/score-adjudication.ts` scores against ground truth (#43). `--runs` repeats each
 //   fixture, for run-to-run consistency.
 // - scores that plan (score.ts, #26) and fails the run when a check fails. Its recording is still
-//   written, for the evaluation notes, but replay.test.ts fails on it, so don't commit it.
+//   written, for review; list its failed checks in replay.test.ts's KNOWN_FAILS to commit it.
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -186,7 +186,7 @@ export async function runEval(args: EvalArgs, options: EvalOptions): Promise<boo
           score.checks.filter((c) => !c.ok).forEach((c) => failed.push(c.name));
           checks = formatScore(score);
           if (failed.length > 0)
-            error = `the plan fails ${failed.length} check(s); don't commit its recording`;
+            error = `the plan fails ${failed.length} check(s); to commit its recording, list them in KNOWN_FAILS in replay.test.ts`;
         } else {
           error = `the output is not a valid plan: ${plan.error.issues[0]?.message ?? 'invalid'}`;
         }

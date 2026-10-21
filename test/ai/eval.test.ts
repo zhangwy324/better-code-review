@@ -176,7 +176,7 @@ describe('runEval', () => {
     expect(ok).toBe(false);
     expect(printed).toContain('FAIL signature');
     expect(printed).toContain('FAIL homed: ');
-    expect(printed).toContain("don't commit its recording");
+    expect(printed).toContain('list them in KNOWN_FAILS in replay.test.ts');
     expect(existsSync(join(dir, 'recordings'))).toBe(true);
     const [logLine] = readFileSync(join(dir, 'local', 'costs.jsonl'), 'utf8')
       .trim()
