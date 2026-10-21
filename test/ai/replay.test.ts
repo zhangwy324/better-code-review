@@ -29,15 +29,7 @@ const recordings = readdirSync(RECORDINGS_DIR, { recursive: true, encoding: 'utf
  * The checks each committed recording is known to fail, reviewed in
  * docs/research/planner-eval.md. Keep it exact: a new failure or a fixed one fails the test.
  */
-const KNOWN_FAILS: Record<string, string[]> = {
-  'skill/signature/claude-sonnet-5-5.json': [
-    'apart formatPrice, checkoutSummary, invoiceSummary, receiptSummary, aliasCaller | legacyLabel, viaMethod, use_calc',
-    'apart tax, order_total, refund | legacyLabel, viaMethod, use_calc',
-  ],
-  'skill/tests-and-config/claude-sonnet-5-5.json': [
-    'together package.json, tsconfig.json, .github/workflows/ci.yml',
-  ],
-};
+const KNOWN_FAILS: Record<string, string[]> = {};
 
 describe('recordings', () => {
   if (recordings.length === 0) it.skip('none yet; npm run eval records them', () => {});

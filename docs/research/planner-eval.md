@@ -1,9 +1,12 @@
 # Planner evaluation on the fixture portfolio
 
-**Status:** First round done; one prompt iteration proposed, not yet run · **Date:** 2026-10-20 · **Issue:** #26 (part of #1, Milestone M2)
+**Status:** Round 1 done; round 2 (the skill after #43, plus prompt iteration 1) not yet run · **Date:** 2026-10-21 · **Issue:** #26 (part of #1, Milestone M2)
 **Refs:** design reference §17.3 (Milestone 2 acceptance focus), §13.5 (heterogeneous edits) · [MVP spec](../mvp-spec.md) M2 · [fixture portfolio](../../test/fixtures/README.md) · [skill](../../skills/better-code-review/SKILL.md)
 
-## Summary
+## Summary of round 1
+
+Round 1 ran on the skill as it was before #43. Its recordings went stale when #43 and prompt iteration 1 changed the skill, and were deleted. Their results are kept here. [Round 2](#round-2) re-runs the same fixtures on the current skill.
+
 
 `claude-sonnet-5-5`, following the skill with no language server, wrote a valid plan on all five fixtures. It invented nothing and judged every `possible` edge correctly. It also put each contract before its callers and read the feature flow in order.
 
@@ -17,7 +20,7 @@
 
 The two failures:
 - **`signature`:** the same-name edits `viaMethod` and `use_calc` are homed in the callers groups. The plan's own verdicts say they are not callers.
-- **`tests-and-config`:** the plan splits the three config files into three groups by purpose. The check asks for one group, but the split reads better. I propose relaxing the check rather than the plan, an open question.
+- **`tests-and-config`:** the plan splits the three config files into three groups by purpose. The check asked for one group, but the split reads better. The check has since been relaxed (see [Decisions](#decisions)), and the plan would pass it.
 
 Cost: **$0.49** for the five runs. The cap was $0.50 per run, so $2.50 at worst. Two of the first five runs hit the account's session limit and were run again after it reset; they cost $0.01. Input was 60–140k tokens a run, mostly cache reads.
 
@@ -46,13 +49,16 @@ The other ten fixtures get only the general checks below.
 ### Decisions
 
 - **Each contract before its own callers.** When a change has several roots, the plan doesn't have to lead with any particular one. On `signature`, either `formatPrice` or `tax` may come first, as long as each is read before its callers.
+- **Config may be split by purpose.** On `tests-and-config`, the config files don't have to share a group, as long as they are apart from the tests. One group per purpose (test tooling, CI, compiler settings) is the §13.5 behaviour we want. This was decided after round 1.
 - **Feature flow from the entry point.** `feature-flow` is read route → service → persistence → test, the order the skill gives for implementation flow. Note that this is the reverse of "callee first", which the fallback plan uses (see [Baseline](#baseline-the-fallback-plan)).
 
 ### Out of scope
 
 - **Mixed-language changes.** These are covered in depth by #77, which adds Python, Java, Go and multi-language fixtures, including a cross-language HTTP/API change. Here the only mixed-language input is `signature`, whose TypeScript and Python halves share no code. Its plan facts keep the two halves apart. A cross-language link, which only an agent can infer (D6), is not tested.
 - **Codex CLI.** The MVP spec's M2 acceptance names Claude Code and Codex CLI. Codex is deferred until after v0.1, and the harness only drives `claude -p`.
-- **Verdict accuracy.** Verdicts are counted here, but whether they are right is #43's measurement. In this round every verdict was right by inspection.
+- **Verdict accuracy.** Verdicts are counted here, but whether they are right is #43's measurement ([`candidate-adjudication.md`](candidate-adjudication.md)). In round 1 every verdict was right by inspection.
+  - Since #43, the agent judges only the edges its candidate batches ask about. Edges settled by import resolution or the unambiguous rule get no verdict.
+  - So from round 2, the eval's "verdicts on N/M possible edges" line can rightly show N below M.
 
 ## Criteria
 
@@ -79,7 +85,7 @@ The fixture facts:
 | `ten-callers` | Order: `parseDate` → its 10 callers |
 | `feature-flow` | Order: `postOrder` → `createOrder` → `insertOrder` → `createOrder.assigns an id` |
 | `independent-roots` | Apart: `cartTotal`, `logLevel`, `welcomeMessage` |
-| `tests-and-config` | Together and apart: the 2 test nodes, and the 3 config files |
+| `tests-and-config` | Together: the 2 test nodes. Apart: the test nodes and the 3 config files. Round 1 also required the 3 config files to share a group |
 
 ### Manual: read each plan
 
@@ -117,7 +123,7 @@ Every fixture in the portfolio now passes `homed` with the fallback plan.
 | 2026-10-20 | `npm run eval -- --model claude-sonnet-5-5 --max-budget-usd 0.5 --fixture signature --fixture ten-callers --fixture feature-flow --fixture independent-roots --fixture tests-and-config` | `claude-sonnet-5-5` | All five | $0.50 | $0.3406 | `independent-roots` and `tests-and-config` hit the session usage limit (HTTP 429) after 2 turns and 0 turns |
 | 2026-10-20 | The same command, with only `--fixture independent-roots --fixture tests-and-config` | `claude-sonnet-5-5` | The two cut off | $0.50 | $0.1518 | After the limit reset |
 
-## Results
+## Results, round 1 (skill before #43)
 
 Automated is `passed/total`. Verdicts are `judged/possible`.
 
@@ -134,7 +140,7 @@ Workflow notes, from the transcripts in `.cache/eval/transcripts/`:
 - Each run took 6 to 10 tool calls.
 - In `feature-flow` and `independent-roots`, the agent first tried to write `plan.json` with a shell heredoc. Claude Code's permission check refused it ("brace with quote character"), and the agent used `Write` instead. That costs a turn but does no harm.
 
-The failing recordings are committed so they can be reviewed. `replay.test.ts` lists their failed checks in `KNOWN_FAILS`.
+Round 1 committed its failing recordings for review, with their failed checks listed in `KNOWN_FAILS` in `replay.test.ts`. They were deleted as stale before round 2.
 
 ### Per fixture
 
@@ -191,18 +197,28 @@ A change to `SKILL.md` or a reference makes every recording stale (input hash, #
 
 | # | Change | Why (which fail) | Fixtures to re-run | Effect |
 |---|---|---|---|---|
-| 1 (proposed, not made) | In `analysis-workflow.md` § Grouping, add: "A node whose only edges to a root you judged `no` is not a caller of it. Group it with the unrelated edits, not with the callers." | `signature` (Sonnet): same-name edits homed with callers | `signature` with Sonnet (≈$0.12) and Haiku (≈$0.01). Others to confirm no regression: `ten-callers`, `feature-flow` (≈$0.21) | Not run |
+| 1 | In `analysis-workflow.md` § Grouping, step 2: "A node whose only edges to a root you judged `no` is not its caller: put it with the unrelated edits, not with that root's callers." | `signature` (Sonnet, round 1): same-name edits homed with callers | Round 2: all five on Sonnet, `signature` on Haiku | See [Round 2](#round-2) |
 
-The skill text is unchanged in this round. A parallel session (#43) is editing the skill's verdict guidance, and any skill edit makes every recording stale, so iteration 1 waits for #43 to land and for approval.
+Iteration 1 was made after #43 merged, on top of #43's new adjudication text. #43's change and this one both make every recording stale, so round 2 re-runs everything.
 
-## Open questions
+## Round 2
 
-1. **Should `tests-and-config` check only that tests and config are apart, and drop the "config together" fact?** I'd say yes. If so, the recording passes and comes off `KNOWN_FAILS`.
-2. **Should iteration 1 run?** It would run after #43 merges, on the fixtures listed, with the same $0.50 cap.
+The skill after #43 (candidate batches and the adjudication text), plus iteration 1, with the relaxed `tests-and-config` fact.
+
+<!-- Filled in after the run: commands, cost, automated and manual results per fixture, KNOWN_FAILS. -->
+
+| Fixture | Model | Automated | M1 | M2 | M3 | M4 | M5 | Verdicts | Result |
+|---|---|---|---|---|---|---|---|---|---|
+| `signature` | `claude-sonnet-5-5` | | | | | | | | |
+| `ten-callers` | `claude-sonnet-5-5` | | | | | | | | |
+| `feature-flow` | `claude-sonnet-5-5` | | | | | | | | |
+| `independent-roots` | `claude-sonnet-5-5` | | | | | | | | |
+| `tests-and-config` | `claude-sonnet-5-5` | | | | | | | | |
+| `signature` | `claude-haiku-5-5` | | | | | | | | |
 
 ## Conclusion
 
-On the M2 acceptance focus (§17.3), with Sonnet and no language server:
+Round 1, on the M2 acceptance focus (§17.3), with Sonnet and no language server:
 - **No invented nodes (3) and provenance (4):** met on every fixture.
   - Every Sonnet plan passed `validate` the first time, with no repair round.
   - Verdicts were all right, each with a reason and a real cited line.
