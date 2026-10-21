@@ -53,5 +53,6 @@ export const independentRoots: Fixture = {
     nodes: ['symbol cartTotal', 'symbol logLevel', 'symbol welcomeMessage'],
     edges: [],
   },
-  later: ['M2: the plan puts the three changes in separate groups (#26).'],
+  plan: { apart: [['cartTotal'], ['logLevel'], ['welcomeMessage']] },
+  later: [],
 };

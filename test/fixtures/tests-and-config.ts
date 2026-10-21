@@ -95,5 +95,16 @@ export const testsAndConfig: Fixture = {
     // The code under test is unchanged, so the test's call is not an edge (D12).
     edges: [],
   },
-  later: ['M2: the plan has a test group and a configuration group, with no code group (#26).'],
+  // A test group and a configuration group. No code changed, so there is no code group.
+  plan: {
+    together: [
+      ['formatPrice', 'formatPrice.rounds half up'],
+      ['package.json', 'tsconfig.json', '.github/workflows/ci.yml'],
+    ],
+    apart: [
+      ['formatPrice', 'formatPrice.rounds half up'],
+      ['package.json', 'tsconfig.json', '.github/workflows/ci.yml'],
+    ],
+  },
+  later: [],
 };

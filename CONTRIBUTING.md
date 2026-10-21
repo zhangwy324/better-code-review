@@ -92,6 +92,7 @@ npm run eval -- --tier quality --max-budget-usd 2 --allow-large-budget
 - **Transcripts.** Each run's full stream-json transcript goes to `.cache/eval/transcripts/` for debugging bad runs. It is gitignored and costs no extra tokens.
 - **Recordings.** A run that returns a schema-valid plan is recorded to `test/ai/recordings/<task>/<fixture>/<model>.json`. Commit it with the change that needed it. A run that fails is not recorded. Its transcript path is printed instead.
 - **Caller verdicts (#43).** Every valid plan is also kept in `.cache/eval/outputs/`, and `--runs <n>` repeats each fixture. `npm run score:adjudication` scores their `edgeVerdicts` on the edges the batches asked about, as #42 did: precision, recall, false rejections, `unsure`, run-to-run consistency and tokens. Ground truth is the fixture's `withLsp` facts. For any other change, such as a #42 pull request, pass `--graph <no-LSP graph.json> --truth <graph.json generated with servers> <plan.json>…`. LSP truth over-counts dispatch (#42), so audit disagreements before trusting a score.
+- **Plan checks.** Each recorded plan is scored by [`test/ai/score.ts`](test/ai/score.ts) (#26): it must pass the validator, be the agent's own and leave nothing in Ungrouped, and meet the fixture's `plan` facts ([`test/fixtures/README.md`](test/fixtures/README.md#expected-facts)). A failing check fails the run, and `replay.test.ts` fails on its recording, so don't commit it; write it up in [`docs/research/planner-eval.md`](docs/research/planner-eval.md) instead.
 
 ## Dependencies
 

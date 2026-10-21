@@ -217,5 +217,18 @@ export const signature: Fixture = {
   },
   // MVP spec M1, with typescript-language-server and pyright.
   withLsp: { rejected: ['viaMethod calls formatPrice (both)', 'use_calc calls tax (both)'] },
-  later: ['M2: the plan puts the formatPrice contract group first, then its callers (#26).'],
+  // Each contract before its callers (MVP spec M2). The TypeScript and Python changes are
+  // independent roots, and the same-name edits are not read as callers.
+  plan: {
+    order: [
+      [['formatPrice'], ['checkoutSummary', 'invoiceSummary', 'receiptSummary', 'aliasCaller']],
+      [['tax'], ['order_total', 'refund']],
+    ],
+    apart: [
+      ['formatPrice', 'checkoutSummary', 'invoiceSummary', 'receiptSummary', 'aliasCaller'],
+      ['tax', 'order_total', 'refund'],
+      ['legacyLabel', 'viaMethod', 'use_calc'],
+    ],
+  },
+  later: [],
 };

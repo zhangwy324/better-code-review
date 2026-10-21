@@ -8,6 +8,8 @@
 //   every valid plan in `.cache/eval/outputs/` (gitignored), which
 //   `scripts/score-adjudication.ts` scores against ground truth (#43). `--runs` repeats each
 //   fixture, for run-to-run consistency.
+// - scores that plan (score.ts, #26) and fails the run when a check fails. Its recording is still
+//   written, for the evaluation notes, but replay.test.ts fails on it, so don't commit it.
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,6 +19,7 @@ import { ReviewPlan } from '../../src/schemas/index.ts';
 import { FIXTURES } from '../fixtures/index.ts';
 import { modelInput, type Task } from './input.ts';
 import { RECORDINGS_DIR, writeRecording, type Recording } from './recording.ts';
+import { formatScore, scorePlan } from './score.ts';
 import { type AiRun, LiveRunError, liveRunner, type Spawn } from './runner.ts';
 
 /** Smoke: a cheap model on one small fixture. Quality: the target model on the whole portfolio. */
@@ -161,6 +164,8 @@ export async function runEval(args: EvalArgs, options: EvalOptions): Promise<boo
       let run: Omit<AiRun, 'output'>;
       let error: string | null = null;
       let kept: Recording | null = null;
+      let checks = '';
+      const failed: string[] = [];
       try {
         const done = await runner.run(request);
         run = done;
@@ -177,6 +182,11 @@ export async function runEval(args: EvalArgs, options: EvalOptions): Promise<boo
           };
           const path = writeRecording(recordingsDir, kept);
           options.out(`  recorded ${path}\n`);
+          const score = await scorePlan(fixture, done.output, input.graph, input.files);
+          score.checks.filter((c) => !c.ok).forEach((c) => failed.push(c.name));
+          checks = formatScore(score);
+          if (failed.length > 0)
+            error = `the plan fails ${failed.length} check(s); don't commit its recording`;
         } else {
           error = `the output is not a valid plan: ${plan.error.issues[0]?.message ?? 'invalid'}`;
         }
@@ -209,6 +219,7 @@ export async function runEval(args: EvalArgs, options: EvalOptions): Promise<boo
           usage: run.usage,
           ok: error === null,
           error,
+          failedChecks: failed,
         })}\n`,
       );
       total += run.costUsd;
@@ -216,6 +227,7 @@ export async function runEval(args: EvalArgs, options: EvalOptions): Promise<boo
       options.out(
         `${error === null ? 'ok  ' : 'FAIL'} ${name}  ${run.model}  $${run.costUsd.toFixed(4)}  ${tokens}\n`,
       );
+      options.out(checks);
       if (error !== null) {
         allOk = false;
         options.out(`  ${error}\n`);
