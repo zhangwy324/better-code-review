@@ -1,0 +1,78 @@
+{
+  "task": "skill",
+  "fixture": "feature-flow",
+  "model": "claude-sonnet-5-5",
+  "inputHash": "sha256:39b33dd42155d33ca0d235f8440758ada865b0ddfefdf33a452c7ca1263063a2",
+  "usage": {
+    "inputTokens": 10,
+    "outputTokens": 1451,
+    "cacheCreationInputTokens": 15051,
+    "cacheReadInputTokens": 50062
+  },
+  "costUsd": 0.0797402,
+  "output": {
+    "schemaVersion": 1,
+    "snapshotId": "2a70235c0e04ef20afa88c830a13cd0373bd679c8cb68cbfd74425d089cd9c4e",
+    "origin": "agent",
+    "fallbackReason": null,
+    "summary": "Adds a POST /orders feature across layers: a route registered in the app, a service that validates quantity, and an in-memory storage layer. A test covers the service. Check that the route handler's unvalidated body cast is acceptable.",
+    "groups": [
+      {
+        "id": "route",
+        "title": "POST /orders endpoint",
+        "description": "registerRoutes wires a new postOrder handler, which casts the body and calls createOrder. Check that the body is validated somewhere, since the cast is unchecked.",
+        "nodeIds": [
+          "n_0221592932c560d6",
+          "n_764183546019d2b0",
+          "n_ecf9e2aa11b9018f",
+          "n_b155e65b14e5eb00"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "service",
+        "title": "createOrder service",
+        "description": "createOrder rejects quantities below 1 and delegates to insertOrder. Confirm the validation rule is the intended one.",
+        "nodeIds": [
+          "n_bd95ada67ac20c23",
+          "n_08b6d4a46ecc6429"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "storage",
+        "title": "In-memory order storage",
+        "description": "Adds the OrderRow type and insertOrder, which assigns ids from the array length. Check that id assignment and shared module state are acceptable.",
+        "nodeIds": [
+          "n_f72eb98a16847bf6",
+          "n_f489806d07d925c0",
+          "n_7f0a02949e1c4925"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "tests",
+        "title": "createOrder test",
+        "description": "Tests that the first created order gets id 1. Check whether the quantity validation failure is also meant to be covered.",
+        "nodeIds": [
+          "n_fbbb4d69f31b2f42",
+          "n_c890adb73f05e0b9",
+          "n_5d8446452b0fd11a"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      }
+    ],
+    "groupOrder": [
+      "route",
+      "service",
+      "storage",
+      "tests"
+    ],
+    "edgeVerdicts": [],
+    "inferredRelationships": []
+  }
+}
