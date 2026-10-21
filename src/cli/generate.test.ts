@@ -92,7 +92,7 @@ describe('generate', () => {
     const plan = ReviewPlan.parse(JSON.parse(readFileSync(join(dir, 'plan.json'), 'utf8')));
     expect(plan.origin).toBe('fallback');
     expect(summary).toContain(
-      'Plan      fallback, 2 groups, 2 nodes ungrouped (an agent replaces plan.json with its own)',
+      'Plan      fallback, 4 groups (an agent replaces plan.json with its own)',
     );
     expect(result.stdout).toBe(
       `${summary}\nWritten to ${join('.better-code-review', 'reviews', `commit-${head.slice(0, 7)}`)}\n`,

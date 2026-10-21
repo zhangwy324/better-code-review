@@ -43,7 +43,6 @@ import {
   type PlannerInput,
 } from '../planner/index.ts';
 import {
-  UNGROUPED_GROUP_ID,
   type ChangeGraph,
   type ChangeSet,
   type ReviewPlan,
@@ -287,11 +286,8 @@ export function summarise(
         (candidates.redactions > 0 ? `, ${count(candidates.redactions, 'secret')} redacted` : ''),
     );
   }
-  const ungrouped = plan.groups.find((g) => g.id === UNGROUPED_GROUP_ID)?.nodeIds.length ?? 0;
   lines.push(
-    `Plan      fallback, ${count(plan.groups.length - (ungrouped > 0 ? 1 : 0), 'group')}` +
-      (ungrouped > 0 ? `, ${count(ungrouped, 'node')} ungrouped` : '') +
-      ' (an agent replaces plan.json with its own)',
+    `Plan      fallback, ${count(plan.groups.length, 'group')} (an agent replaces plan.json with its own)`,
   );
   const tests = graph.files.filter((f) => f.test !== null);
   if (tests.length > 0) {
