@@ -87,7 +87,7 @@ Everything comes from the snapshot. Changed files come from `changes.json`, and 
 better-code-review validate --dir <review dir> [--plan <file>]
 ```
 
-The repair loop: the agent writes `plan.json`, runs `validate`, fixes what it reports, and runs it again. SKILL.md (#25) sets how many rounds to try; after that the fallback plan is used (D8, #24). `validate` reads `plan.json` and never rewrites it.
+The repair loop: the agent writes `plan.json`, runs `validate`, fixes what it reports, and runs it again. The [skill](../../skills/better-code-review/SKILL.md#4-validate-and-repair) allows at most 3 repair rounds. After that it keeps the agent's plan as `plan.rejected.json` and runs `better-code-review fallback --dir <dir>`, which writes the fallback plan (D8, #24) to `plan.json`. `validate` reads `plan.json` and never rewrites it.
 
 It prints JSON and exits 0 when the plan is valid, 1 when it isn't:
 
@@ -124,7 +124,7 @@ All errors are reported at once. Schema errors come alone, since the other rules
 
 ## Fallback plan
 
-`generate` always writes `plan.json` with `fallbackPlan()`, so the renderer has a plan without any model (design reference §8.1, MVP spec D8). The agent overwrites it with its own. The same function makes the plan to use when the agent's plan still fails after the repair loop, with a `fallbackReason` saying so.
+`generate` always writes `plan.json` with `fallbackPlan()`, so the renderer has a plan without any model (design reference §8.1, MVP spec D8). The agent overwrites it with its own. The same function makes the plan to use when the agent's plan still fails after the repair loop: `better-code-review fallback --dir <dir>` writes it from `graph.json`, with a `fallbackReason` saying so.
 
 - **Clustering.** Two nodes go together when a code edge joins them (of any provenance or side) or when they are in the same file. A test-file edge joins its target to the test file's nodes. Each cluster of two or more nodes is a group, titled after its node with the most incoming edges (`formatPrice and related changes`), or `Changes in <path>` when it has no edges.
 - **Ungrouped.** A node joined to nothing goes into the `ungrouped` group ("Ungrouped / requires review", D1), last in `groupOrder`. Every node has a home, so `validatePlan()` returns the plan unchanged.
@@ -150,4 +150,4 @@ This is best effort (design reference §14.2). It applies to both the input and 
   - generic `password = "…"` assignments and other low-confidence patterns, which are left alone to avoid false positives
   - files the agent reads directly from disk with its own tools
 
-  SKILL.md (#25) must tell the agent to fetch context with `show`, and say what goes to the model.
+  The [skill](../../skills/better-code-review/SKILL.md#what-runs-where) tells the agent to read the change only through `planner-input.md` and `show`, and says what goes to the model.

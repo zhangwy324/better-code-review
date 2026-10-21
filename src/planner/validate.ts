@@ -1,7 +1,8 @@
 // The plan validator (#23, design reference §8.6, §9.8): checks a plan.json the agent wrote
 // against the graph and snapshot it was planned from, and gives every homeless node a home. The
-// agent runs it through `better-code-review validate` and repairs its plan until it passes (the
-// repair loop, #25). A plan that still fails is replaced by the fallback plan (D8, #24).
+// agent runs it through `better-code-review validate` and repairs its plan until it passes: the
+// repair loop, at most 3 rounds (skills/better-code-review/SKILL.md, #25). A plan that still fails
+// is replaced by the fallback plan with `better-code-review fallback` (D8, #24).
 //
 // The rules, in the order they are checked:
 // - The plan matches the schema. It is strict, so unknown fields (code text, a `provenance` on a
