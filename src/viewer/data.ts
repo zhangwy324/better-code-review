@@ -6,7 +6,7 @@ import type { ChangeSet } from '../schemas/changeset.ts';
 import { type ContractName, parseContract, SchemaVersionError } from '../schemas/contracts.ts';
 import type { ChangeGraph } from '../schemas/graph.ts';
 import type { ReviewPlan } from '../schemas/plan.ts';
-import { DATA_ELEMENT_IDS, type DataName } from './embed.ts';
+import { DATA_ELEMENT_IDS, type DataName } from '../renderer/embed.ts';
 
 export interface ReviewData {
   changeSet: ChangeSet;

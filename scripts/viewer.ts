@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createServer } from 'vite';
-import { dataScripts } from '../src/viewer/embed.ts';
+import { dataScripts } from '../src/renderer/embed.ts';
 
 const [dir] = process.argv.slice(2);
 if (dir === undefined) {
