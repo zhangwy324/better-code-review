@@ -15,14 +15,14 @@ Tell the user this the first time you run the skill in a session, in a sentence 
 
 | Runs locally, no model involved | Goes to the model (you) |
 |---|---|
-| Git snapshot and diff extraction (`generate`) | `planner-input.md`, which you read |
+| Git snapshot and diff extraction (`generate`) | `planner-input.md` and the `candidates/` batches, which you read |
 | Structural analysis (tree-sitter) and the change graph | The output of every `show` you run |
 | Installed language servers, if any. A server that runs project code (jdtls with Gradle, for example) starts only with `--allow-project-code` | The user's request and requirement, from this conversation |
 | `show`, `validate` and `fallback` | The `plan.json` you write and the `validate` output |
 
 - `--pr` targets call GitHub through `gh` to resolve the pull request. Nothing else leaves the machine except what the model reads.
-- `planner-input.md` and `show` withhold likely secret files (`.env`, keys) and redact high-confidence tokens. That is best effort.
-- **Read the change only through `planner-input.md` and `show`.** Don't open repository files, `changes.json` or `graph.json` with your own tools: they are not redacted, and `changes.json` holds the full content of every changed file.
+- `planner-input.md`, the batches and `show` withhold likely secret files (`.env`, keys) and redact high-confidence tokens. That is best effort.
+- **Read the change only through `planner-input.md`, the `candidates/` batches and `show`.** Don't open repository files, `changes.json` or `graph.json` with your own tools: they are not redacted, and `changes.json` holds the full content of every changed file.
 
 ## 1. Resolve the target
 
@@ -56,7 +56,7 @@ Run the command. Progress goes to stderr. stdout ends with the capability summar
 
 ## 3. Plan
 
-Read `<dir>/planner-input.md` in full, then write `<dir>/plan.json`, replacing any fallback plan already there. Fetch what the input leaves out with:
+Read `<dir>/planner-input.md` in full, and every `<dir>/candidates/batch-<n>.md` its Caller candidates section names. Then write `<dir>/plan.json`, replacing any fallback plan already there, with a verdict for each candidate edge. Fetch what the input leaves out with:
 
 ```text
 better-code-review show --dir <dir> <h_… | n_… | e_…>

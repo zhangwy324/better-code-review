@@ -4,7 +4,10 @@
 // - passes `--max-budget-usd` to `claude -p`, always;
 // - prints its cost and appends it to `.cache/eval/costs.jsonl`;
 // - saves its full transcript to `.cache/eval/transcripts/` (gitignored, for debugging);
-// - records its output when it is a schema-valid plan (recording.ts), for replay tests.
+// - records its output when it is a schema-valid plan (recording.ts), for replay tests, and keeps
+//   every valid plan in `.cache/eval/outputs/` (gitignored), which
+//   `scripts/score-adjudication.ts` scores against ground truth (#43). `--runs` repeats each
+//   fixture, for run-to-run consistency.
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,7 +16,7 @@ import { parseArgs } from 'node:util';
 import { ReviewPlan } from '../../src/schemas/index.ts';
 import { FIXTURES } from '../fixtures/index.ts';
 import { modelInput, type Task } from './input.ts';
-import { RECORDINGS_DIR, writeRecording } from './recording.ts';
+import { RECORDINGS_DIR, writeRecording, type Recording } from './recording.ts';
 import { type AiRun, LiveRunError, liveRunner, type Spawn } from './runner.ts';
 
 /** Smoke: a cheap model on one small fixture. Quality: the target model on the whole portfolio. */
@@ -42,6 +45,7 @@ Options:
   --max-budget-usd <usd>   Cap per run (default ${DEFAULT_BUDGET_USD}); always passed to claude
   --allow-large-budget     Allow a cap above ${LARGE_BUDGET_USD} per run
   --max-turns <n>          Cap per run (default ${DEFAULT_MAX_TURNS})
+  --runs <n>               Runs per fixture, for consistency (default 1)
 `;
 
 export interface EvalArgs {
@@ -51,6 +55,8 @@ export interface EvalArgs {
   model: string;
   maxBudgetUsd: number;
   maxTurns: number;
+  /** Runs per fixture. */
+  runs: number;
 }
 
 export class EvalUsageError extends Error {}
@@ -65,6 +71,7 @@ export function parseEvalArgs(argv: string[]): EvalArgs {
       'max-budget-usd': { type: 'string', default: String(DEFAULT_BUDGET_USD) },
       'allow-large-budget': { type: 'boolean', default: false },
       'max-turns': { type: 'string', default: String(DEFAULT_MAX_TURNS) },
+      runs: { type: 'string', default: '1' },
     },
     strict: true,
   });
@@ -91,6 +98,10 @@ export function parseEvalArgs(argv: string[]): EvalArgs {
   if (!Number.isInteger(maxTurns) || maxTurns < 1) {
     throw new EvalUsageError('--max-turns must be a positive integer');
   }
+  const runs = Number(values.runs);
+  if (!Number.isInteger(runs) || runs < 1) {
+    throw new EvalUsageError('--runs must be a positive integer');
+  }
   return {
     tier: values.tier,
     task: 'skill',
@@ -98,6 +109,7 @@ export function parseEvalArgs(argv: string[]): EvalArgs {
     model: values.model ?? tier.model,
     maxBudgetUsd,
     maxTurns,
+    runs,
   };
 }
 
@@ -124,15 +136,23 @@ export async function runEval(args: EvalArgs, options: EvalOptions): Promise<boo
     ...(options.spawn === undefined ? {} : { spawn: options.spawn }),
   });
   mkdirSync(join(localDir, 'transcripts'), { recursive: true });
-  const worst = args.fixtures.length * args.maxBudgetUsd;
+  mkdirSync(join(localDir, 'outputs'), { recursive: true });
+  const worst = args.fixtures.length * args.runs * args.maxBudgetUsd;
   options.out(
-    `${args.tier}: ${args.task} with ${args.model} on ${args.fixtures.length} fixture(s), ` +
-      `at most $${args.maxBudgetUsd} each ($${worst.toFixed(2)} in all)\n`,
+    `${args.tier}: ${args.task} with ${args.model} on ${args.fixtures.length} fixture(s)` +
+      (args.runs > 1 ? `, ${args.runs} runs each` : '') +
+      `, at most $${args.maxBudgetUsd} per run ($${worst.toFixed(2)} in all)\n`,
   );
 
   let allOk = true;
   let total = 0;
-  for (const name of args.fixtures) {
+  const runs = args.fixtures.flatMap((name) =>
+    Array.from({ length: args.runs }, (_, i) => ({
+      name,
+      suffix: args.runs > 1 ? `-run${i + 1}` : '',
+    })),
+  );
+  for (const { name, suffix } of runs) {
     const fixture = FIXTURES.find((f) => f.name === name)!;
     const dir = mkdtempSync(join(tmpdir(), `bcr-eval-${name}-`));
     try {
@@ -140,12 +160,13 @@ export async function runEval(args: EvalArgs, options: EvalOptions): Promise<boo
       const request = { ...input, model: args.model };
       let run: Omit<AiRun, 'output'>;
       let error: string | null = null;
+      let kept: Recording | null = null;
       try {
         const done = await runner.run(request);
         run = done;
         const plan = ReviewPlan.safeParse(done.output);
         if (plan.success) {
-          const path = writeRecording(recordingsDir, {
+          kept = {
             task: args.task,
             fixture: name,
             model: done.model,
@@ -153,7 +174,8 @@ export async function runEval(args: EvalArgs, options: EvalOptions): Promise<boo
             usage: done.usage,
             costUsd: done.costUsd,
             output: done.output,
-          });
+          };
+          const path = writeRecording(recordingsDir, kept);
           options.out(`  recorded ${path}\n`);
         } else {
           error = `the output is not a valid plan: ${plan.error.issues[0]?.message ?? 'invalid'}`;
@@ -165,9 +187,13 @@ export async function runEval(args: EvalArgs, options: EvalOptions): Promise<boo
       }
 
       const at = now().toISOString();
+      const stamp = `${at.replaceAll(':', '-')}-${name}${suffix}`;
+      if (kept !== null) {
+        writeFileSync(join(localDir, 'outputs', `${stamp}.json`), `${JSON.stringify(kept)}\n`);
+      }
       let transcriptPath: string | null = null;
       if (run.transcript !== undefined) {
-        transcriptPath = join(localDir, 'transcripts', `${at.replaceAll(':', '-')}-${name}.jsonl`);
+        transcriptPath = join(localDir, 'transcripts', `${stamp}.jsonl`);
         writeFileSync(transcriptPath, run.transcript);
       }
       appendFileSync(

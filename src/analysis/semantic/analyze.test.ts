@@ -89,7 +89,7 @@ describe('analyzeSemantics on the signature fixture, without LSP (#17 acceptance
     );
     // formatPrice has one definition here, so the plain call is accepted as is.
     expect(summary(removed)).toEqual([
-      'old calls total -> formatPrice @src/total.ts:3 text-search:candidate',
+      'old calls total -> formatPrice @src/total.ts:3 text-search:candidate unambiguous-rule:confirmed',
     ]);
   });
 
@@ -147,7 +147,7 @@ describe('analyzeSemantics: the tree-sitter filter', () => {
     );
     // Only the top-level call, which belongs to the changed module entity (D2).
     expect(newSide(summary(result))).toEqual([
-      'new calls <module src/use.ts> -> formatPrice @src/use.ts:14 text-search:candidate',
+      'new calls <module src/use.ts> -> formatPrice @src/use.ts:14 text-search:candidate unambiguous-rule:confirmed',
     ]);
   });
 
@@ -254,7 +254,8 @@ describe('analyzeSemantics: deciding candidates', () => {
     );
     const records = result.evidence.records.filter((r) => r.location.side === 'new');
     expect(records).toMatchObject([
-      { method: 'text-search', detail: 'call; unambiguous: one definition, plain call' },
+      { method: 'text-search', detail: 'call' },
+      { method: 'unambiguous-rule', outcome: 'confirmed', detail: 'one definition, plain call' },
     ]);
   });
 
@@ -442,7 +443,7 @@ describe('analyzeSemantics: overloads', () => {
     const targets = new Set(result.evidence.records.map((r) => r.targetEntityId));
     expect(targets.size).toBe(1);
     expect(newSide(summary(result))).toEqual([
-      'new calls both -> format @src/use.ts:3 text-search:candidate text-search:candidate',
+      'new calls both -> format @src/use.ts:3 text-search:candidate unambiguous-rule:confirmed text-search:candidate unambiguous-rule:confirmed',
     ]);
   });
 });
@@ -484,7 +485,7 @@ describe('analyzeSemantics: constructors', () => {
     expect(newSide(summary(result))).toEqual([
       'new calls Square.constructor -> Shape.constructor @src/shape.ts:6 text-search:candidate',
       // `s: Shape` and the return type are not calls of the constructor.
-      'new calls make -> Shape.constructor @src/shape.ts:10 text-search:candidate',
+      'new calls make -> Shape.constructor @src/shape.ts:10 text-search:candidate unambiguous-rule:confirmed',
     ]);
   });
 
@@ -560,7 +561,7 @@ describe('analyzeSemantics: constructors', () => {
     );
     expect(newSide(summary(result))).toEqual([
       'new calls Square.__init__ -> Shape.__init__ @shapes.py:8 text-search:candidate',
-      'new calls make -> Shape.__init__ @shapes.py:12 text-search:candidate',
+      'new calls make -> Shape.__init__ @shapes.py:12 text-search:candidate unambiguous-rule:confirmed',
     ]);
   });
 });
@@ -615,7 +616,7 @@ describe('analyzeSemantics: test files and caps', () => {
       { 'src/price.ts': PRICE_HEAD, 'test/price.test.ts': test(2) },
     );
     expect(newSide(summary(result))).toEqual([
-      'new calls formatPrice.formats -> formatPrice @test/price.test.ts:4 text-search:candidate',
+      'new calls formatPrice.formats -> formatPrice @test/price.test.ts:4 text-search:candidate unambiguous-rule:confirmed',
     ]);
     expect(result.evidence.records.map((r) => r.targetEntityId)).toEqual(
       result.evidence.records.map(() => result.structure.entities[0]!.id),

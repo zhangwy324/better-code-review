@@ -2,14 +2,22 @@
 // to it. The step is the skill itself (#25): the agent runs in the fixture's repository with the
 // skill installed in `.claude/skills/` and the CLI on PATH, follows SKILL.md, and leaves
 // `plan.json` in the review directory. The hash covers the task's prompt, the skill's files
-// (`HASHED_SOURCES`) and `planner-input.md`, which `generate --no-lsp` writes for the fixture
-// exactly as the agent's own run does.
-import { chmodSync, cpSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+// (`HASHED_SOURCES`), `planner-input.md` and the caller-candidate batches (#43), which
+// `generate --no-lsp` writes for the fixture exactly as the agent's own run does.
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { createHash } from 'node:crypto';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generate, targetName } from '../../src/cli/generate.ts';
-import { estimateTokens } from '../../src/planner/index.ts';
+import { CANDIDATES_DIR, estimateTokens } from '../../src/planner/index.ts';
 import type { Fixture } from '../fixtures/fixture.ts';
 import { buildFixtureRepo } from '../fixtures/repo.ts';
 
@@ -35,7 +43,10 @@ export const HASHED_SOURCES: readonly string[] = [
     .map((name) => `${SKILL_DIR}/references/${name}`),
 ];
 
-/** Files `generate` writes that the model reads; their bytes are hashed. */
+/**
+ * Files `generate` writes that the model reads; their bytes are hashed. The caller-candidate
+ * batches (#43) in `candidates/` are hashed too, however many there are.
+ */
 export const MODEL_INPUT_FILES = ['planner-input.md'] as const;
 
 export interface ModelInput {
@@ -74,7 +85,7 @@ export async function modelInput(task: Task, fixture: Fixture, dir: string): Pro
   const parts: [string, string][] = [
     [TASKS[task], prompt],
     ...HASHED_SOURCES.map((path): [string, string] => [path, readSource(path)]),
-    ...MODEL_INPUT_FILES.map((name): [string, string] => [
+    ...[...MODEL_INPUT_FILES, ...candidateFiles(review)].map((name): [string, string] => [
       `review/${name}`,
       readFileSync(join(review, name), 'utf8'),
     ]),
@@ -89,6 +100,15 @@ export async function modelInput(task: Task, fixture: Fixture, dir: string): Pro
     inputHash: inputHash(parts),
     estimatedTokens: parts.reduce((sum, [, text]) => sum + estimateTokens(text), 0),
   };
+}
+
+/** The caller-candidate batches `generate` wrote, in order. */
+function candidateFiles(review: string): string[] {
+  const dir = join(review, CANDIDATES_DIR);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
+    .map((name) => `${CANDIDATES_DIR}/${name}`);
 }
 
 /**

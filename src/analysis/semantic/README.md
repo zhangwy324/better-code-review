@@ -50,7 +50,7 @@ In the order #42 settled (`docs/research/candidate-adjudication.md`):
    - what remains is a code hit: a call or a reference, with its receiver (`t.tax` → `t`), and whether it is in a base-class list or chains a constructor.
 
    Each hit is mapped to the innermost entity containing it. It is kept only when that entity is changed, or when it is outside every entity and the file's `module` entity is changed. A hit inside the target itself (recursion) is dropped.
-3. **The unambiguous rule.** A plain call (no receiver, not an alias) of a name with exactly one definition on that side, across the whole snapshot, is accepted as `possible` with no further work (100% correct in #42). Definitions are counted by `git grep -w` plus parsing the files it finds, up to 200 files; beyond that, or without `files`, the name counts as ambiguous.
+3. **The unambiguous rule.** A plain call (no receiver, not an alias) of a name with exactly one definition on that side, across the whole snapshot, is accepted as `possible` with no further work (100% correct in #42), with an `unambiguous-rule` `confirmed` record. Definitions are counted by `git grep -w` plus parsing the files it finds, up to 200 files; beyond that, or without `files`, the name counts as ambiguous.
 4. **Import-path resolution** (`imports.ts`), for every other hit except constructor chaining:
    - **Bare names** (`formatPrice(…)`): a definition in the file, else its import binding, followed through re-exports up to 3 levels (`MAX_REEXPORT_DEPTH`), else `export *` / `from m import *`. Reaching the target is `confirmed`; reaching another definition, or a module, is `rejected`.
    - **A bare name neither imported nor defined in the file cannot be the target** (TS/JS and Python, #42): `rejected`. Not in a JS script with no imports or exports (its names are global), nor in a file that uses `require(…)` or `import(…)`.
@@ -73,18 +73,18 @@ In the order #42 settled (`docs/research/candidate-adjudication.md`):
 7. **Test files** (MVP spec D2) keep one edge per (test file, changed entity), with one hit per side: the most decided (LSP-confirmed, then import-confirmed, then undecided), so the edge still says whether the call was added, removed or kept. Its detail says how many hits it stands for.
 8. **Caps** (D1): at most `maxCandidatesPerEntity` (default 100) source entities per (target, relation), a test file counting as one. The rest are dropped from the records and reported in `caps` as "Showing N of M".
 
-AI adjudication of what is still undecided (#43) is not here; it labels these candidates and never adds one.
+AI adjudication of what is still undecided (#43) is not here; it labels these candidates and never adds one. The planner selects them and writes their context ([`src/planner/README.md`](../../planner/README.md#caller-candidates-43)).
 
 ### Output
 
-One `text-search` record with outcome `candidate` per kept hit, plus an `import-resolution` and an `lsp` record when those steps decided. Every record has the hit's exact location and side.
+One `text-search` record with outcome `candidate` per kept hit, plus an `unambiguous-rule`, `import-resolution` or `lsp` record when those steps decided. Every record has the hit's exact location and side.
 
 | Field | Value |
 |---|---|
 | `relation` | `calls` for a call of a function, method or constructor; `implements` for a class or interface in a base-class list; `references` otherwise |
 | `sourceEntityId` | The changed entity containing the hit (for a test file, the one containing the kept hit) |
 | `targetEntityId` | The changed entity named |
-| `detail` | For text search, the hit's shape and the rules applied, e.g. `call; through the alias fmt` or `call; unambiguous: one definition, plain call`. For the deciding methods, why |
+| `detail` | For text search, the hit's shape and the rules applied, e.g. `call; through the alias fmt` or `call; on f`. For the deciding methods, why |
 | `id` | `stableId('ev', [method, relation, source, target, path, side, line, column])` |
 
 How the graph (#18) reads them, as the schema says: an edge is `verified` when a record is `lsp` `confirmed`; it is rejected when a record is `import-resolution` or `lsp` `rejected`; otherwise it is `possible`. Its `sides` are those of the hits it keeps, so a removed call is `old`. Rejected candidates stay in the records (D6).

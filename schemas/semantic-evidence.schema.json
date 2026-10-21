@@ -218,6 +218,7 @@
             "type": "string",
             "enum": [
               "text-search",
+              "unambiguous-rule",
               "import-resolution",
               "lsp"
             ]

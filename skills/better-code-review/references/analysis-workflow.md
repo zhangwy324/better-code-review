@@ -13,8 +13,9 @@ You decide what the change means and how a human should read it. The graph has a
 3. **Notes:** missing language servers, capped fan-out, redactions, excluded untracked files.
 4. **Files:** one line per changed file, with status, language, capability tier and `test` for test files.
 5. **Nodes:** `n_… <kind> <name> @ path:start-end: h_…`. Every node needs a home. `(deleted)` means it exists only on the old side.
-6. **Code edges:** `e_… callee ← caller: relation, provenance, …`. `verified` is proven by a language server. `possible` is a text-search candidate; you may judge it.
-7. **Diffs:** each hunk inline, or a line saying how many lines were not shown and why.
+6. **Code edges:** `e_… callee ← caller: relation, provenance, …`. `verified` is proven by a language server. `possible` is a text-search candidate.
+7. **Caller candidates:** which `possible` edges need your verdict, and the `candidates/batch-<n>.md` files with their context ([below](#verdicts-on-possible-edges)).
+8. **Diffs:** each hunk inline, or a line saying how many lines were not shown and why.
 
 The user's requirement, if they gave one, is in the conversation.
 
@@ -54,17 +55,24 @@ Put unrelated edits and config after the main flow.
 
 ## Verdicts on `possible` edges
 
-For each `possible` edge you can judge from the code, add an `edgeVerdict`. It is shown as the agent's inference. The edge stays `possible`; it is never upgraded to `verified`.
+The **Caller candidates** section of `planner-input.md` says how many `possible` edges need a verdict, and names the batch files that hold them: `candidates/batch-<n>.md` in the review directory. Read every batch it names. Each one lists:
+- the changed entities, with each one's declaration line on both sides and the other definitions of its name, which are NOT the changed entity;
+- each candidate in its enclosing function: the file's imports, the declarations the occurrences depend on (a receiver's parameter, local or field, a re-export line), the code with the occurrences marked `>>`, and the edges to decide.
+
+Give every edge under a **Decide** line one `edgeVerdict`. The other `possible` edges were settled by import resolution or the unambiguous rule: leave them without a verdict. A verdict is shown as the agent's inference, `yes` as inferred and `no` as rejected. The edge stays in the graph either way, and is never upgraded to `verified`.
 
 | Verdict | When | `via` |
 |---|---|---|
-| `yes` | The caller really calls (or references) this callee | `direct` for a plain call through an import, `dispatch` for a call through an interface or base type, `alias` for a re-export or renamed import |
+| `yes` | The occurrence uses this changed entity: a call, a reference, or a call that can dispatch to it | `direct` for a plain call through an import, `dispatch` for a call through an interface or base type, `alias` for a re-export or renamed import |
 | `no` | The name matches but it is a different symbol: a method on an unrelated class, a same-named function from another module | `null` |
-| `unsure` | You looked and can't tell | `null` |
+| `unsure` | The code shown can't settle it, e.g. the receiver's type or the import is unknown | `null` |
 
-- Never add a verdict to a `verified` edge, and never give one edge two verdicts. Skip edges you didn't look at.
-- `import-resolution confirmed` in the edge line is strong evidence for `yes`. A call on a receiver (`obj.name()`) needs the receiver's type; fetch it with `show` if it matters.
-- `reason` is one sentence. `citedLine` is the line that decides it: usually the call site from the edge's first hit, or the import line.
+- **Judge from the code shown.** Don't guess. Fetch more with `show` only when one line would settle it. `unsure` keeps the edge `possible`, so it never hides a real caller.
+- **Dispatch:** a call on a base-class or interface-typed receiver that can reach the changed override is `yes`, `via` `dispatch`.
+- **Type uses count for classes.** For a changed class, interface or type, annotations, return types, parameter types, `extends` and `implements` are references: `yes`. A return type is a use, not "just a declaration".
+- `reason` is one sentence. `citedLine` is the line that decides it: usually the occurrence, or the receiver's declaration or import it hinges on. Batches number lines as in the file, after the path.
+- Never add a verdict to a `verified` edge, and never give one edge two verdicts.
+- Edges the section says are over the cap are not adjudicated. Leave them; they stay `possible`.
 
 ## Inferred relationships
 

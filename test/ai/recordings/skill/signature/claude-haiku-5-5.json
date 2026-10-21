@@ -2,46 +2,25 @@
   "task": "skill",
   "fixture": "signature",
   "model": "claude-haiku-5-5",
-  "inputHash": "sha256:1c0d4d97b7619cd165d21489849d967b1a8bf854108862cd6273f18f57b093bc",
+  "inputHash": "sha256:cd54dcfb60bda782cec3151b09846559949ce945b595b3e41d5ed083287150df",
   "usage": {
-    "inputTokens": 16,
-    "outputTokens": 7114,
-    "cacheCreationInputTokens": 21609,
-    "cacheReadInputTokens": 122520
+    "inputTokens": 18,
+    "outputTokens": 5295,
+    "cacheCreationInputTokens": 22457,
+    "cacheReadInputTokens": 150445
   },
-  "costUsd": 0.009105600000000002,
+  "costUsd": 0.008645150000000002,
   "output": {
     "schemaVersion": 1,
     "snapshotId": "a0b62ae0c49101d19bd6688a47e1b7c526f614807da717ddad4626e875de8bec",
     "origin": "agent",
     "fallbackReason": null,
-    "summary": "Two module-level functions gain parameters. tax() in tax.py takes an optional rate (default 0.1), and formatPrice() in src/price.ts takes a required currency. The Python callers order_total and refund now pass 0.2 explicitly, and the TypeScript callers pass 'USD' (aliasCaller reaches formatPrice through a re-export). Several other edits look unrelated: a method call on Calc, a method call on Fmt, a legacy label string, and a config.json currency change that no changed code reads.",
+    "summary": "formatPrice gains a currency parameter and tax gains a rate parameter, and their callers in the TypeScript and Python files are updated to match. The four formatPrice callers pass 'USD' and the two tax callers pass 0.2. Several other edits look unrelated: the config currency, the legacyLabel text and formatPrice import from legacy/price.ts, the viaMethod call on Fmt, and the Calc.tax call in calc.py. Check that every formatPrice caller should pass 'USD' and that the 0.2 rate is intended in each tax caller.",
     "groups": [
       {
-        "id": "tax-contract",
-        "title": "tax() gains an optional rate parameter",
-        "description": "The definition replaces the fixed 0.1 factor with a rate argument that defaults to 0.1. Existing one-argument calls keep their behaviour. Read this first.",
-        "nodeIds": [
-          "n_a28e241d8b72b42e"
-        ],
-        "referenceNodeIds": [],
-        "childGroupIds": []
-      },
-      {
-        "id": "tax-callers",
-        "title": "order_total and refund pass a rate of 0.2",
-        "description": "Both callers now pass 0.2 explicitly. refund calls through the alias t, so check that it refers to the same tax module. Check that 0.2 is the intended rate for both.",
-        "nodeIds": [
-          "n_d6e20a1e36e89f35",
-          "n_d6f3f1118f317669"
-        ],
-        "referenceNodeIds": [],
-        "childGroupIds": []
-      },
-      {
-        "id": "format-contract",
+        "id": "price-contract",
         "title": "formatPrice gains a currency parameter",
-        "description": "The definition now requires a currency string and prefixes the output with it. Any caller that does not pass a currency will break, so check every caller.",
+        "description": "The definition now takes a currency and prefixes it to the formatted amount. Read it first. Confirm that the output format change is intended for every consumer.",
         "nodeIds": [
           "n_5f473b23f87b2103"
         ],
@@ -49,9 +28,9 @@
         "childGroupIds": []
       },
       {
-        "id": "format-callers",
-        "title": "Callers pass 'USD' to formatPrice",
-        "description": "Checkout, invoice and receipt summaries pass 'USD' as a literal. aliasCaller calls it through the fmt re-export. Check that a hardcoded 'USD' is intended, since config.json now says EUR.",
+        "id": "price-callers",
+        "title": "Price callers pass 'USD'",
+        "description": "Four summary functions and aliasCaller now pass 'USD' to formatPrice. Check that none should pass another currency.",
         "nodeIds": [
           "n_2c1f143cc3a2bbb9",
           "n_419cb969b56bba51",
@@ -62,9 +41,30 @@
         "childGroupIds": []
       },
       {
-        "id": "unrelated-edits",
-        "title": "Edits that look unrelated to the signature changes",
-        "description": "viaMethod calls a formatPrice method on Fmt, which is a different symbol from price.ts. use_calc calls a tax method on Calc, not the module tax(). legacyLabel changes a string and uses the legacy price module. The config.json currency changes from USD to EUR, and no changed code reads it. Confirm each of these is intended.",
+        "id": "tax-contract",
+        "title": "tax gains a rate parameter",
+        "description": "tax now takes an optional rate, defaulting to 0.1, and multiplies by it. Existing one-argument calls keep their old behaviour. Check the default is still right.",
+        "nodeIds": [
+          "n_a28e241d8b72b42e"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "tax-callers",
+        "title": "Tax callers pass a 0.2 rate",
+        "description": "order_total and refund now pass 0.2 as the rate. Check that both should use 0.2 rather than the default.",
+        "nodeIds": [
+          "n_d6e20a1e36e89f35",
+          "n_d6f3f1118f317669"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "unrelated",
+        "title": "Edits that look unrelated",
+        "description": "These changes do not call the changed formatPrice or tax functions. viaMethod calls a method on Fmt, and use_calc calls a method on Calc. legacyLabel uses the separate legacy formatPrice and changes its label. config.json changes the currency value. Confirm each one is intended.",
         "nodeIds": [
           "n_7494b29a98f930be",
           "n_587765b9e0f477d8",
@@ -76,99 +76,33 @@
       }
     ],
     "groupOrder": [
+      "price-contract",
+      "price-callers",
       "tax-contract",
       "tax-callers",
-      "format-contract",
-      "format-callers",
-      "unrelated-edits"
+      "unrelated"
     ],
     "edgeVerdicts": [
       {
-        "edgeId": "e_131c5d5bf23e738e",
+        "edgeId": "e_a09331d50782041a",
         "verdict": "no",
         "via": null,
-        "reason": "use_calc calls the tax method of class Calc, which takes one argument. It does not call the module-level tax function.",
+        "reason": "The receiver f is typed Fmt, so f.formatPrice is the Fmt method, not the changed top-level formatPrice function.",
         "citedLine": {
-          "path": "calc.py",
+          "path": "src/fmt.ts",
           "side": "new",
           "line": 7
         }
       },
       {
-        "edgeId": "e_28f1d50ac07cebdd",
-        "verdict": "yes",
-        "via": "direct",
-        "reason": "order_total imports tax from tax.py and calls it directly.",
-        "citedLine": {
-          "path": "orders.py",
-          "side": "new",
-          "line": 5
-        }
-      },
-      {
-        "edgeId": "e_5f1585d970cb2925",
-        "verdict": "yes",
-        "via": "alias",
-        "reason": "refund calls tax through the namespace import t, which is the tax module imported as t.",
-        "citedLine": {
-          "path": "refunds.py",
-          "side": "new",
-          "line": 5
-        }
-      },
-      {
-        "edgeId": "e_88d08d11e2535c89",
-        "verdict": "yes",
-        "via": "direct",
-        "reason": "checkoutSummary imports formatPrice from ./price.ts and calls it.",
-        "citedLine": {
-          "path": "src/checkout.ts",
-          "side": "new",
-          "line": 4
-        }
-      },
-      {
-        "edgeId": "e_a09331d50782041a",
+        "edgeId": "e_131c5d5bf23e738e",
         "verdict": "no",
         "via": null,
-        "reason": "viaMethod calls formatPrice on a Fmt instance. Fmt.formatPrice is a different method that takes one argument and is not the function in price.ts.",
+        "reason": "Calc().tax is a method on Calc, not the changed top-level tax function in tax.py.",
         "citedLine": {
-          "path": "src/fmt.ts",
+          "path": "calc.py",
           "side": "new",
-          "line": 8
-        }
-      },
-      {
-        "edgeId": "e_cdcd08f2f2ce4b2d",
-        "verdict": "yes",
-        "via": "direct",
-        "reason": "invoiceSummary imports formatPrice from ./price.ts and calls it.",
-        "citedLine": {
-          "path": "src/invoice.ts",
-          "side": "new",
-          "line": 4
-        }
-      },
-      {
-        "edgeId": "e_164944865a55be5e",
-        "verdict": "yes",
-        "via": "direct",
-        "reason": "receiptSummary imports formatPrice from ./price.ts and calls it.",
-        "citedLine": {
-          "path": "src/receipt.ts",
-          "side": "new",
-          "line": 4
-        }
-      },
-      {
-        "edgeId": "e_48101f5e623758ac",
-        "verdict": "yes",
-        "via": "alias",
-        "reason": "aliasCaller calls fmt, which src/reexport.ts defines as a re-export of formatPrice from ./price.ts under the name fmt.",
-        "citedLine": {
-          "path": "src/reexport.ts",
-          "side": "new",
-          "line": 1
+          "line": 7
         }
       }
     ],

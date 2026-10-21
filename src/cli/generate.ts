@@ -4,7 +4,8 @@
 //
 // Output (D9): `.better-code-review/reviews/<target>/` at the repository root, unless
 // `outputDirectory` is given. It holds `changes.json`, `graph.json`, `planner-input.md` (the
-// planner's model input, #22), `plan.json` (the deterministic fallback plan, #24, which the agent
+// planner's model input, #22), `candidates/batch-<n>.md` (the caller candidates the agent judges,
+// #43, when there are any), `plan.json` (the deterministic fallback plan, #24, which the agent
 // replaces with its own) and `summary.txt`, the capability and coverage summary that is also
 // printed. A rerun on the same target overwrites them. The first run with the default location
 // adds `.better-code-review/` to `.git/info/exclude`, never to a tracked `.gitignore`.
@@ -33,7 +34,14 @@ import { extractChangeSet, type ExtractOptions } from '../git/extract.ts';
 import { describeTarget } from '../git/describe.ts';
 import { gitLine } from '../git/run.ts';
 import { buildGraph, hunkCoverage } from '../graph/index.ts';
-import { fallbackPlan, plannerInput, type PlannerInput } from '../planner/index.ts';
+import {
+  CANDIDATES_DIR,
+  candidateBatches,
+  fallbackPlan,
+  plannerInput,
+  type Candidates,
+  type PlannerInput,
+} from '../planner/index.ts';
 import {
   UNGROUPED_GROUP_ID,
   type ChangeGraph,
@@ -63,6 +71,8 @@ export interface GenerateResult {
   changeSet: ChangeSet;
   graph: ChangeGraph;
   planner: PlannerInput;
+  /** The caller candidates for the agent to judge (#43), written to `candidates/`. */
+  candidates: Candidates;
   /** The fallback plan written as plan.json. */
   plan: ReviewPlan;
   summary: string;
@@ -133,16 +143,23 @@ export async function generate(
   } else {
     outputDirectory = resolve(request.outputDirectory);
   }
-  const planner = plannerInput(changeSet, graph);
+  const candidates = await candidateBatches(structure, graph, files);
+  const planner = plannerInput(changeSet, graph, { candidates });
   const plan = fallbackPlan(graph);
-  const summary = summarise(changeSet, graph, planner, plan);
+  const summary = summarise(changeSet, graph, planner, plan, candidates);
   mkdirSync(outputDirectory, { recursive: true });
   writeJson(join(outputDirectory, 'changes.json'), changeSet);
   writeJson(join(outputDirectory, 'graph.json'), graph);
   writeFileSync(join(outputDirectory, 'planner-input.md'), planner.text);
+  // A rerun may have fewer batches than the last run: never leave a stale one behind.
+  rmSync(join(outputDirectory, CANDIDATES_DIR), { recursive: true, force: true });
+  if (candidates.batches.length > 0) mkdirSync(join(outputDirectory, CANDIDATES_DIR));
+  for (const batch of candidates.batches) {
+    writeFileSync(join(outputDirectory, batch.file), batch.text);
+  }
   writeJson(join(outputDirectory, 'plan.json'), plan);
   writeFileSync(join(outputDirectory, 'summary.txt'), summary);
-  return { outputDirectory, changeSet, graph, planner, plan, summary };
+  return { outputDirectory, changeSet, graph, planner, candidates, plan, summary };
 }
 
 /** `<target>` of the default output directory (D9). */
@@ -222,6 +239,7 @@ export function summarise(
   graph: ChangeGraph,
   planner: PlannerInput,
   plan: ReviewPlan,
+  candidates?: Candidates,
 ): string {
   const lines: string[] = [];
   // `2 symbol, 1 file`: counts first, unlike the planner input's `tally()`.
@@ -256,6 +274,19 @@ export function summarise(
       (hunks.truncated > 0 ? ` (${hunks.truncated} truncated)` : '') +
       (planner.redactions > 0 ? `, ${count(planner.redactions, 'secret')} redacted` : ''),
   );
+  if (candidates !== undefined) {
+    const { open, notAdjudicated, settled } = candidates.selection;
+    const batches = candidates.batches.length;
+    lines.push(
+      `Judge     ${count(open.length, 'possible edge')}` +
+        (batches > 0 ? ` in ${count(batches, 'batch', 'batches')}` : '') +
+        `, ${settled.length.toLocaleString('en')} settled without AI` +
+        (notAdjudicated.length > 0
+          ? `, ${notAdjudicated.length.toLocaleString('en')} not adjudicated (over the cap)`
+          : '') +
+        (candidates.redactions > 0 ? `, ${count(candidates.redactions, 'secret')} redacted` : ''),
+    );
+  }
   const ungrouped = plan.groups.find((g) => g.id === UNGROUPED_GROUP_ID)?.nodeIds.length ?? 0;
   lines.push(
     `Plan      fallback, ${count(plan.groups.length - (ungrouped > 0 ? 1 : 0), 'group')}` +
