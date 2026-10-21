@@ -1,6 +1,7 @@
 # Candidate search and AI adjudication: validation on real PRs
 
 **Status:** Done · **Date:** 2026-10-19 · **Issue:** #42 (part of #1, Milestone M0)
+**Follow-up:** [#43 results](#43-results-the-ai-step-as-built) measure the AI step as built (2026-10-20).
 **Refs:** `docs/research/existing-tools.md` § "Analysis approach" · [ADR 0001](../adr/0001-analyzer-runtime.md) · [MVP spec](../mvp-spec.md) D2, D6, D12
 
 ## Recommendation
@@ -272,6 +273,81 @@ Response (run 1):
 ```
 
 `h4` shows the context-policy gap that change 7 fixes: the re-export line isn't shown.
+
+## #43 results: the AI step as built
+
+**Date:** 2026-10-20 · **Issue:** #43 · **Model:** `claude-sonnet-5-5` (plus one `claude-haiku-5-5` smoke run)
+
+#43 built the AI step this spike recommended (step 7, with the context policy from [Pipeline changes](#pipeline-changes) item 7), and ran it the way the product does. The agent runs the whole skill: `generate --no-lsp`, `planner-input.md`, the `candidates/batch-<n>.md` files, and a validated `plan.json` with its `edgeVerdicts`. Unlike the spike's bare `claude -p` calls, the cost below includes grouping and planning the whole change, not just the verdicts.
+
+Ground truth is a language server:
+- on the fixtures, each fixture's `withLsp` facts;
+- on the pull requests, `generate` with servers (typescript-language-server 6.0.2, pyright 1.1.414, jdtls 1.62 in Docker), on the same snapshot.
+
+`npm run score:adjudication` scores the edges the batches asked about. Edges the server leaves `possible` have no truth and are not scored.
+
+### Fixtures (`npm run eval`, `--runs 3`)
+
+| Fixture | Model | Runs | Asked | Yes ✓/✗ | No ✓/✗ | Unsure | Precision | Recall | Identical | Cost |
+|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| signature | Haiku | 1 | 2 | 0/0 | 2/0 | 0 | – | – | 2/2 | $0.009 |
+| signature | Sonnet | 3 | 6 | 0/0 | 6/0 | 0 | – | – | 2/2 | $0.353 |
+| interface-impl | Sonnet | 3 | 24 | 15/0 | 9/0 | 0 | 100% | 100% | 8/8 | $0.408 |
+| same-name | Sonnet | 3 | 9 | 3/0 | 6/0 | 0 | 100% | 100% | 3/3 | $0.306 |
+| override-dispatch | Sonnet | 3 | 3 | 3/0 | 0/0 | 0 | 100% | 100% | 1/1 | $0.248 |
+| override-dispatch-python | Sonnet | 3 | 3 | 3/0 | 0/0 | 0 | 100% | 100% | 1/1 | $0.248 |
+| **Total** | | 16 | 47 | 24/0 | 23/0 | 0 | **100%** | **100%** | **17/17, no flips** | **$1.57** |
+
+Only these five fixtures have candidates. On the rest, import resolution or the unambiguous rule settles every `possible` edge.
+
+### #42's pull requests (one Sonnet run each)
+
+The same base and head commits as above, staged as a local change. HEAD is the base, the index is the head, and installed dependencies are excluded. The servers can then resolve the project.
+
+| PR | Edges (no LSP) | Settled without AI | Asked | Scored | Yes ✓/✗ | No ✓/✗ | Unsure | Cost | Tokens in / out |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| date-fns | 11 | 10 | 1 | 1 | 0/0 | 1/0 | 0 | $0.167 | 154k / 3.9k |
+| hono | 0 | 0 | 0 | – | – | – | – | – | – |
+| httpx | 20 | 18 | 2 | 2 | 0/0 | 2/0 | 0 | $0.203 | 131k / 3.3k |
+| click | 40 | 10 | 30 | 27 | 23/0 | 2/**2** | 0 | $0.433 | 568k / 13.2k |
+| gson | 19 | 15 | 4 | 4 | 4/0 | 0/0 | 0 | $0.198 | 131k / 2.7k |
+| jsoup | 304 | 98 | 206 | 134 | 74/**3** | 41/**16** | 0 | $1.460 | 2.13M / 52.2k |
+| **Total, raw** | 394 | 151 | **243** | 168 | 101/3 | 46/18 | 0 | **$2.46** | |
+
+Raw scores against the servers: 97.1% precision, 84.9% recall, 15.1% false rejections.
+
+**Audit.** As in the spike, every disagreement was checked by hand.
+- **The 3 jsoup "false accepts" are correct.**
+  - The target, `QuietAppendable.append`, is an overload set and therefore one changed entity (#15, [Pipeline changes](#pipeline-changes) item 3).
+  - The calls were `accum.append(' ')` and `sb.append(chars, 0, 2)`, which reach the `char` and `char[]` overloads.
+  - The server was asked about the first overload only, so it "rejected" them. That is a gap in the LSP query: it should ask every member of an overload set. It is not an AI error.
+- **2 click and 15 jsoup false rejections were right about the code they were shown, but the batch left out the evidence that makes the edge real.** Both are context gaps in the AI step, not reasoning errors.
+  - **click (2):** both are test-file edges to two nested `cli` functions in `tests/test_basic.py`. The graph keeps one hit per side for a test-file edge (D2), here line 421, and the batch showed only that hit. It calls a different test's `cli`. The real calls, at lines 452 and 476, were never shown.
+  - **jsoup (15):** all are edges to `QuietAppendableTest.brokenAppender.append`, an anonymous `java.lang.Appendable` in a test. On the old side, every caller wrote to an `Appendable accum`, so each call can dispatch to the stub, and the server confirms the old-side hits. On the new side, `accum` is a `QuietAppendable`, which is not an `Appendable`, and the server agrees nothing there reaches the stub. The batch shows only the new side when an edge has new-side hits.
+- **1 jsoup false rejection is a real AI error.** In `QuietAppendable.BaseAppendable.append`, `a.append(csq)` is on a `java.lang.Appendable` field, so it can dispatch to the test's anonymous `Appendable`, which the test wraps on purpose. The model's reason was "the test's anonymous Appendable is not involved". The batch also didn't show that the target sits in `new Appendable() { … }`, because the class header we show only covers named classes.
+
+| | Precision | Recall | False rejections | Unsure |
+|---|--:|--:|--:|--:|
+| #42 baseline (Sonnet, bare calls, 636 decisions) | 100% | 97.2% | 0.5% | 1.9% |
+| #43 raw against the servers (168 scored) | 97.1% | 84.9% | 15.1% | 0% |
+| **#43 audited, by edge** (104 real accepted, 0 wrong, 18 real missed) | **100%** | **85.2%** | **14.8%** | 0% |
+| #43 audited, judged on the code shown (17 context gaps counted correct) | 100% | 99.0% | 1.0% | 0% |
+
+The model behaves as well as in the spike: 0 audited false accepts and 1 audited reasoning error in 168, with no `unsure`. What falls short is what the batch shows: 17 of the 18 missed real edges are context gaps. By edge, recall is 85.2% against the spike's 97.2%.
+
+**Fixes, for follow-up issues:**
+1. **Show the old side too** when an edge has hits on both sides and the code around them differs, or ask about each side. This would cover the 15 jsoup misses. The truth there is technically right, but it is the kind of over-count #42 warned about: a JDK interface reaching a test stub. Whether such old-side-only dispatch edges matter to a reviewer is worth deciding at the same time.
+2. **Keep up to 3 hits per side for a test-file edge** in the evidence (#42's policy), not 1, so the batch can show them. This would cover the 2 click misses.
+3. **Show the `new X() {` line for a method of an anonymous class**, and say in the dispatch rule that an implementation defined in a test or an anonymous class counts too. This would cover the 1 reasoning error. The prompt was not changed in #43.
+4. **Ask the server about every member of an overload set** (#16/#17). The 3 wrong truths came from asking about only the first.
+
+**Cost and volume.**
+- **Decisions:** 243 were asked, against the spike's 636, because import resolution and the unambiguous rule now settle more edges before the AI step. On jsoup, 4 of its 98 settled edges are ones the server rejects; that is an import-resolution precision note.
+- **Cost:** $2.46 for the five pull requests and $1.57 for the fixtures, $4.03 in all. jsoup was $1.46: 6 batches, about 50k tokens of batch input on top of a 24k planner input.
+- **Comparison with the spike's $1.59:** not like for like. These are whole skill runs with tool turns and cached context, and they plan the change as well as judge it.
+- **Consistency:** run-to-run consistency was measured on the fixtures only (17/17 identical, no yes↔no flips). Each pull request ran once.
+
+**hono: no edges.** The spike found 27 items there. Here, `src/context.ts` is skipped with `parse-error`, so it has no entities, so it gets no candidates. The structural analyzer (#15) treats a tree-sitter tree with errors as unparseable. A partial parse, keeping the entities outside the error regions, would recover most of this. This is a recall gap in candidate search, not in the AI step.
 
 ## Post-MVP note
 

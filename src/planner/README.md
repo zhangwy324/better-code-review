@@ -149,7 +149,7 @@ The same rules as the planner input apply: repository text is fenced and untrust
 - **Settled edges are not judged.** An edge import resolution or the unambiguous rule accepted stays `possible` with the reason `settled`, and the AI is not asked about it. It is not shown as `inferred`, which stays reserved for the agent's verdicts (D6).
 - **The validator accepts a verdict on any `possible` edge**, including one the batches did not ask about (settled, or over the cap). The skill asks for none, but an agent that adds one is not sent round the repair loop for it. Its label then follows the verdict.
 
-**Measuring.** `npm run eval` keeps every plan it gets, and `npm run score:adjudication` scores their verdicts against ground truth ([CONTRIBUTING](../../CONTRIBUTING.md#testing-ai-steps)).
+**Measuring.** `npm run eval` keeps every plan it gets, and `npm run score:adjudication` scores their verdicts against ground truth ([CONTRIBUTING](../../CONTRIBUTING.md#testing-ai-steps)). Results on the fixtures and #42's pull requests, audited, with the gaps they found: [candidate-adjudication.md](../../docs/research/candidate-adjudication.md#43-results-the-ai-step-as-built).
 
 ## Fallback plan
 
