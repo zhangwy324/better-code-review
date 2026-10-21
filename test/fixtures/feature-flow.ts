@@ -121,5 +121,17 @@ export const featureFlow: Fixture = {
       'test/orders.test.ts calls createOrder [src/services/orders.ts] (new)',
     ],
   },
-  later: ['M2: the plan reads the flow in order, route → service → persistence → test (#26).'],
+  // The flow in order: route, service, persistence, test (decided in #26: entry point first, not
+  // callee first).
+  plan: {
+    order: [
+      [
+        ['postOrder'],
+        ['createOrder [src/services/orders.ts]'],
+        ['insertOrder'],
+        ['createOrder.assigns an id'],
+      ],
+    ],
+  },
+  later: [],
 };

@@ -5,20 +5,17 @@
 //
 // Clustering: two nodes belong together when a code edge joins them (any provenance or side), or
 // when they are in the same file. A test-file edge joins its target to the test file's nodes.
-// Each cluster of two or more nodes is a group; a node joined to nothing goes into the
-// `ungrouped` group ("Ungrouped / requires review"), last. The plan adds no verdicts and no
+// Each cluster of two or more nodes is a group. A code node joined to nothing is a group of its
+// own, an independent change (design reference §13.5). File nodes joined to nothing (config,
+// docs, binaries, unsupported languages) share one last group. The plan adds no verdicts and no
 // inferred relationships, so every candidate edge stays `possible`.
 //
-// Groups and their nodes follow the graph's node order, so the same graph always gives the same
-// plan. The plan passes `validatePlan()` unchanged: every node already has a home.
+// Groups follow the graph's node order. Within a group, a callee comes before its callers, so a
+// contract is read first; otherwise nodes keep graph order. The same graph always gives the same
+// plan, and it passes `validatePlan()` unchanged: every node already has a home, so nothing is
+// left for Ungrouped.
 import type { ChangeGraph, ChangeNode } from '../schemas/graph.ts';
-import {
-  PLAN_SCHEMA_VERSION,
-  UNGROUPED_GROUP_ID,
-  UNGROUPED_TITLE,
-  type ReviewGroup,
-  type ReviewPlan,
-} from '../schemas/plan.ts';
+import { PLAN_SCHEMA_VERSION, type ReviewGroup, type ReviewPlan } from '../schemas/plan.ts';
 import { count, list } from '../text/index.ts';
 
 /** The `fallbackReason` of a plan made because no agent was involved. */
@@ -54,36 +51,64 @@ export function fallbackPlan(graph: ChangeGraph, reason: string = NO_AGENT_REASO
   });
 
   const groups: ReviewGroup[] = [];
-  const alone: string[] = [];
+  const files: ChangeNode[] = [];
   for (const nodes of clusters.values()) {
-    if (nodes.length === 1) alone.push(nodes[0]!.id);
-    else groups.push(group(`g${groups.length + 1}`, nodes, graph));
+    if (nodes.length === 1 && nodes[0]!.kind === 'file') files.push(nodes[0]!);
+    else groups.push(group(`g${groups.length + 1}`, calleesFirst(nodes, graph), graph));
   }
-  if (alone.length > 0) {
+  const clustered = groups.length;
+  if (files.length > 0) {
     groups.push({
-      id: UNGROUPED_GROUP_ID,
-      title: UNGROUPED_TITLE,
-      description: 'Changes with no code edge to another change and no other change in their file.',
-      nodeIds: alone,
+      id: `g${groups.length + 1}`,
+      title: 'Other changed files',
+      description: `${count(files.length, 'file')} with no code structure and no code edge to another change: ${list(files.map((n) => n.path))}.`,
+      nodeIds: files.map((n) => n.id),
       referenceNodeIds: [],
       childGroupIds: [],
     });
   }
 
-  const clustered = groups.length - (alone.length > 0 ? 1 : 0);
   return {
     schemaVersion: PLAN_SCHEMA_VERSION,
     snapshotId: graph.snapshotId,
     origin: 'fallback',
     fallbackReason: reason,
     summary:
-      `Grouped without AI: ${count(clustered, 'group')} of changes joined by a code edge or a shared file` +
-      (alone.length > 0 ? `, and ${count(alone.length, 'node')} in ${UNGROUPED_TITLE}.` : '.'),
+      `Grouped without AI: ${count(clustered, 'group')} of changes joined by a code edge or a shared file, or standing alone` +
+      (files.length > 0 ? `, and ${count(files.length, 'other changed file')}.` : '.'),
     groups,
     groupOrder: groups.map((g) => g.id),
     edgeVerdicts: [],
     inferredRelationships: [],
   };
+}
+
+/**
+ * `nodes` with each callee before its callers: a node is placed once every node of the cluster it
+ * calls or references is. A test-file edge counts as coming from every node in the test file. A
+ * cycle is broken by taking the first unplaced node in graph order.
+ */
+function calleesFirst(nodes: ChangeNode[], graph: ChangeGraph): ChangeNode[] {
+  const ids = new Set(nodes.map((n) => n.id));
+  const callees = new Map(nodes.map((n) => [n.id, new Set<string>()]));
+  for (const edge of graph.codeEdges) {
+    if (!ids.has(edge.to)) continue;
+    const from =
+      edge.granularity === 'entity'
+        ? [edge.from]
+        : nodes.filter((n) => n.path === edge.fromPath).map((n) => n.id);
+    for (const id of from) if (id !== edge.to) callees.get(id)?.add(edge.to);
+  }
+  const placed = new Set<string>();
+  const order: ChangeNode[] = [];
+  while (order.length < nodes.length) {
+    const unplaced = nodes.filter((n) => !placed.has(n.id));
+    const next =
+      unplaced.find((n) => [...callees.get(n.id)!].every((c) => placed.has(c))) ?? unplaced[0]!;
+    placed.add(next.id);
+    order.push(next);
+  }
+  return order;
 }
 
 /** A group for one cluster, named after its most called node, or its file when it has no edges. */

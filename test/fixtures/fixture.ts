@@ -37,6 +37,23 @@ export interface WithLsp {
   possible?: string[];
 }
 
+/**
+ * What an agent's plan must do on the fixture (#26), checked by test/ai/score.ts on every live
+ * eval run and recording. Nodes are named as in `ExpectedFacts.nodes`, without the kind.
+ */
+export interface PlanFacts {
+  /**
+   * Reading chains, each a list of steps: every node of a step is read before every node of the
+   * next. A node is read where its home group is in the reading order (`groupOrder`, each group
+   * followed by its children), and within one group in `nodeIds` order.
+   */
+  order?: string[][][];
+  /** Node sets that each share one home group. */
+  together?: string[][];
+  /** Node sets that share no home group with each other. */
+  apart?: string[][];
+}
+
 export interface Fixture {
   /** Kebab-case; `npm run fixtures -- <name> <dir>`. */
   name: string;
@@ -48,7 +65,9 @@ export interface Fixture {
   expected: ExpectedFacts;
   /** With a language server; every edge is verified when omitted. */
   withLsp?: WithLsp;
-  /** Facts for a later milestone or issue, not checked yet; #26 turns the planner ones into assertions. */
+  /** What an agent's plan must do; only checked on live and recorded runs. */
+  plan?: PlanFacts;
+  /** Facts for a later milestone or issue, not checked yet. */
   later: string[];
 }
 

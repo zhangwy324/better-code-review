@@ -8,7 +8,8 @@
 // - The plan matches the schema. It is strict, so unknown fields (code text, a `provenance` on a
 //   verdict) are rejected, and no verdict can say `verified` (D6).
 // - The plan is for the graph's snapshot, and an agent plan has no `fallbackReason`.
-// - Group and inferred relationship IDs are unique; `ungrouped` is reserved for top-level use.
+// - Group and inferred relationship IDs are unique. `ungrouped` is reserved: the validator makes
+//   it, so an agent plan can't name a group that, and a fallback plan's is top-level only.
 // - Every node a group lists exists, and has at most one home group (D2). A group may list a
 //   node homed elsewhere in `referenceNodeIds`, so groups overlap but coverage stays unambiguous.
 // - Groups nest one level (D2): a child exists, is not the group itself, has no children of its
@@ -122,6 +123,13 @@ function planErrors(
       error(['groups', i, 'id'], 'duplicate-id', `group ID ${group.id} is used twice; rename one`);
     } else {
       groups.set(group.id, group);
+    }
+    if (group.id === UNGROUPED_GROUP_ID && plan.origin === 'agent') {
+      error(
+        ['groups', i, 'id'],
+        'reserved-id',
+        `group ID ${UNGROUPED_GROUP_ID} is reserved; rename the group, or leave its nodes out of every group and the validator puts them in ${UNGROUPED_TITLE}`,
+      );
     }
   });
 

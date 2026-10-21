@@ -35,7 +35,7 @@ Fetch only what a decision needs. Everything `show` prints goes to the model.
 ## Grouping
 
 1. **Find the roots.** A root is a change other changes follow from: a signature or contract change, a new endpoint, a renamed type. Code edges point at them (`callee ← caller`). A change can have several independent roots.
-2. **Group by purpose.** A useful default for one root is: the contract or definition, then the code that propagates it (callers, implementations), then tests, then config and docs. Independent roots get their own groups. An edit unrelated to the rest gets its own group, and its description says it looks unrelated.
+2. **Group by purpose.** A useful default for one root is: the contract or definition, then the code that propagates it (callers, implementations), then tests, then config and docs. Independent roots get their own groups. An edit unrelated to the rest gets its own group, and its description says it looks unrelated. A node whose only edges to a root you judged `no` (see [Verdicts](#verdicts-on-possible-edges)) is not its caller: put it with the unrelated edits, not with that root's callers.
 3. **Keep it small.** Aim for 2 to 7 top-level groups. A group of one node is fine for a root, but not for every node.
 4. **Nest only when it helps.** A group may list child groups in `childGroupIds`, one level deep, for example callers split by module. A child has one parent, no children of its own, and is not in `groupOrder`.
 5. **Home and reference.** Each node has one home group (`nodeIds`). To show it in another group's context as well, list it there in `referenceNodeIds`.

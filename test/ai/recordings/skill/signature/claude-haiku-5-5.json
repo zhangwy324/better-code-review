@@ -2,25 +2,25 @@
   "task": "skill",
   "fixture": "signature",
   "model": "claude-haiku-5-5",
-  "inputHash": "sha256:cd54dcfb60bda782cec3151b09846559949ce945b595b3e41d5ed083287150df",
+  "inputHash": "sha256:cac1513c303985b9c2ec72d5044e700dcc7c606cce939e40175e617fcbdaa876",
   "usage": {
-    "inputTokens": 18,
-    "outputTokens": 5295,
-    "cacheCreationInputTokens": 22457,
-    "cacheReadInputTokens": 150445
+    "inputTokens": 16,
+    "outputTokens": 4135,
+    "cacheCreationInputTokens": 22183,
+    "cacheReadInputTokens": 125201
   },
-  "costUsd": 0.008645150000000002,
+  "costUsd": 0.007757710000000001,
   "output": {
     "schemaVersion": 1,
     "snapshotId": "a0b62ae0c49101d19bd6688a47e1b7c526f614807da717ddad4626e875de8bec",
     "origin": "agent",
     "fallbackReason": null,
-    "summary": "formatPrice gains a currency parameter and tax gains a rate parameter, and their callers in the TypeScript and Python files are updated to match. The four formatPrice callers pass 'USD' and the two tax callers pass 0.2. Several other edits look unrelated: the config currency, the legacyLabel text and formatPrice import from legacy/price.ts, the viaMethod call on Fmt, and the Calc.tax call in calc.py. Check that every formatPrice caller should pass 'USD' and that the 0.2 rate is intended in each tax caller.",
+    "summary": "formatPrice gains a required currency parameter, and the TypeScript callers in checkout, invoice, receipt and the reexport alias pass 'USD'. tax gains an optional rate parameter (default 0.1), and order_total and refund pass 0.2. Two same-named calls (Fmt.formatPrice and Calc.tax methods) were rejected as different symbols. config.json and the legacyLabel string change look unrelated to the two signature changes.",
     "groups": [
       {
-        "id": "price-contract",
+        "id": "formatprice-contract",
         "title": "formatPrice gains a currency parameter",
-        "description": "The definition now takes a currency and prefixes it to the formatted amount. Read it first. Confirm that the output format change is intended for every consumer.",
+        "description": "The definition now takes a currency and returns a currency-prefixed string. Read it first. Check that the legacy formatPrice in src/legacy/price.ts is not meant to change too.",
         "nodeIds": [
           "n_5f473b23f87b2103"
         ],
@@ -28,9 +28,9 @@
         "childGroupIds": []
       },
       {
-        "id": "price-callers",
-        "title": "Price callers pass 'USD'",
-        "description": "Four summary functions and aliasCaller now pass 'USD' to formatPrice. Check that none should pass another currency.",
+        "id": "formatprice-callers",
+        "title": "Callers pass 'USD' to formatPrice",
+        "description": "checkoutSummary, invoiceSummary and receiptSummary hardcode 'USD', and aliasCaller passes 'USD' to fmt through a re-export. Check that none of these should use another currency, and that they agree with the currency in config.json.",
         "nodeIds": [
           "n_2c1f143cc3a2bbb9",
           "n_419cb969b56bba51",
@@ -42,19 +42,10 @@
       },
       {
         "id": "tax-contract",
-        "title": "tax gains a rate parameter",
-        "description": "tax now takes an optional rate, defaulting to 0.1, and multiplies by it. Existing one-argument calls keep their old behaviour. Check the default is still right.",
+        "title": "tax gains an optional rate parameter",
+        "description": "tax now takes a rate that defaults to 0.1. order_total and refund pass 0.2 explicitly, so their totals change. Check that 0.2 is the intended rate for both.",
         "nodeIds": [
-          "n_a28e241d8b72b42e"
-        ],
-        "referenceNodeIds": [],
-        "childGroupIds": []
-      },
-      {
-        "id": "tax-callers",
-        "title": "Tax callers pass a 0.2 rate",
-        "description": "order_total and refund now pass 0.2 as the rate. Check that both should use 0.2 rather than the default.",
-        "nodeIds": [
+          "n_a28e241d8b72b42e",
           "n_d6e20a1e36e89f35",
           "n_d6f3f1118f317669"
         ],
@@ -63,11 +54,11 @@
       },
       {
         "id": "unrelated",
-        "title": "Edits that look unrelated",
-        "description": "These changes do not call the changed formatPrice or tax functions. viaMethod calls a method on Fmt, and use_calc calls a method on Calc. legacyLabel uses the separate legacy formatPrice and changes its label. config.json changes the currency value. Confirm each one is intended.",
+        "title": "Other edits that do not follow from the signature changes",
+        "description": "use_calc and viaMethod call same-named methods (Calc.tax, Fmt.formatPrice), not the changed functions, so they are not callers. legacyLabel uses a different formatPrice from src/legacy/price.ts. config.json changes the currency to EUR while the callers above hardcode USD. Confirm these are intended.",
         "nodeIds": [
-          "n_7494b29a98f930be",
           "n_587765b9e0f477d8",
+          "n_7494b29a98f930be",
           "n_42f00308fe62dbb4",
           "n_b66ceb730ab3e4b1"
         ],
@@ -76,10 +67,9 @@
       }
     ],
     "groupOrder": [
-      "price-contract",
-      "price-callers",
+      "formatprice-contract",
+      "formatprice-callers",
       "tax-contract",
-      "tax-callers",
       "unrelated"
     ],
     "edgeVerdicts": [
@@ -87,18 +77,18 @@
         "edgeId": "e_a09331d50782041a",
         "verdict": "no",
         "via": null,
-        "reason": "The receiver f is typed Fmt, so f.formatPrice is the Fmt method, not the changed top-level formatPrice function.",
+        "reason": "f is typed as Fmt and the call resolves to the Fmt.formatPrice method, not the exported formatPrice function in price.ts.",
         "citedLine": {
           "path": "src/fmt.ts",
           "side": "new",
-          "line": 7
+          "line": 8
         }
       },
       {
         "edgeId": "e_131c5d5bf23e738e",
         "verdict": "no",
         "via": null,
-        "reason": "Calc().tax is a method on Calc, not the changed top-level tax function in tax.py.",
+        "reason": "Calc().tax is a method on the Calc class in calc.py, not the module-level tax function in tax.py.",
         "citedLine": {
           "path": "calc.py",
           "side": "new",

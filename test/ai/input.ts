@@ -16,8 +16,10 @@ import {
 import { createHash } from 'node:crypto';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gitSnapshotFiles, type SnapshotFiles } from '../../src/analysis/semantic/index.ts';
 import { generate, targetName } from '../../src/cli/generate.ts';
 import { CANDIDATES_DIR, estimateTokens } from '../../src/planner/index.ts';
+import type { ChangeGraph } from '../../src/schemas/index.ts';
 import type { Fixture } from '../fixtures/fixture.ts';
 import { buildFixtureRepo } from '../fixtures/repo.ts';
 
@@ -62,6 +64,9 @@ export interface ModelInput {
   inputHash: string;
   /** `estimateTokens` over everything hashed. `show` output fetched on demand isn't counted. */
   estimatedTokens: number;
+  /** The graph the agent plans against and its snapshot, for scoring its plan (score.ts). */
+  graph: ChangeGraph;
+  files: SnapshotFiles;
 }
 
 /** Builds `fixture` under `dir`, installs the skill and the CLI, and returns the model input. */
@@ -70,7 +75,7 @@ export async function modelInput(task: Task, fixture: Fixture, dir: string): Pro
   const { head } = buildFixtureRepo(repo, fixture);
   // Generated outside the repository, only to hash what the agent's own `generate` will show it.
   const review = join(dir, 'review');
-  const { changeSet } = await generate({
+  const { changeSet, graph } = await generate({
     repositoryPath: repo,
     target: { kind: 'commit', commit: head },
     outputDirectory: review,
@@ -99,6 +104,8 @@ export async function modelInput(task: Task, fixture: Fixture, dir: string): Pro
     env: { PATH: `${bin}${delimiter}${process.env.PATH ?? ''}` },
     inputHash: inputHash(parts),
     estimatedTokens: parts.reduce((sum, [, text]) => sum + estimateTokens(text), 0),
+    graph,
+    files: gitSnapshotFiles(repo, changeSet),
   };
 }
 

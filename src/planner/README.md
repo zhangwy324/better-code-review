@@ -110,7 +110,7 @@ It prints JSON and exits 0 when the plan is valid, 1 when it isn't:
 | `snapshot` | `snapshotId` is not the graph's |
 | `origin` | An agent plan with a `fallbackReason` |
 | `duplicate-id` | A group or inferred relationship ID used twice |
-| `reserved-id` | `ungrouped` used as a child group |
+| `reserved-id` | `ungrouped` used as a group ID in an agent plan, or as a child group |
 | `unknown-id` | A node, group or edge that does not exist. Verdicts can't add edges |
 | `multiple-homes` | A node in more than one group's `nodeIds`, or listed twice in one group |
 | `nesting` | A group inside itself, two levels deep, or with two parents |
@@ -120,7 +120,7 @@ It prints JSON and exits 0 when the plan is valid, 1 when it isn't:
 
 All errors are reported at once. Schema errors come alone, since the other rules need a well-formed plan.
 
-**Ungrouped.** Nodes the plan gives no home are not an error. `validatePlan()` puts them in the `ungrouped` group ("Ungrouped / requires review", D1), making it last in `groupOrder` if the plan has none, and `validate` lists them so the agent can place them. Since the graph puts every hunk on a node, every hunk is then visible. A valid plan with every node placed comes back unchanged.
+**Ungrouped.** Nodes the plan gives no home are not an error. `validatePlan()` puts them in the `ungrouped` group ("Ungrouped / requires review", D1), last in `groupOrder`, and `validate` lists them so the agent can place them. Since the graph puts every hunk on a node, every hunk is then visible. A valid plan with every node placed comes back unchanged.
 
 **Citations** may point at unchanged files, because `show --file` lets the agent read them. The line must exist on that side of the snapshot. Files with omitted content (binary, too large, not UTF-8) can't be cited.
 
@@ -156,11 +156,11 @@ The same rules as the planner input apply: repository text is fenced and untrust
 `generate` always writes `plan.json` with `fallbackPlan()`, so the renderer has a plan without any model (design reference §8.1, MVP spec D8). The agent overwrites it with its own. The same function makes the plan to use when the agent's plan still fails after the repair loop: `better-code-review fallback --dir <dir>` writes it from `graph.json`, with a `fallbackReason` saying so.
 
 - **Clustering.** Two nodes go together when a code edge joins them (of any provenance or side) or when they are in the same file. A test-file edge joins its target to the test file's nodes. Each cluster of two or more nodes is a group, titled after its node with the most incoming edges (`formatPrice and related changes`), or `Changes in <path>` when it has no edges.
-- **Ungrouped.** A node joined to nothing goes into the `ungrouped` group ("Ungrouped / requires review", D1), last in `groupOrder`. Every node has a home, so `validatePlan()` returns the plan unchanged.
+- **Lone changes.** A code node joined to nothing is a group of its own, `Changes in <path>`: an independent change (design reference §13.5). File nodes joined to nothing (config, docs, binaries, unsupported languages) share one group, `Other changed files`, last in `groupOrder`. Every node has a home, so nothing goes to Ungrouped and `validatePlan()` returns the plan unchanged.
 - **Nothing inferred.** No verdicts and no inferred relationships: every candidate edge stays `possible`.
-- **Order.** Groups, and the nodes in each, follow the graph's node order, so the same graph always gives the same plan.
+- **Order.** Groups follow the graph's node order. Within a group, each callee comes before its callers (a test file's edge counts as coming from each of its nodes), so the contract is read first; a cycle is broken in graph order. The same graph always gives the same plan.
 
-`portfolio.test.ts` checks that the plan is valid, with no node left to place, for every fixture. Without a language server, five fixtures have no code edges, so most or all of their nodes are ungrouped.
+`portfolio.test.ts` checks that the plan is valid, with no node left to place, for every fixture. [`docs/research/planner-eval.md`](../../docs/research/planner-eval.md#baseline-the-fallback-plan) scores it against the agent plan checks (#26).
 
 ## Secret avoidance
 

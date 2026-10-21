@@ -166,6 +166,16 @@ describe('liveRunner', () => {
     expect((err as LiveRunError).run.costUsd).toBe(0.0123);
   });
 
+  it('fails a run that hit an API error, saying why', async () => {
+    const { spawn } = fakeSpawn(
+      stream({ is_error: true, result: "You've hit your session limit" }),
+      1,
+    );
+    await expect(
+      liveRunner({ maxBudgetUsd: 0.25, maxTurns: 10, spawn }).run(request),
+    ).rejects.toThrow("Live run failed: You've hit your session limit");
+  });
+
   it('fails a run whose output file is not JSON', async () => {
     const { spawn } = fakeSpawn(stream({}), 0, 'Here is the plan you asked for.');
     await expect(

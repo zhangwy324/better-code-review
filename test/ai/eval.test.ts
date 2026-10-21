@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { run } from '../../src/cli/main.ts';
+import { ChangeGraph } from '../../src/schemas/index.ts';
 import { DEFAULT_BUDGET_USD, type EvalArgs, parseEvalArgs, runEval, TIERS } from './eval.ts';
 import { readRecording, recordingPath } from './recording.ts';
+import { planFromLabels } from './score.ts';
 import type { Spawn } from './runner.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'bcr-eval-test-'));
@@ -52,10 +54,10 @@ describe('parseEvalArgs', () => {
 
 /**
  * A `claude` that does what the skill says without a model: it runs `generate` in the fixture's
- * repository (in process, so it works on every OS), writes `answer(snapshot)` to the review's
+ * repository (in process, so it works on every OS), writes `answer(graph)` to the review's
  * plan.json and reports a cost.
  */
-function fakeClaude(answer: (snapshotId: string) => string): Spawn {
+function fakeClaude(answer: (graph: ChangeGraph) => string): Spawn {
   return async (_command, args, { cwd, env }) => {
     expect(args).toContain('--max-budget-usd');
     expect(existsSync(join(cwd, '.claude/skills/better-code-review/SKILL.md'))).toBe(true);
@@ -66,9 +68,8 @@ function fakeClaude(answer: (snapshotId: string) => string): Spawn {
     const io = { cwd, out: (t: string) => (stdout += t), err: () => {} };
     expect(await run(['generate', '--commit', 'HEAD', '--no-lsp'], io)).toBe(0);
     const dir = join(cwd, /Written to (.+)$/m.exec(stdout)![1]!);
-    const input = readFileSync(join(dir, 'planner-input.md'), 'utf8');
-    const snapshotId = /^Snapshot: (\S+)$/m.exec(input)?.[1] ?? '';
-    writeFileSync(join(dir, 'plan.json'), answer(snapshotId));
+    const graph = ChangeGraph.parse(JSON.parse(readFileSync(join(dir, 'graph.json'), 'utf8')));
+    writeFileSync(join(dir, 'plan.json'), answer(graph));
     const events = [
       { type: 'system', subtype: 'init', model: 'claude-haiku-5-5' },
       {
@@ -84,18 +85,17 @@ function fakeClaude(answer: (snapshotId: string) => string): Spawn {
   };
 }
 
-const validPlan = (snapshotId: string) =>
-  JSON.stringify({
-    schemaVersion: 1,
-    snapshotId,
-    origin: 'agent',
-    fallbackReason: null,
-    summary: 'A signature change.',
-    groups: [],
-    groupOrder: [],
-    edgeVerdicts: [],
-    inferredRelationships: [],
-  });
+/** A plan for the signature fixture that passes every check. */
+const goodPlan = (graph: ChangeGraph) =>
+  JSON.stringify(
+    planFromLabels(graph, {
+      'format-contract': ['formatPrice'],
+      'format-callers': ['checkoutSummary', 'invoiceSummary', 'receiptSummary', 'aliasCaller'],
+      'tax-contract': ['tax'],
+      'tax-callers': ['order_total', 'refund'],
+      unrelated: ['legacyLabel', 'viaMethod', 'use_calc', 'config.json'],
+    }),
+  );
 
 const args: EvalArgs = parseEvalArgs([]);
 
@@ -107,7 +107,7 @@ describe('runEval', () => {
       out: (t) => (printed += t),
       localDir: join(dir, 'local'),
       recordingsDir: join(dir, 'recordings'),
-      spawn: fakeClaude(validPlan),
+      spawn: fakeClaude(goodPlan),
       now: () => new Date('2026-10-20T12:00:00Z'),
     });
 
@@ -115,6 +115,7 @@ describe('runEval', () => {
     expect(printed).toContain('at most $0.25 per run');
     expect(printed).toMatch(/ok {3}signature {2}claude-haiku-5-5 {2}\$0\.0100/);
     expect(printed).toContain('Total cost: $0.0100');
+    expect(printed).toContain('checks: 8/8 pass');
 
     const recording = readRecording(
       recordingPath(join(dir, 'recordings'), {
@@ -151,7 +152,7 @@ describe('runEval', () => {
       out: (t) => (printed += t),
       localDir: join(dir, 'local'),
       recordingsDir: join(dir, 'recordings'),
-      spawn: fakeClaude(validPlan),
+      spawn: fakeClaude(goodPlan),
       now: () => new Date('2026-10-20T12:00:00Z'),
     });
     expect(ok).toBe(true);
@@ -160,6 +161,28 @@ describe('runEval', () => {
       '2026-10-20T12-00-00.000Z-signature-run1.json',
       '2026-10-20T12-00-00.000Z-signature-run2.json',
     ]);
+  });
+
+  it('records a valid plan that fails its checks, and fails the run', async () => {
+    const dir = join(root, 'unchecked');
+    let printed = '';
+    const ok = await runEval(args, {
+      out: (t) => (printed += t),
+      localDir: join(dir, 'local'),
+      recordingsDir: join(dir, 'recordings'),
+      spawn: fakeClaude((graph) => JSON.stringify(planFromLabels(graph, {}))),
+    });
+
+    expect(ok).toBe(false);
+    expect(printed).toContain('FAIL signature');
+    expect(printed).toContain('FAIL homed: ');
+    expect(printed).toContain('list them in KNOWN_FAILS in replay.test.ts');
+    expect(existsSync(join(dir, 'recordings'))).toBe(true);
+    const [logLine] = readFileSync(join(dir, 'local', 'costs.jsonl'), 'utf8')
+      .trim()
+      .split('\n');
+    expect(JSON.parse(logLine!)).toMatchObject({ ok: false });
+    expect((JSON.parse(logLine!) as { failedChecks: string[] }).failedChecks).toContain('homed');
   });
 
   it('fails an invalid plan without recording it, and still logs the cost', async () => {
