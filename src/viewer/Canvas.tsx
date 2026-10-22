@@ -1,6 +1,6 @@
 // The center pane: the interactive graph (design reference §6.1, §6.4; spec D1, D6, D12). Groups
 // start collapsed, in reading order; expanding one lays the canvas out again with its changes
-// inside it. Each edge style is one layer and provenance (model.ts `Link`). Hovering an edge shows
+// inside it, keeping the group and the rest of the canvas where they were (#115). Each edge style is one layer and provenance (model.ts `Link`). Hovering an edge shows
 // its direction and provenance, and clicking it opens its evidence in the detail pane. Selecting a
 // group or change in any pane expands its group and moves the canvas to it, so the detail pane's
 // related changes navigate along edges. Text is React text only (spec invariant 6).
@@ -29,6 +29,7 @@ import {
   type CanvasItem,
   canvasGraph,
   type ChangeItem,
+  stableLayout,
   changeItemId,
   type GroupItem,
   groupItemId,
@@ -101,11 +102,12 @@ function Graph() {
     return map;
   }, [model]);
 
-  // Re-layout after expand or collapse. Dragged positions last until then (not saved, spec).
+  // Re-layout after expand or collapse, keeping what didn't change where it was, dragged or not.
+  // Dragged positions last for the session (not saved, spec).
   const [laidOut, setLaidOut] = useState(items);
   if (laidOut !== items) {
     setLaidOut(items);
-    setNodes(items);
+    setNodes(stableLayout(nodes, items));
   }
 
   // A selection from any pane shows on the canvas: a group expands, and so do a change's groups.
@@ -136,7 +138,6 @@ function Graph() {
       if (!next.delete(groupId)) next.add(groupId);
       return next;
     });
-    setFocus({ id: groupItemId(groupId) });
   };
 
   return (

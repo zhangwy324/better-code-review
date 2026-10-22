@@ -131,3 +131,64 @@ export function canvasGraph(
   });
   return { items: laidOut, edges: [...edges.values()] };
 }
+
+/**
+ * `next` placed where the reviewer last saw `prev` (#115). Every item keeps its previous position,
+ * dragged or not, except inside a top-level item that changed size: that item keeps its top-left
+ * corner and takes its new contents from `next`. The items beyond its right or bottom edge, and
+ * those beyond them in turn, move by the change in its width or height, so an expanded cluster
+ * pushes its neighbours aside and a collapsed one closes the gap. Collapsing undoes expanding.
+ */
+export function stableLayout(prev: CanvasItem[], next: CanvasItem[]): CanvasItem[] {
+  const before = new Map(prev.map((i) => [i.id, i]));
+  const top = new Map<string, string>();
+  for (const item of next) top.set(item.id, item.parentId ? top.get(item.parentId)! : item.id);
+  const size = (i: CanvasItem) => ({ width: i.width ?? 0, height: i.height ?? 0 });
+  const resized = next.filter((i) => {
+    const old = before.get(i.id);
+    if (i.parentId !== undefined || old === undefined) return false;
+    return size(old).width !== size(i).width || size(old).height !== size(i).height;
+  });
+  const changed = new Set(resized.map((i) => i.id));
+  const boxes = new Map<string, Box>();
+  const items = next.map((item) => {
+    const old = before.get(item.id);
+    if (old === undefined || old.parentId !== item.parentId) return item;
+    if (changed.has(top.get(item.id)!) && item.parentId !== undefined) return item;
+    const placed: CanvasItem = changed.has(item.id)
+      ? { ...item, position: old.position }
+      : { ...item, position: old.position, ...size(old) };
+    if (item.parentId === undefined) boxes.set(item.id, { ...placed.position, ...size(placed) });
+    return placed;
+  });
+
+  for (const item of resized) {
+    const old = size(before.get(item.id)!);
+    const box = boxes.get(item.id)!;
+    const shift = (axis: 'x' | 'y', delta: number) => {
+      const [extent, across, acrossExtent] =
+        axis === 'x' ? (['width', 'y', 'height'] as const) : (['height', 'x', 'width'] as const);
+      // The edge of each moved box, before it moved; the moved box itself spans its old and new
+      // extent, so it reaches whatever it now covers.
+      const moved = [{ ...box, [extent]: Math.max(old[extent], box[extent]), edge: old[extent] }];
+      const seen = new Set([item.id]);
+      for (let k = 0; k < moved.length; k++) {
+        const m = moved[k]!;
+        for (const [id, b] of boxes) {
+          if (seen.has(id) || b[axis] < m[axis] + m.edge) continue;
+          if (b[across] >= m[across] + m[acrossExtent] || m[across] >= b[across] + b[acrossExtent])
+            continue;
+          seen.add(id);
+          moved.push({ ...b, edge: b[extent] });
+          b[axis] += delta;
+        }
+      }
+    };
+    shift('x', box.width - old.width);
+    shift('y', box.height - old.height);
+  }
+  return items.map((i) => {
+    const box = boxes.get(i.id);
+    return box === undefined ? i : { ...i, position: { x: box.x, y: box.y } };
+  });
+}
