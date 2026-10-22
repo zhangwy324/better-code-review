@@ -33,6 +33,7 @@ import {
   changeItemId,
   type GroupItem,
   groupItemId,
+  type Pushes,
   stableLayout,
 } from './canvas.ts';
 import {
@@ -106,9 +107,12 @@ function Graph() {
   // Re-layout after expand or collapse, keeping what didn't change where it was, dragged or not.
   // Dragged positions last for the session (not saved, spec).
   const [laidOut, setLaidOut] = useState(items);
+  const [pushes, setPushes] = useState<Pushes>(new Map());
   if (laidOut !== items) {
     setLaidOut(items);
-    setNodes(stableLayout(nodes, items));
+    const placed = stableLayout(nodes, items, pushes);
+    setNodes(placed.items);
+    setPushes(placed.pushes);
   }
 
   // A selection from any pane shows on the canvas: a group expands, and so do a change's groups.

@@ -132,14 +132,24 @@ export function canvasGraph(
   return { items: laidOut, edges: [...edges.values()] };
 }
 
+/** The space kept between a grown group and the neighbours it pushes, as dagre's `nodesep`. */
+const GAP = 40;
+
+/** For each expanded group, how far its expansion pushed each neighbour, to undo on collapse. */
+export type Pushes = ReadonlyMap<string, ReadonlyMap<string, { x: number; y: number }>>;
+
 /**
  * `next` placed where the reviewer last saw `prev` (#115). Every item keeps its previous position,
  * dragged or not, except inside a top-level item that changed size: that item keeps its top-left
- * corner and takes its new contents from `next`. The items beyond its right or bottom edge, and
- * those beyond them in turn, move by the change in its width or height, so an expanded cluster
- * pushes its neighbours aside and a collapsed one closes the gap. Collapsing undoes expanding.
+ * corner and takes its new contents from `next`. A group that grew pushes the items beyond its
+ * right or bottom edge only as far as they need to clear it, and those push the items beyond them
+ * in turn. A group that shrank moves back the items its growth pushed, by the same amounts.
  */
-export function stableLayout(prev: CanvasItem[], next: CanvasItem[]): CanvasItem[] {
+export function stableLayout(
+  prev: CanvasItem[],
+  next: CanvasItem[],
+  pushes: Pushes,
+): { items: CanvasItem[]; pushes: Pushes } {
   const before = new Map(prev.map((i) => [i.id, i]));
   const top = new Map<string, string>();
   for (const item of next) top.set(item.id, item.parentId ? top.get(item.parentId)! : item.id);
@@ -162,33 +172,51 @@ export function stableLayout(prev: CanvasItem[], next: CanvasItem[]): CanvasItem
     return placed;
   });
 
+  const after = new Map(pushes);
   for (const item of resized) {
     const old = size(before.get(item.id)!);
     const box = boxes.get(item.id)!;
-    const shift = (axis: 'x' | 'y', delta: number) => {
+    if (box.width <= old.width && box.height <= old.height) {
+      for (const [id, by] of pushes.get(item.id) ?? []) {
+        const b = boxes.get(id);
+        if (b !== undefined) [b.x, b.y] = [b.x - by.x, b.y - by.y];
+      }
+      after.delete(item.id);
+      continue;
+    }
+    const pushed = new Map<string, { x: number; y: number }>();
+    const push = (axis: 'x' | 'y') => {
       const [extent, across, acrossExtent] =
         axis === 'x' ? (['width', 'y', 'height'] as const) : (['height', 'x', 'width'] as const);
-      // The edge of each moved box, before it moved; the moved box itself spans its old and new
-      // extent, so it reaches whatever it now covers.
-      const moved = [{ ...box, [extent]: Math.max(old[extent], box[extent]), edge: old[extent] }];
-      const seen = new Set([item.id]);
-      for (let k = 0; k < moved.length; k++) {
-        const m = moved[k]!;
+      // Each box that moved or grew, with the far edge it had at the start: only the boxes that
+      // started past that edge are its neighbours on this side, so no box can push one behind it.
+      const start = new Map([...boxes].map(([id, b]) => [id, b[axis]]));
+      const movers = [{ id: item.id, edge: box[axis] + old[extent] }];
+      for (let k = 0; k < movers.length; k++) {
+        const { id: moverId, edge } = movers[k]!;
+        const m = boxes.get(moverId)!;
         for (const [id, b] of boxes) {
-          if (seen.has(id) || b[axis] < m[axis] + m.edge) continue;
+          if (id === item.id || id === moverId || start.get(id)! < edge) continue;
           if (b[across] >= m[across] + m[acrossExtent] || m[across] >= b[across] + b[acrossExtent])
             continue;
-          seen.add(id);
-          moved.push({ ...b, edge: b[extent] });
-          b[axis] += delta;
+          const by = m[axis] + m[extent] + GAP - b[axis];
+          if (by <= 0) continue;
+          movers.push({ id, edge: start.get(id)! + b[extent] });
+          b[axis] += by;
+          const total = pushed.get(id) ?? { x: 0, y: 0 };
+          pushed.set(id, { ...total, [axis]: total[axis] + by });
         }
       }
     };
-    shift('x', box.width - old.width);
-    shift('y', box.height - old.height);
+    push('x');
+    push('y');
+    after.set(item.id, pushed);
   }
-  return items.map((i) => {
-    const box = boxes.get(i.id);
-    return box === undefined ? i : { ...i, position: { x: box.x, y: box.y } };
-  });
+  return {
+    items: items.map((i) => {
+      const box = boxes.get(i.id);
+      return box === undefined ? i : { ...i, position: { x: box.x, y: box.y } };
+    }),
+    pushes: after,
+  };
 }

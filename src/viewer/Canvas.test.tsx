@@ -161,16 +161,17 @@ describe('stableLayout', () => {
     a.position.y < b.position.y + b.height! &&
     b.position.y < a.position.y + a.height!;
 
-  // A row a, b, c, with d below a and e far below; the reviewer dragged c.
+  // A row a, b, c, with d below a, f clear of a's expansion and e far below.
   const before = [
     group('a', 0, 0),
     group('b', 320, 0),
     group('c', 640, 40),
     group('d', 0, 200),
     group('e', 900, 600),
+    group('f', 700, 300),
   ];
 
-  it('keeps the toggled group in place and pushes only its neighbours aside', () => {
+  it('keeps the toggled group in place and pushes neighbours only as far as needed', () => {
     // dagre's new layout moves everything; only the cluster's size counts.
     const next = [
       cluster('a', 50, 50, 600, 400),
@@ -178,14 +179,17 @@ describe('stableLayout', () => {
       group('c', 1000, 0),
       group('d', 0, 500),
       group('e', 0, 0),
+      group('f', 0, 0),
     ];
-    const after = stableLayout(before, next);
+    const { items: after, pushes } = stableLayout(before, next, new Map());
+    // Each clears the box in front of it by 40px; f and e already had room.
     expect(at(after)).toEqual({
       a: [0, 0],
-      b: [320 + 360, 0],
-      c: [640 + 360, 40],
-      d: [0, 200 + 324],
+      b: [640, 0],
+      c: [920, 40],
+      d: [0, 440],
       e: [900, 600],
+      f: [700, 300],
     });
     for (const x of after) for (const y of after) if (x !== y) expect(overlap(x, y)).toBe(false);
 
@@ -195,9 +199,19 @@ describe('stableLayout', () => {
         stableLayout(
           after,
           next.map((i) => (i.id === 'a' ? group('a', 9, 9) : i)),
-        ),
+          pushes,
+        ).items,
       ),
     ).toEqual(at(before));
+  });
+
+  it('moves a group pushed right back when the cluster collapses', () => {
+    // b sits right of a but below a's collapsed height, so only the expansion reaches it.
+    const start = [group('a', 0, 0), group('b', 300, 150)];
+    const grown = stableLayout(start, [cluster('a', 0, 0, 600, 400), group('b', 0, 0)], new Map());
+    expect(at(grown.items).b).toEqual([640, 150]);
+    const shrunk = stableLayout(grown.items, [group('a', 0, 0), group('b', 0, 0)], grown.pushes);
+    expect(at(shrunk.items)).toEqual(at(start));
   });
 
   it('keeps the canvas in place across toggles of the signature review', () => {
@@ -209,13 +223,17 @@ describe('stableLayout', () => {
     shown = shown.map((i) => (i.id === last ? { ...i, position: { x: -500, y: -500 } } : i));
     const start = at(shown);
 
-    const expanded = stableLayout(shown, canvasGraph(model, new Set([first])).items);
+    const { items: expanded, pushes } = stableLayout(
+      shown,
+      canvasGraph(model, new Set([first])).items,
+      new Map(),
+    );
     expect(at(expanded)[groupItemId(first)]).toEqual(start[groupItemId(first)]);
     expect(at(expanded)[last]).toEqual([-500, -500]);
     const top = expanded.filter((i) => i.parentId === undefined);
     for (const x of top) for (const y of top) if (x !== y) expect(overlap(x, y)).toBe(false);
 
-    const collapsed = stableLayout(expanded, canvasGraph(model, new Set()).items);
+    const collapsed = stableLayout(expanded, canvasGraph(model, new Set()).items, pushes).items;
     expect(at(collapsed)).toEqual(start);
   });
 });
