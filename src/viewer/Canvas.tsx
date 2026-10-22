@@ -1,9 +1,10 @@
 // The center pane: the interactive graph (design reference §6.1, §6.4; spec D1, D6, D12). Groups
 // start collapsed, in reading order; expanding one lays the canvas out again with its changes
-// inside it, keeping the group and the rest of the canvas where they were (#115). Each edge style is one layer and provenance (model.ts `Link`). Hovering an edge shows
-// its direction and provenance, and clicking it opens its evidence in the detail pane. Selecting a
-// group or change in any pane expands its group and moves the canvas to it, so the detail pane's
-// related changes navigate along edges. Text is React text only (spec invariant 6).
+// inside it, keeping the group and the rest of the canvas where they were (#115). Each edge style
+// is one layer and provenance (model.ts `Link`). Hovering an edge shows its direction and
+// provenance, and clicking it opens its evidence in the detail pane. Selecting a group or change
+// in any pane expands its group and moves the canvas to it, so the detail pane's related changes
+// navigate along edges. Text is React text only (spec invariant 6).
 import {
   Background,
   BaseEdge,
@@ -29,10 +30,10 @@ import {
   type CanvasItem,
   canvasGraph,
   type ChangeItem,
-  stableLayout,
   changeItemId,
   type GroupItem,
   groupItemId,
+  stableLayout,
 } from './canvas.ts';
 import {
   groupHunkIds,
