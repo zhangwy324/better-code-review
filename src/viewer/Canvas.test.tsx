@@ -3,7 +3,15 @@
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { UNCHANGED_CALLERS_NOTE } from '../text/index.ts';
-import { canvasGraph, changeItemId, groupItemId } from './canvas.ts';
+import {
+  type CanvasItem,
+  canvasGraph,
+  changeItemId,
+  type GroupItem,
+  groupItemId,
+  SIZES,
+  stableLayout,
+} from './canvas.ts';
 import type { ReviewData } from './data.ts';
 import { buildModel } from './model.ts';
 import { embedded, renderEmbedded, signatureReview } from './testing.tsx';
@@ -129,4 +137,103 @@ describe('Canvas', () => {
   });
 
   const model = () => buildModel(data);
+});
+
+describe('stableLayout', () => {
+  const group = (id: string, x: number, y: number): GroupItem => ({
+    id,
+    type: 'collapsed',
+    data: { groupId: id, order: null },
+    position: { x, y },
+    ...SIZES.group,
+  });
+  const cluster = (id: string, x: number, y: number, width: number, height: number): GroupItem => ({
+    ...group(id, x, y),
+    type: 'cluster',
+    width,
+    height,
+  });
+  const at = (items: CanvasItem[]) =>
+    Object.fromEntries(items.map((i) => [i.id, [i.position.x, i.position.y]]));
+  const overlap = (a: CanvasItem, b: CanvasItem) =>
+    a.position.x < b.position.x + b.width! &&
+    b.position.x < a.position.x + a.width! &&
+    a.position.y < b.position.y + b.height! &&
+    b.position.y < a.position.y + a.height!;
+
+  // A row a, b, c, with d below a, f clear of a's expansion and e far below.
+  const before = [
+    group('a', 0, 0),
+    group('b', 320, 0),
+    group('c', 640, 40),
+    group('d', 0, 200),
+    group('e', 900, 600),
+    group('f', 700, 300),
+  ];
+
+  it('keeps the toggled group in place and pushes neighbours only as far as needed', () => {
+    // dagre's new layout moves everything; only the cluster's size counts.
+    const next = [
+      cluster('a', 50, 50, 600, 400),
+      group('b', 700, 0),
+      group('c', 1000, 0),
+      group('d', 0, 500),
+      group('e', 0, 0),
+      group('f', 0, 0),
+    ];
+    const { items: after, pushes } = stableLayout(before, next, new Map());
+    // Each clears the box in front of it by 40px; f and e already had room.
+    expect(at(after)).toEqual({
+      a: [0, 0],
+      b: [640, 0],
+      c: [920, 40],
+      d: [0, 440],
+      e: [900, 600],
+      f: [700, 300],
+    });
+    for (const x of after) for (const y of after) if (x !== y) expect(overlap(x, y)).toBe(false);
+
+    // Collapsing closes the gap again.
+    expect(
+      at(
+        stableLayout(
+          after,
+          next.map((i) => (i.id === 'a' ? group('a', 9, 9) : i)),
+          pushes,
+        ).items,
+      ),
+    ).toEqual(at(before));
+  });
+
+  it('moves a group pushed right back when the cluster collapses', () => {
+    // b sits right of a but below a's collapsed height, so only the expansion reaches it.
+    const start = [group('a', 0, 0), group('b', 300, 150)];
+    const grown = stableLayout(start, [cluster('a', 0, 0, 600, 400), group('b', 0, 0)], new Map());
+    expect(at(grown.items).b).toEqual([640, 150]);
+    const shrunk = stableLayout(grown.items, [group('a', 0, 0), group('b', 0, 0)], grown.pushes);
+    expect(at(shrunk.items)).toEqual(at(start));
+  });
+
+  it('keeps the canvas in place across toggles of the signature review', () => {
+    const model = buildModel(data);
+    const first = data.plan.groupOrder[0]!;
+    let shown = canvasGraph(model, new Set()).items;
+    // The reviewer drags the last group somewhere.
+    const last = groupItemId(data.plan.groupOrder.at(-1)!);
+    shown = shown.map((i) => (i.id === last ? { ...i, position: { x: -500, y: -500 } } : i));
+    const start = at(shown);
+
+    const { items: expanded, pushes } = stableLayout(
+      shown,
+      canvasGraph(model, new Set([first])).items,
+      new Map(),
+    );
+    expect(at(expanded)[groupItemId(first)]).toEqual(start[groupItemId(first)]);
+    expect(at(expanded)[last]).toEqual([-500, -500]);
+    const top = expanded.filter((i) => i.parentId === undefined);
+    for (const x of top) for (const y of top) if (x !== y) expect(overlap(x, y)).toBe(false);
+
+    const collapsed = stableLayout(expanded, canvasGraph(model, new Set()).items, pushes).items;
+    expect(at(collapsed)).toEqual(start);
+  });
 });
