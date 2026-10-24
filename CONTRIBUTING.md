@@ -65,12 +65,12 @@ The CLI makes no model calls ([MVP spec D8](docs/mvp-spec.md)). `plan.json` and 
 | `liveRunner(caps)` | `npm run eval` only. Headless `claude -p --model <m> --max-turns <n> --max-budget-usd <usd> --output-format stream-json --verbose`, with only `Read`, `Write`, `Edit` and `Bash(better-code-review:*)` | Yes |
 
 - **What a run does.** The eval runs the skill itself (#25), not a copy of its instructions. [`test/ai/input.ts`](test/ai/input.ts) sets each run up:
-  - it builds the fixture's repository and copies `skills/better-code-review/` into its `.claude/skills/`
+  - it builds the fixture's repository and copies the skill's `SKILL.md` and planning references into its `.claude/skills/better-code-review/`
   - it puts a `better-code-review` that runs this checkout's `src/cli/main.ts` first on PATH, so no build is needed
   - it sends the short prompt in `test/ai/prompts/skill.md`
 
   The agent follows SKILL.md. The run's output is the `plan.json` it leaves in the review directory.
-- **Model input and staleness.** A recording stores the hash of its model input. The hash covers the task's prompt, the skill's files (`HASHED_SOURCES`: `SKILL.md` and every reference) and the fixture's `planner-input.md` (#22). So any edit to the skill makes every recording stale. If the input changes, `npm test` fails the recording as stale and names the command that re-records it. It never falls back to a live call.
+- **Model input and staleness.** A recording stores the hash of its model input. The hash covers the task's prompt, the skill's files (`HASHED_SOURCES`: `SKILL.md` and the references `REFERENCES` marks `planning`) and the fixture's `planner-input.md` (#22). So any edit to those makes every recording stale. A reference for another task, such as `feedback-workflow.md`, is marked `other`: it is neither installed nor hashed (#121). If the input changes, `npm test` fails the recording as stale and names the command that re-records it. It never falls back to a live call.
 - **Input size.** `test/ai/input.test.ts` estimates each fixture's input size (characters ÷ 4, no API call) and fails above a per-fixture ceiling, so input bloat fails a normal test.
 
 ### `npm run eval`
