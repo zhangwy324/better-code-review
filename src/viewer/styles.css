@@ -354,6 +354,81 @@ button {
   color: var(--tok-definition);
 }
 
+/* The center pane's views (Views.tsx): tabs over the graph, guided review or files. */
+.views {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.views > .pane {
+  flex: 1;
+  min-height: 0;
+}
+
+.view-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-pane);
+}
+
+.view-tabs button {
+  padding: 4px 12px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.view-tabs button:hover {
+  background: var(--bg-hover);
+}
+
+.view-tabs button[aria-selected='true'] {
+  margin-bottom: -1px;
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* The guided review (Guided.tsx) and file view (Files.tsx). */
+.guided-groups {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guided-groups .guided-groups {
+  padding-left: 16px;
+  border-left: 2px solid var(--border);
+}
+
+.guided-group {
+  margin-bottom: 16px;
+}
+
+.guided-group[aria-current] > h3,
+.guided-node[aria-current] > h4 {
+  border-radius: 4px;
+  background: var(--bg-selected);
+}
+
+.guided-node,
+.file {
+  margin: 12px 0 20px;
+}
+
+.guided-node h4,
+.file h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
 /* The graph canvas (Canvas.tsx). Node sizes match SIZES in canvas.ts, which the layout uses. */
 .canvas {
   display: flex;

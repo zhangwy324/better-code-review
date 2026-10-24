@@ -237,7 +237,7 @@ function HunkDetail({ id }: { id: string }) {
 }
 
 /** One diff per file the hunks are in, in the order the files first appear. */
-function Diffs({ hunkIds }: { hunkIds: readonly string[] }) {
+export function Diffs({ hunkIds }: { hunkIds: readonly string[] }) {
   const model = useModel();
   const { select } = useSelection();
   const files = new Map<FileChange, string[]>();
