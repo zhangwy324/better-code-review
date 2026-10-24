@@ -1,12 +1,14 @@
 // The file view (design reference §6.1, §9.8; spec D3): the familiar file-by-file diff, for
 // fallback, auditability and completeness. It shows every file in changes.json with all its hunks,
 // straight from the change set, so every hunk is reachable here whatever the plan or graph say.
-// Selecting a change or hunk in any pane scrolls the view to its first hunk.
+// Selecting a change or hunk in any pane scrolls the view to its first hunk. Each file says which
+// capability tier it got (design reference §10.8) and how many of its hunks are reviewed (#32).
 import { useRef } from 'react';
 import type { FileChange } from '../schemas/changeset.ts';
 import { count, list } from '../text/index.ts';
 import { Diff } from './Diff.tsx';
-import { filePath, lineCounts } from './model.ts';
+import { filePath, lineCounts, TIER_DESCRIPTIONS } from './model.ts';
+import { progressLabel, useProgress } from './Progress.tsx';
 import { useScrollToSelection } from './scroll.ts';
 import { useModel, useSelection } from './state.tsx';
 
@@ -64,6 +66,8 @@ function FileDiff({ file }: { file: FileChange }) {
     file.oldMode !== null && file.newMode !== null && file.oldMode !== file.newMode
       ? ` · mode ${file.oldMode} → ${file.newMode}`
       : '';
+  const tier = model.tiers.get(path);
+  const p = useProgress(file.hunks.map((h) => h.id));
   return (
     <article className="file" data-path={path}>
       <h3>
@@ -74,6 +78,15 @@ function FileDiff({ file }: { file: FileChange }) {
         <span className="count">
           {file.status}
           {modes} · <span className="plus">+{added}</span> <span className="minus">−{removed}</span>
+          {tier !== undefined && (
+            <>
+              {' · '}
+              <span className={`tier tier-${tier}`} title={TIER_DESCRIPTIONS[tier]}>
+                {tier}
+              </span>
+            </>
+          )}
+          {p.total > 0 && ` · ${progressLabel(p)}`}
         </span>
       </h3>
       {file.hunks.length === 0 && file.contentOmitted === null && (

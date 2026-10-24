@@ -8,7 +8,7 @@
 // D4): clicking a line number picks that line on that side, shift-clicking another in the same
 // hunk or run of context extends it to a range, and the comment shows below the range's last line.
 // The comments live in the provider (state.tsx), not here, so every view that shows a diff shows
-// the same ones.
+// the same ones. So does review progress (#32): each hunk's header has its "reviewed" checkbox.
 import { Fragment, type ReactNode, useMemo, useState } from 'react';
 import type { FileChange } from '../schemas/changeset.ts';
 import type { Side } from '../schemas/common.ts';
@@ -27,6 +27,8 @@ import {
   revealing,
 } from './diff.ts';
 import { Highlighter, type Token } from './highlight.ts';
+import { hunkHeader } from './model.ts';
+import { ReviewedCheckbox } from './Progress.tsx';
 import { useFeedback } from './state.tsx';
 
 /** How many unchanged lines one click reveals. */
@@ -71,6 +73,7 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
     () => (side === null ? null : gaps(file, side, lines.length)),
     [file, side, lines],
   );
+  const path = file.newPath ?? file.oldPath;
   const highlighters = fileHighlighters(file, language);
   const feedback = useFeedback();
   const comments = (feedback?.comments ?? []).filter(
@@ -194,7 +197,13 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
     parts.push(
       <tbody key={hunk.id} className="hunk" data-hunk-id={hunk.id}>
         <tr className="hunk-header">
-          <td colSpan={3} />
+          <td colSpan={3}>
+            <ReviewedCheckbox
+              hunkIds={[hunk.id]}
+              label={`Mark ${path} ${hunkHeader(hunk)} reviewed`}
+              text=""
+            />
+          </td>
           <td>
             {onSelectHunk === undefined ? (
               header
@@ -210,7 +219,6 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
     );
   }
 
-  const path = file.newPath ?? file.oldPath;
   return (
     <div className="diff">
       {file.contentOmitted !== null && <p className="note">{OMITTED_NOTES[file.contentOmitted]}</p>}

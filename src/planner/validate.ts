@@ -273,7 +273,7 @@ function planErrors(
 }
 
 /** The plan with every node that has no home group added to `ungrouped` (D1). */
-function homeEveryNode(
+export function homeEveryNode(
   plan: ReviewPlan,
   graph: ChangeGraph,
 ): { plan: ReviewPlan; ungroupedNodeIds: string[] } {

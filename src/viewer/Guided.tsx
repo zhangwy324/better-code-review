@@ -4,17 +4,19 @@
 // home it is; a change homed elsewhere shows as a reference that selects it, not as a copy (D2).
 // Selecting in any pane scrolls the view to the group, change or hunk. The plan's summary and
 // fallback note are in the outline, which is beside every view, so they aren't repeated here.
+// Each group and change can be marked reviewed at once, and each hunk in its diff (#32, spec D5).
 import { useRef } from 'react';
 import type { ChangeNode } from '../schemas/graph.ts';
 import type { ReviewGroup } from '../schemas/plan.ts';
 import { count } from '../text/index.ts';
 import { Diffs } from './Detail.tsx';
-import { groupHunkIds } from './model.ts';
+import { groupHunkIds, isUngrouped } from './model.ts';
+import { progressLabel, ReviewedCheckbox, useProgress } from './Progress.tsx';
 import { useScrollToSelection } from './scroll.ts';
 import { useIsSelected, useModel, useSelection } from './state.tsx';
 
 export function Guided() {
-  const { plan, groups, nodes } = useModel();
+  const { plan, groups } = useModel();
   const pane = useRef<HTMLElement>(null);
   useScrollToSelection(pane, (selection) => {
     if (selection.kind === 'group') return `[data-group-id="${selection.id}"]`;
@@ -31,9 +33,6 @@ export function Guided() {
           return group === undefined ? [] : [<GuidedGroup key={id} group={group} order={i + 1} />];
         })}
       </ol>
-      {nodes.size > 0 && plan.groupOrder.length === 0 && (
-        <p className="hint">The plan has no groups. Every hunk is in the Files view.</p>
-      )}
     </section>
   );
 }
@@ -46,8 +45,14 @@ function GuidedGroup({ group, order }: { group: ReviewGroup; order: number | nul
     const node = model.nodes.get(id);
     return node === undefined ? [] : [node];
   });
+  const hunkIds = groupHunkIds(model, group);
+  const p = useProgress(hunkIds);
   return (
-    <li className="guided-group" data-group-id={group.id} aria-current={selected || undefined}>
+    <li
+      className={isUngrouped(group) ? 'guided-group ungrouped' : 'guided-group'}
+      data-group-id={group.id}
+      aria-current={selected || undefined}
+    >
       <h3>
         <button
           type="button"
@@ -57,7 +62,14 @@ function GuidedGroup({ group, order }: { group: ReviewGroup; order: number | nul
           {order !== null && <span className="order">{order}</span>}
           {group.title}
         </button>{' '}
-        <span className="count">{count(groupHunkIds(model, group).length, 'hunk')}</span>
+        <span className="count">
+          {count(p.total, 'hunk')} · {progressLabel(p)}
+        </span>{' '}
+        <ReviewedCheckbox
+          hunkIds={hunkIds}
+          label={`Mark group ${group.title} reviewed`}
+          text="Group reviewed"
+        />
       </h3>
       {group.description !== '' && <p>{group.description}</p>}
       {group.nodeIds.map((id) => {
@@ -107,7 +119,8 @@ function GuidedNode({ node }: { node: ChangeNode }) {
         >
           {node.displayName}
         </button>{' '}
-        <span className="path">{node.path}</span>
+        <span className="path">{node.path}</span>{' '}
+        <ReviewedCheckbox hunkIds={node.hunkIds} label={`Mark ${node.displayName} reviewed`} />
       </h4>
       <Diffs hunkIds={node.hunkIds} />
     </article>

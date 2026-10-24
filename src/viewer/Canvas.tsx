@@ -4,7 +4,8 @@
 // is one layer and provenance (model.ts `Link`). Hovering an edge shows its direction and
 // provenance, and clicking it opens its evidence in the detail pane. Selecting a group or change
 // in any pane expands its group and moves the canvas to it, so the detail pane's related changes
-// navigate along edges. Text is React text only (spec invariant 6).
+// navigate along edges. Groups and changes show their review progress (#32), and the Ungrouped /
+// requires review group stands out (§13.2). Text is React text only (spec invariant 6).
 import {
   Background,
   BaseEdge,
@@ -39,11 +40,14 @@ import {
 import {
   groupHunkIds,
   groupNodeIds,
+  isReviewed,
+  isUngrouped,
   type Link,
   lineCounts,
   linkSentence,
   STYLE_DESCRIPTIONS,
 } from './model.ts';
+import { progressLabel, useProgress } from './Progress.tsx';
 import { useIsSelected, useModel, useSelection } from './state.tsx';
 
 const LEGEND: Record<Link['style'], string> = {
@@ -177,8 +181,12 @@ function GroupNode({ data }: NodeProps<GroupItem>) {
   const selected = useIsSelected('group', data.groupId);
   const group = model.groups.get(data.groupId)!;
   const changes = groupNodeIds(model, group).length;
+  const p = useProgress(groupHunkIds(model, group));
   return (
-    <div className="canvas-group" aria-current={selected || undefined}>
+    <div
+      className={isUngrouped(group) ? 'canvas-group ungrouped' : 'canvas-group'}
+      aria-current={selected || undefined}
+    >
       <Handle type="target" position={Position.Left} />
       <button
         type="button"
@@ -190,8 +198,8 @@ function GroupNode({ data }: NodeProps<GroupItem>) {
           {data.order !== null && <span className="order">{data.order}</span>}
           {group.title}
         </strong>
-        <span className="count">
-          {count(changes, 'change')} · {count(groupHunkIds(model, group).length, 'hunk')}
+        <span className={isReviewed(p) ? 'count done' : 'count'}>
+          {count(changes, 'change')} · {p.reviewed}/{count(p.total, 'hunk')} reviewed
         </span>
       </button>
       {changes > 0 && (
@@ -217,8 +225,12 @@ function ClusterNode({ data }: NodeProps<GroupItem>) {
   const toggle = useContext(ExpandContext);
   const selected = useIsSelected('group', data.groupId);
   const group = model.groups.get(data.groupId)!;
+  const p = useProgress(groupHunkIds(model, group));
   return (
-    <div className="canvas-cluster" aria-current={selected || undefined}>
+    <div
+      className={isUngrouped(group) ? 'canvas-cluster ungrouped' : 'canvas-cluster'}
+      aria-current={selected || undefined}
+    >
       <div className="cluster-title">
         <button
           type="button"
@@ -237,6 +249,7 @@ function ClusterNode({ data }: NodeProps<GroupItem>) {
           {data.order !== null && <span className="order">{data.order}</span>}
           {group.title}
         </button>
+        <span className={isReviewed(p) ? 'count done' : 'count'}>{progressLabel(p)}</span>
       </div>
     </div>
   );
@@ -261,8 +274,12 @@ function ChangeNode({ data }: NodeProps<ChangeItem>) {
     removed += counts.removed;
   }
   const caps = model.graph.caps.filter((c) => c.entityId === node.entityId);
+  const p = useProgress(node.hunkIds);
   return (
-    <div className="canvas-change" aria-current={selected || undefined}>
+    <div
+      className={isReviewed(p) ? 'canvas-change reviewed' : 'canvas-change'}
+      aria-current={selected || undefined}
+    >
       <Handle type="target" position={Position.Left} />
       <button
         type="button"
@@ -276,6 +293,7 @@ function ChangeNode({ data }: NodeProps<ChangeItem>) {
           {node.entityKind ?? node.kind} · <span className="plus">+{added}</span>{' '}
           <span className="minus">−{removed}</span>
           {caps.map((c) => ` · showing ${c.shown} of ${c.total} ${c.relation}`)}
+          {p.total > 0 && ` · ${progressLabel(p)}`}
         </span>
       </button>
       <Handle type="source" position={Position.Right} />
