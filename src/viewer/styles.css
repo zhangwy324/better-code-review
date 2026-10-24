@@ -158,7 +158,6 @@ pre {
 
 .groups,
 .nodes,
-.cards,
 .hunks,
 .node-links {
   list-style: none;
@@ -176,8 +175,7 @@ button {
   color: inherit;
 }
 
-.item,
-.card {
+.item {
   display: flex;
   gap: 8px;
   justify-content: space-between;
@@ -190,13 +188,11 @@ button {
   cursor: pointer;
 }
 
-.item:hover,
-.card:hover {
+.item:hover {
   background: var(--bg-hover);
 }
 
-.item[aria-current],
-.card[aria-current] {
+.item[aria-current] {
   background: var(--bg-selected);
 }
 
@@ -207,19 +203,6 @@ button {
 
 .reference {
   color: var(--fg-muted);
-}
-
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 8px;
-}
-
-.card {
-  flex-direction: column;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  background: var(--bg-pane);
 }
 
 .link {
