@@ -1,6 +1,6 @@
 // The center pane's three views (design reference §6.1; spec D3): the graph, the guided review and
-// the file-by-file diff, behind tabs. What every view shares (the selection, and comments and
-// progress when they come) lives in ReviewProvider above them, so it is the same in all three. A
+// the file-by-file diff, behind tabs. What every view shares (the selection and comments, and
+// progress when it comes) lives in ReviewProvider above them, so it is the same in all three. A
 // hidden view is kept by <Activity>, not unmounted, so the canvas keeps its expanded groups and
 // dragged nodes and the diffs their expanded context. Showing a view again re-runs its effects,
 // which bring the current selection into view.

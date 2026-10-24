@@ -187,6 +187,36 @@ describe('comments', () => {
     expect(within(pane('Selected change')).getByText('Why was this wrong?')).toBeTruthy();
   });
 
+  it('shares comments between the detail pane, the guided review and the file view', () => {
+    renderEmbedded(embedded(data));
+    const show = (name: string) => fireEvent.click(screen.getByRole('tab', { name }));
+    const body = (name: string) => [...pane(name).querySelectorAll('.comment-body')];
+    const texts = (name: string) => body(name).map((e) => e.textContent);
+
+    show('Files');
+    const files = pane('Files');
+    fireEvent.click(within(files).getByRole('button', { name: 'Comment on new line 33' }));
+    fireEvent.change(within(files).getByRole('textbox', { name: 'Comment on new line 33' }), {
+      target: { value: 'From the file view' },
+    });
+    fireEvent.click(within(files).getByRole('button', { name: 'Save' }));
+
+    show('Guided');
+    expect(texts('Guided review')).toEqual(['From the file view']);
+    const guided = pane('Guided review');
+    fireEvent.click(within(guided).getByRole('button', { name: 'Edit' }));
+    fireEvent.change(within(guided).getByRole('textbox', { name: 'Edit comment' }), {
+      target: { value: 'Edited in the guided review' },
+    });
+    fireEvent.click(within(guided).getByRole('button', { name: 'Save' }));
+
+    selectNode('src/a.ts');
+    expect(texts('Selected change')).toEqual(['Edited in the guided review']);
+    show('Files');
+    expect(texts('Files')).toEqual(['Edited in the guided review']);
+    expect(screen.getByRole('banner').textContent).toContain('1 comment');
+  });
+
   it('edits and deletes comments', async () => {
     renderEmbedded(embedded(data));
     selectNode('src/a.ts');
@@ -194,7 +224,7 @@ describe('comments', () => {
     write('Comment on new line 33', 'First');
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     write('Edit comment', '  Second  ');
-    expect(screen.getByText('Second')).toBeTruthy();
+    expect(within(pane('Selected change')).getByText('Second')).toBeTruthy();
     expect((await exportFeedback()).comments.map((c) => c.body)).toEqual(['Second']);
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(screen.queryByText('Second')).toBeNull();
@@ -236,6 +266,6 @@ describe('comments', () => {
     selectNode('src/a.ts');
     pickLines('new', 33);
     write('Comment on new line 33', 'Still here');
-    expect(screen.getByText('Still here')).toBeTruthy();
+    expect(within(pane('Selected change')).getByText('Still here')).toBeTruthy();
   });
 });
