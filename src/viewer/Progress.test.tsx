@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { parseContract } from '../schemas/contracts.ts';
 import type { ReviewFeedback } from '../schemas/feedback.ts';
+import { homeEveryNode } from '../planner/validate.ts';
 import { UNGROUPED_GROUP_ID, UNGROUPED_TITLE } from '../schemas/plan.ts';
 import type { ReviewData } from './data.ts';
 import { buildModel, groupHunkIds, hunkHeader, TIER_DESCRIPTIONS } from './model.ts';
@@ -210,6 +211,33 @@ describe('Ungrouped / requires review', () => {
     for (const id of dropped.nodeIds) {
       expect(guided.querySelector(`[data-node-id="${id}"] tbody[data-hunk-id]`)).not.toBeNull();
     }
+  });
+
+  it('shows one Ungrouped group when `render` already made it (#34)', () => {
+    const dropped = data.plan.groups.find((g) => g.nodeIds.length > 1)!;
+    const agentPlan = {
+      ...data.plan,
+      groups: data.plan.groups.filter((g) => g.id !== dropped.id),
+      groupOrder: data.plan.groupOrder.filter((id) => id !== dropped.id),
+    };
+    // `render` embeds the validated plan, which already has Ungrouped (validatePlan's last step).
+    const { plan } = homeEveryNode(agentPlan, data.graph);
+    expect(plan.groupOrder.filter((id) => id === UNGROUPED_GROUP_ID)).toHaveLength(1);
+    renderEmbedded(embedded({ ...data, plan }));
+
+    const model = buildModel({ ...data, plan });
+    expect(model.plan.groups.filter((g) => g.id === UNGROUPED_GROUP_ID)).toHaveLength(1);
+    expect(model.plan.groupOrder.filter((id) => id === UNGROUPED_GROUP_ID)).toHaveLength(1);
+    // Each homeless node once, no duplicates.
+    expect(model.groups.get(UNGROUPED_GROUP_ID)?.nodeIds.toSorted()).toEqual(
+      dropped.nodeIds.toSorted(),
+    );
+    expect(within(outline()).getAllByText(UNGROUPED_TITLE)).toHaveLength(1);
+    expect(within(pane('Canvas')).getAllByTitle(UNGROUPED_TITLE)).toHaveLength(1);
+    show('Guided');
+    expect(
+      pane('Guided review').querySelectorAll(`[data-group-id="${UNGROUPED_GROUP_ID}"]`),
+    ).toHaveLength(1);
   });
 
   it('holds every change when the plan has no groups', () => {

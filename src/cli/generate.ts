@@ -6,8 +6,10 @@
 // `outputDirectory` is given. It holds `changes.json`, `graph.json`, `planner-input.md` (the
 // planner's model input, #22), `candidates/batch-<n>.md` (the caller candidates the agent judges,
 // #43, when there are any), `plan.json` (the deterministic fallback plan, #24, which the agent
-// replaces with its own) and `summary.txt`, the capability and coverage summary that is also
-// printed. A rerun on the same target overwrites them. The first run with the default location
+// replaces with its own), `summary.txt`, the capability and coverage summary that is also
+// printed, and `review.html` (#34), the review page with the fallback plan, so the CLI alone goes
+// from target to artifact. `render` rewrites it once the agent's plan is in. A rerun on the same
+// target overwrites them. The first run with the default location
 // adds `.better-code-review/` to `.git/info/exclude`, never to a tracked `.gitignore`.
 //
 // Language servers (D11) need the new side on disk. For `local` that is the working tree itself.
@@ -42,6 +44,7 @@ import {
   type Candidates,
   type PlannerInput,
 } from '../planner/index.ts';
+import { REVIEW_FILE, ViewerNotBuiltError, writeReview } from '../renderer/render.ts';
 import {
   type ChangeGraph,
   type ChangeSet,
@@ -63,6 +66,8 @@ export interface GenerateOptions {
   lsp?: Omit<LspOptions, 'enabled' | 'allowProjectCode'>;
   /** Progress messages, one line each. */
   progress?: (message: string) => void;
+  /** The viewer page review.html is made from (tests); by default the built one. */
+  viewerTemplate?: string;
 }
 
 export interface GenerateResult {
@@ -75,6 +80,8 @@ export interface GenerateResult {
   /** The fallback plan written as plan.json. */
   plan: ReviewPlan;
   summary: string;
+  /** review.html, or null when the viewer is not built (a checkout without `npm run build`). */
+  reviewPath: string | null;
 }
 
 const OUTPUT_ROOT = '.better-code-review';
@@ -158,7 +165,19 @@ export async function generate(
   }
   writeJson(join(outputDirectory, 'plan.json'), plan);
   writeFileSync(join(outputDirectory, 'summary.txt'), summary);
-  return { outputDirectory, changeSet, graph, planner, candidates, plan, summary };
+  const reviewPath = writeReviewIfBuilt(outputDirectory, options.viewerTemplate);
+  return { outputDirectory, changeSet, graph, planner, candidates, plan, summary, reviewPath };
+}
+
+/** Writes review.html, or removes a stale one when there is no viewer to write it with. */
+function writeReviewIfBuilt(dir: string, template: string | undefined): string | null {
+  try {
+    return writeReview(dir, { template });
+  } catch (err) {
+    if (!(err instanceof ViewerNotBuiltError)) throw err;
+    rmSync(join(dir, REVIEW_FILE), { force: true });
+    return null;
+  }
 }
 
 /** `<target>` of the default output directory (D9). */

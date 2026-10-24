@@ -8,8 +8,7 @@ import { SIGNATURE_BASE, SIGNATURE_HEAD } from '../analysis/semantic/fixture.tes
 import type { GhRunner } from '../git/pr.ts';
 import { TestRepo } from '../git/test-repo.test-helper.ts';
 import { ChangeGraph, ChangeSet, ReviewPlan } from '../schemas/index.ts';
-import { type GenerateOptions } from './generate.ts';
-import { EXIT, run } from './main.ts';
+import { EXIT, run, type TestHooks } from './main.ts';
 
 const dirs: string[] = [];
 afterAll(() => {
@@ -21,13 +20,13 @@ function tempDir(): string {
   return dir;
 }
 
-async function generate(cwd: string, argv: string[], options: GenerateOptions = {}) {
+async function generate(cwd: string, argv: string[], hooks: TestHooks = {}) {
   let stdout = '';
   let stderr = '';
   const exitCode = await run(
     ['generate', ...argv],
     { cwd, out: (t) => (stdout += t), err: (t) => (stderr += t) },
-    options,
+    hooks,
   );
   return { exitCode, stdout, stderr };
 }

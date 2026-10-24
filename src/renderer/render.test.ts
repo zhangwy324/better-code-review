@@ -2,11 +2,10 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { type DefaultTreeAdapterMap, parse } from 'parse5';
-import { build } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { renderReview, writeReview } from './render.ts';
+import { buildViewer } from './viewer.test-helper.ts';
 
 type Element = DefaultTreeAdapterMap['element'];
 type ParentNode = DefaultTreeAdapterMap['parentNode'];
@@ -24,17 +23,6 @@ const documents = {
 
 let tmp: string;
 let template: string;
-
-/** Builds the viewer page as `npm run build` does, into `outDir`. */
-async function buildViewer(outDir: string): Promise<string> {
-  await build({
-    configFile: fileURLToPath(new URL('../../vite.config.ts', import.meta.url)),
-    root: fileURLToPath(new URL('../viewer', import.meta.url)),
-    build: { outDir, emptyOutDir: true },
-    logLevel: 'silent',
-  });
-  return readFileSync(join(outDir, 'index.html'), 'utf8');
-}
 
 beforeAll(async () => {
   tmp = mkdtempSync(join(tmpdir(), 'bcr-render-'));
@@ -128,8 +116,12 @@ describe('writeReview', () => {
     writeFileSync(join(dir, 'changes.json'), JSON.stringify(documents.changes, null, 2));
     writeFileSync(join(dir, 'graph.json'), JSON.stringify(documents.graph, null, 2));
     writeFileSync(join(dir, 'plan.json'), JSON.stringify(documents.plan, null, 2));
-    const path = writeReview(dir, template);
+    const path = writeReview(dir, { template });
     expect(path).toBe(join(dir, 'review.html'));
     expect(readFileSync(path, 'utf8')).toBe(renderReview(template, documents));
+
+    const plan = { groups: [] };
+    writeReview(dir, { template, plan });
+    expect(readFileSync(path, 'utf8')).toBe(renderReview(template, { ...documents, plan }));
   });
 });

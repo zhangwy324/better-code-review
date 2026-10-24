@@ -70,7 +70,7 @@ The CLI makes no model calls ([MVP spec D8](docs/mvp-spec.md)). `plan.json` and 
   - it sends the short prompt in `test/ai/prompts/skill.md`
 
   The agent follows SKILL.md. The run's output is the `plan.json` it leaves in the review directory.
-- **Model input and staleness.** A recording stores the hash of its model input. The hash covers the task's prompt, the skill's files (`HASHED_SOURCES`: `SKILL.md` and the references `REFERENCES` marks `planning`) and the fixture's `planner-input.md` (#22). So any edit to those makes every recording stale. A reference for another task, such as `feedback-workflow.md`, is marked `other`: it is neither installed nor hashed (#121). If the input changes, `npm test` fails the recording as stale and names the command that re-records it. It never falls back to a live call.
+- **Model input and staleness.** A recording stores the hash of its model input. The hash covers the task's prompt, the skill's files (`HASHED_SOURCES`: `SKILL.md` and the references `REFERENCES` marks `planning`) and the fixture's `planner-input.md` (#22). So any edit to those makes every recording stale. A reference for another task, such as `feedback-workflow.md`, or for the steps after `validate`, where the prompt stops (`render-workflow.md`, #34), is marked `other`: it is neither installed nor hashed (#121). Keep what the planner needs before `validate` in `SKILL.md` or a `planning` reference. If the input changes, `npm test` fails the recording as stale and names the command that re-records it. It never falls back to a live call.
 - **Input size.** `test/ai/input.test.ts` estimates each fixture's input size (characters ÷ 4, no API call) and fails above a per-fixture ceiling, so input bloat fails a normal test.
 
 ### `npm run eval`

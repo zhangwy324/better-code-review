@@ -40,6 +40,9 @@ export const SKILL_DIR = 'skills/better-code-review';
 export const REFERENCES: Readonly<Record<string, 'planning' | 'other'>> = {
   'analysis-workflow.md': 'planning',
   'feedback-workflow.md': 'other',
+  // Rendering and the report come after `validate`, where the task's prompt stops (prompts/), so
+  // they can't change the plan an eval scores.
+  'render-workflow.md': 'other',
 };
 
 /**

@@ -2,25 +2,25 @@
   "task": "skill",
   "fixture": "feature-flow",
   "model": "claude-sonnet-5-5",
-  "inputHash": "sha256:dc8a3cf8830522815fc6d417c38c91e196c4d7bc1576be787f84508332ce801a",
+  "inputHash": "sha256:981c7b238b53850244eedd2279d3d1e0fd10d794ef15dd16a079b4bcee7336c9",
   "usage": {
-    "inputTokens": 14,
-    "outputTokens": 2416,
-    "cacheCreationInputTokens": 15986,
-    "cacheReadInputTokens": 88310
+    "inputTokens": 12,
+    "outputTokens": 2017,
+    "cacheCreationInputTokens": 16190,
+    "cacheReadInputTokens": 66833
   },
-  "costUsd": 0.09696300000000002,
+  "costUsd": 0.0916373,
   "output": {
     "schemaVersion": 1,
     "snapshotId": "2a70235c0e04ef20afa88c830a13cd0373bd679c8cb68cbfd74425d089cd9c4e",
     "origin": "agent",
     "fallbackReason": null,
-    "summary": "Adds a POST /orders feature across layers: route registration, handler, service with quantity validation, and an in-memory storage layer. A test covers the service. No requirement was given, so only the apparent intent is described.",
+    "summary": "Adds a POST /orders feature across layers: route registration, a handler, a service that validates quantity, and an in-memory storage layer. A test covers createOrder. Check that the layers agree on the order shape and that validation is enough.",
     "groups": [
       {
         "id": "entry-point",
-        "title": "POST /orders route registered",
-        "description": "registerRoutes wires a new postOrder handler, which forwards the body to the service. Check that the unvalidated body cast is acceptable.",
+        "title": "POST /orders route and handler",
+        "description": "registerRoutes wires postOrder to POST /orders, and postOrder casts the body and calls createOrder. Check that the unvalidated body cast is acceptable.",
         "nodeIds": [
           "n_0221592932c560d6",
           "n_764183546019d2b0",
@@ -32,8 +32,8 @@
       },
       {
         "id": "service",
-        "title": "createOrder service validates and stores",
-        "description": "createOrder rejects quantities below 1 and delegates to insertOrder. Confirm the validation rules are sufficient, for example for non-integer quantities.",
+        "title": "createOrder service",
+        "description": "createOrder rejects quantities below 1 and delegates to insertOrder. Check that sku and non-integer quantities need no validation.",
         "nodeIds": [
           "n_bd95ada67ac20c23",
           "n_08b6d4a46ecc6429"
@@ -44,7 +44,7 @@
       {
         "id": "storage",
         "title": "In-memory order storage",
-        "description": "New OrderRow type and insertOrder, which assigns incrementing ids in a module-level array. Check that non-persistent storage is intended.",
+        "description": "Adds the OrderRow type and insertOrder, which assigns ids from an in-memory array. Check that id assignment and non-persistence are intended.",
         "nodeIds": [
           "n_f72eb98a16847bf6",
           "n_f489806d07d925c0",
@@ -56,7 +56,7 @@
       {
         "id": "tests",
         "title": "createOrder test",
-        "description": "A single test checks that the first created order gets id 1. Check whether the rejection path is covered.",
+        "description": "One test checks that the first created order gets id 1. It does not cover the quantity validation or the route.",
         "nodeIds": [
           "n_fbbb4d69f31b2f42",
           "n_c890adb73f05e0b9",

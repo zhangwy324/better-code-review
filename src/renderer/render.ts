@@ -24,26 +24,44 @@ export function renderReview(template: string, documents: Record<DataName, unkno
   return `${template.slice(0, at)}${dataScripts(documents)}\n${template.slice(at)}`;
 }
 
+/** The name of the page in a review directory. */
+export const REVIEW_FILE = 'review.html';
+
+export interface WriteReviewOptions {
+  /** The viewer page; by default the one `npm run build` made. */
+  template?: string | undefined;
+  /** The plan to embed instead of plan.json: the validated one, with Ungrouped made (#23). */
+  plan?: unknown;
+}
+
 /**
  * Writes `<dir>/review.html` from the changes.json, graph.json and plan.json in `dir`, and returns
  * its path. The viewer validates the documents when the page opens.
  */
-export function writeReview(dir: string, template = readTemplate()): string {
+export function writeReview(dir: string, options: WriteReviewOptions = {}): string {
+  const template = options.template ?? readTemplate();
   const documents = Object.fromEntries(
     Object.entries(FILES).map(([name, file]) => [
       name,
-      JSON.parse(readFileSync(join(dir, file), 'utf8')) as unknown,
+      name === 'plan' && options.plan !== undefined
+        ? options.plan
+        : (JSON.parse(readFileSync(join(dir, file), 'utf8')) as unknown),
     ]),
   ) as Record<DataName, unknown>;
-  const path = join(dir, 'review.html');
+  const path = join(dir, REVIEW_FILE);
   writeFileSync(path, renderReview(template, documents));
   return path;
 }
+
+/** The viewer page is missing: a checkout that has not run `npm run build`. */
+export class ViewerNotBuiltError extends Error {}
 
 function readTemplate(): string {
   try {
     return readFileSync(VIEWER_TEMPLATE, 'utf8');
   } catch (error) {
-    throw new Error('The viewer is not built: run `npm run build`.', { cause: error });
+    throw new ViewerNotBuiltError('The viewer is not built: run `npm run build`.', {
+      cause: error,
+    });
   }
 }
