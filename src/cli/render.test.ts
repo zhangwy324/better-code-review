@@ -1,8 +1,8 @@
 // The pipeline end to end through `run` (#34): `generate --local` on the signature fixture writes
 // an openable review.html with the fallback plan, then an agent's plan replaces plan.json and
-// `render` rewrites the page with it, as the skill does. "Openable" is checked as the viewer
-// checks it when the page loads (src/viewer/data.ts): each embedded document matches its contract
-// and all three are for the same snapshot. render.test.ts in src/renderer checks the page itself.
+// `render` rewrites the page with it, as the skill does. "Openable" is checked by the viewer's
+// own loader (src/viewer/data.ts): each embedded document matches its contract and all three are
+// for the same snapshot. render.test.ts in src/renderer checks the page itself.
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,10 +11,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureRepo } from '../../test/fixtures/repo.ts';
 import { signature } from '../../test/fixtures/signature.ts';
 import { NO_AGENT_REASON } from '../planner/index.ts';
-import { DATA_ELEMENT_IDS } from '../renderer/embed.ts';
 import { buildViewer } from '../renderer/viewer.test-helper.ts';
-import { parseContract } from '../schemas/contracts.ts';
 import { UNGROUPED_GROUP_ID, type ReviewPlan } from '../schemas/plan.ts';
+import { loadReviewData } from '../viewer/data.ts';
 import { EXIT, run, type TestHooks } from './main.ts';
 
 type Element = DefaultTreeAdapterMap['element'];
@@ -63,24 +62,22 @@ function elements(node: ParentNode): Element[] {
   );
 }
 
-/** The documents in review.html, read and checked as the viewer does when the page opens. */
+/** The documents in review.html, loaded by the viewer's own loader, as when the page opens. */
 function openReview(path: string) {
   const all = elements(parse(readFileSync(path, 'utf8')));
-  const embedded = (id: string): unknown => {
-    const element = all.find((e) => e.attrs.some((a) => a.name === 'id' && a.value === id));
-    expect(element, id).toBeDefined();
-    return JSON.parse(element!.childNodes.map((c) => ('value' in c ? c.value : '')).join(''));
-  };
-  const changeSet = parseContract('change-set', embedded(DATA_ELEMENT_IDS.changes));
-  const graph = parseContract('change-graph', embedded(DATA_ELEMENT_IDS.graph));
-  const plan = parseContract('review-plan', embedded(DATA_ELEMENT_IDS.plan));
-  expect(graph.snapshotId).toBe(changeSet.snapshotId);
-  expect(plan.snapshotId).toBe(changeSet.snapshotId);
+  const loaded = loadReviewData({
+    getElementById: (id) => {
+      const element = all.find((e) => e.attrs.some((a) => a.name === 'id' && a.value === id));
+      if (element === undefined) return null;
+      return { textContent: element.childNodes.map((c) => ('value' in c ? c.value : '')).join('') };
+    },
+  });
+  if (!loaded.ok) throw new Error(loaded.error);
   // The viewer's script came through: it is what turns the data into the review.
   expect(all.filter((e) => e.tagName === 'script').map((s) => s.attrs[0]?.value)).toContain(
     'module',
   );
-  return { changeSet, graph, plan };
+  return loaded.data;
 }
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'));

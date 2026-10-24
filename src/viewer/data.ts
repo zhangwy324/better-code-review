@@ -14,6 +14,14 @@ export interface ReviewData {
   plan: ReviewPlan;
 }
 
+/**
+ * Where the data elements are looked up: the page's `document`. Only this much of it, so Node-side
+ * tests can check a written review.html with the same code (src/cli/render.test.ts).
+ */
+export interface DataSource {
+  getElementById(id: string): { textContent: string | null } | null;
+}
+
 export type LoadResult = { ok: true; data: ReviewData } | { ok: false; error: string };
 
 const DOCUMENTS: Record<DataName, { contract: ContractName; file: string }> = {
@@ -22,7 +30,7 @@ const DOCUMENTS: Record<DataName, { contract: ContractName; file: string }> = {
   plan: { contract: 'review-plan', file: 'plan.json' },
 };
 
-export function loadReviewData(document: Document): LoadResult {
+export function loadReviewData(document: DataSource): LoadResult {
   try {
     const changeSet = read(document, 'changes') as ChangeSet;
     const graph = read(document, 'graph') as ChangeGraph;
@@ -43,7 +51,7 @@ export function loadReviewData(document: Document): LoadResult {
   }
 }
 
-function read(document: Document, name: DataName): unknown {
+function read(document: DataSource, name: DataName): unknown {
   const { contract, file } = DOCUMENTS[name];
   const text = document.getElementById(DATA_ELEMENT_IDS[name])?.textContent;
   if (text === undefined || text === null) throw new Error(`This page has no ${file} data.`);
