@@ -264,15 +264,9 @@ function ChangeNode({ data }: NodeProps<ChangeItem>) {
   const { select } = useSelection();
   const selected = useIsSelected('node', data.nodeId);
   const node = model.nodes.get(data.nodeId)!;
-  let added = 0;
-  let removed = 0;
-  for (const id of node.hunkIds) {
-    const hunk = model.hunks.get(id)?.hunk;
-    if (hunk === undefined) continue;
-    const counts = lineCounts(hunk);
-    added += counts.added;
-    removed += counts.removed;
-  }
+  const { added, removed } = lineCounts(
+    node.hunkIds.flatMap((id) => model.hunks.get(id)?.hunk ?? []),
+  );
   const caps = model.graph.caps.filter((c) => c.entityId === node.entityId);
   const p = useProgress(node.hunkIds);
   return (

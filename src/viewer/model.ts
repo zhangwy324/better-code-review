@@ -237,13 +237,15 @@ export function filePath(file: FileChange): string {
   return (file.newPath ?? file.oldPath)!;
 }
 
-/** Added and removed lines in a hunk's patch. */
-export function lineCounts(hunk: DiffHunk): { added: number; removed: number } {
+/** Added and removed lines in the patches of `hunks`, together. */
+export function lineCounts(hunks: Iterable<DiffHunk>): { added: number; removed: number } {
   let added = 0;
   let removed = 0;
-  for (const line of hunk.patch.split('\n').slice(1)) {
-    if (line.startsWith('+')) added++;
-    else if (line.startsWith('-')) removed++;
+  for (const hunk of hunks) {
+    for (const line of hunk.patch.split('\n').slice(1)) {
+      if (line.startsWith('+')) added++;
+      else if (line.startsWith('-')) removed++;
+    }
   }
   return { added, removed };
 }

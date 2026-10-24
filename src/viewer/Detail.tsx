@@ -108,7 +108,7 @@ function NodeDetail({ node }: { node: ChangeNode }) {
         {node.hunkIds.map((id) => {
           const entry = model.hunks.get(id);
           if (entry === undefined) return null;
-          const { added, removed } = lineCounts(entry.hunk);
+          const { added, removed } = lineCounts([entry.hunk]);
           return (
             <li key={id}>
               <button type="button" className="link" onClick={() => select({ kind: 'hunk', id })}>

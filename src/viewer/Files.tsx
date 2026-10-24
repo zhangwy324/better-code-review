@@ -55,13 +55,7 @@ function FileDiff({ file }: { file: FileChange }) {
   const model = useModel();
   const { select } = useSelection();
   const path = filePath(file);
-  let added = 0;
-  let removed = 0;
-  for (const hunk of file.hunks) {
-    const counts = lineCounts(hunk);
-    added += counts.added;
-    removed += counts.removed;
-  }
+  const { added, removed } = lineCounts(file.hunks);
   const modes =
     file.oldMode !== null && file.newMode !== null && file.oldMode !== file.newMode
       ? ` · mode ${file.oldMode} → ${file.newMode}`

@@ -13,6 +13,7 @@ import type { ChangeSet, FileChange } from '../schemas/changeset.ts';
 import type { ChangeGraph } from '../schemas/graph.ts';
 import { Diff } from './Diff.tsx';
 import { contentLines } from './diff.ts';
+import { lineCounts } from './model.ts';
 import { generateReview } from './testing.tsx';
 
 const numbered = (n: number, f: (i: number) => string) =>
@@ -136,6 +137,19 @@ describe('Diff', () => {
       unmount();
     }
     expect((globalThis as { pwned?: unknown }).pwned).toBeUndefined();
+  });
+
+  it('counts the added and removed lines the diff shows, over all of a file’s hunks', () => {
+    for (const f of changeSet.files) {
+      const { container, unmount } = renderDiff(f);
+      const kinds = codeRows(container).map((r) => r.kind.split(' '));
+      expect(lineCounts(f.hunks)).toEqual({
+        added: kinds.filter((k) => k.includes('added')).length,
+        removed: kinds.filter((k) => k.includes('removed')).length,
+      });
+      unmount();
+    }
+    expect(lineCounts([])).toEqual({ added: 0, removed: 0 });
   });
 
   it('expands unchanged lines up to the whole file, numbered on both sides', () => {
