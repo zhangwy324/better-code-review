@@ -45,7 +45,8 @@ if (values.graph !== undefined || values.truth !== undefined) {
   const graph = ChangeGraph.parse(readJson(values.graph));
   const truth = lspTruth(graph, ChangeGraph.parse(readJson(values.truth)));
   const runs: ScoredRun[] = positionals.map((path) => ({
-    inputHash: '',
+    compatibilityHash: '',
+    promptHash: '',
     costUsd: 0,
     usage: {
       inputTokens: 0,
@@ -56,7 +57,7 @@ if (values.graph !== undefined || values.truth !== undefined) {
     output: readJson(path),
   }));
   const report = reportRuns(
-    { fixture: values.graph, model: '-', inputHash: '' },
+    { fixture: values.graph, model: '-', compatibilityHash: '', promptHash: '' },
     selectCandidates(graph),
     truth,
     runs,
@@ -88,7 +89,12 @@ if (values.graph !== undefined || values.truth !== undefined) {
       const graph = ChangeGraph.parse(readJson(join(fixtureDir, 'review', 'graph.json')));
       reports.push(
         reportRuns(
-          { fixture: fixtureName, model, inputHash: input.inputHash },
+          {
+            fixture: fixtureName,
+            model,
+            compatibilityHash: input.compatibilityHash,
+            promptHash: input.promptHash,
+          },
           selectCandidates(graph),
           fixtureTruth(fixture, graph),
           runs,

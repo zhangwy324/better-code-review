@@ -2,7 +2,8 @@
   "task": "skill",
   "fixture": "tests-and-config",
   "model": "claude-sonnet-5-5",
-  "inputHash": "sha256:917d607e3ee4604cf3542dd54dadce481d22d48f32740868012bbbc39dbe88bd",
+  "compatibilityHash": "sha256:8e171849a22382b0e31d6f32056d2fad9b81f6570f015d936695ebbbf5508cce",
+  "promptHash": "sha256:a15dcb3941d18ab8e01743fea412162fbf0dcfc34fd739044ba0d985b17a5fa7",
   "usage": {
     "inputTokens": 14,
     "outputTokens": 2551,

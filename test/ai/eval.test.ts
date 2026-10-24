@@ -125,7 +125,8 @@ describe('runEval', () => {
       }),
     );
     expect(recording).toMatchObject({ costUsd: 0.01, usage: { inputTokens: 2000 } });
-    expect(recording?.inputHash).toMatch(/^sha256:/);
+    expect(recording?.compatibilityHash).toMatch(/^sha256:/);
+    expect(recording?.promptHash).toMatch(/^sha256:/);
 
     const [logLine] = readFileSync(join(dir, 'local', 'costs.jsonl'), 'utf8')
       .trim()

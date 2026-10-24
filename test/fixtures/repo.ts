@@ -21,6 +21,12 @@ export function isolatedGitEnv(globalConfig: string): Record<string, string> {
   };
 }
 
+/**
+ * Every fixture git call is plumbing on a tiny repository: none took 0.1s on Linux with the whole
+ * suite running. This leaves ample room for a slow Windows runner.
+ */
+const GIT_TIMEOUT_MS = 60_000;
+
 export type FileSpec =
   string | Buffer | null | { mode: '100755' | '120000'; content: string | Buffer };
 
@@ -42,7 +48,25 @@ export class GitRepo {
   }
 
   gitInput(input: string | Buffer | undefined, ...args: string[]): string {
-    return execFileSync('git', args, { cwd: this.path, env: this.env, input, encoding: 'utf8' });
+    try {
+      return execFileSync('git', args, {
+        cwd: this.path,
+        env: this.env,
+        input,
+        encoding: 'utf8',
+        timeout: GIT_TIMEOUT_MS,
+      });
+    } catch (err) {
+      // A synchronous call blocks the test runner's own timeouts, so a stuck git would hang the
+      // whole run (#131). Name the command instead.
+      if ((err as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
+        throw new Error(
+          `git ${args.join(' ')} in ${this.path} took over ${GIT_TIMEOUT_MS / 1000}s`,
+          { cause: err },
+        );
+      }
+      throw err;
+    }
   }
 
   /** Stages `files` (null deletes) on top of `parents[0]`, commits and returns the commit ID. */

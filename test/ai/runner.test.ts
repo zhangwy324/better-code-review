@@ -7,12 +7,12 @@ import {
   type AiRequest,
   LiveRunError,
   liveArgs,
+  IncompatibleRecordingError,
   liveRunner,
   MissingRecordingError,
   parseStream,
   replayRunner,
   type Spawn,
-  StaleRecordingError,
   stubRunner,
 } from './runner.ts';
 
@@ -28,7 +28,7 @@ const request: AiRequest = {
   cwd: root,
   outputFile: join(root, 'plan.json'),
   env: { PATH: '/opt/bcr/bin' },
-  inputHash: HASH,
+  compatibilityHash: HASH,
 };
 const usage = {
   inputTokens: 1200,
@@ -85,7 +85,8 @@ describe('replayRunner', () => {
     task: 'skill',
     fixture: 'signature',
     model: 'claude-haiku-5-5',
-    inputHash: HASH,
+    compatibilityHash: HASH,
+    promptHash: HASH,
     usage,
     costUsd: 0.0123,
     output: { recorded: true },
@@ -102,12 +103,12 @@ describe('replayRunner', () => {
     });
   });
 
-  it('reports a recording made for another input as stale', async () => {
-    const changed = { ...request, inputHash: `sha256:${'b'.repeat(64)}` };
+  it('rejects a recording made for another fixture input', async () => {
+    const changed = { ...request, compatibilityHash: `sha256:${'b'.repeat(64)}` };
     const err = await replayRunner(dir)
       .run(changed)
       .catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(StaleRecordingError);
+    expect(err).toBeInstanceOf(IncompatibleRecordingError);
     expect((err as Error).message).toContain(
       'npm run eval -- --fixture signature --model claude-haiku-5-5',
     );

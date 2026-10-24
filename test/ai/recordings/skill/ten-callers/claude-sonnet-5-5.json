@@ -2,7 +2,8 @@
   "task": "skill",
   "fixture": "ten-callers",
   "model": "claude-sonnet-5-5",
-  "inputHash": "sha256:3305ca1f43f092c300491f3e8f1e69fdbcb5da41edc60a149a360a2ae745f171",
+  "compatibilityHash": "sha256:a5fa9b6cfc649a8ffec49cdcda09c59b32207be60e61e4332afc275580b55685",
+  "promptHash": "sha256:a15dcb3941d18ab8e01743fea412162fbf0dcfc34fd739044ba0d985b17a5fa7",
   "usage": {
     "inputTokens": 14,
     "outputTokens": 2208,

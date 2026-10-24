@@ -20,6 +20,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # Normally 2 to 8 minutes. Without a limit, a hung test runs to GitHub's 6-hour default.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -38,6 +40,7 @@ jobs:
     # none, so there these suites skip; here BCR_LSP_REQUIRED makes a missing server a failure.
     name: language-server integration
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -53,6 +56,7 @@ jobs:
   licenses:
     name: dependency licences
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

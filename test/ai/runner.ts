@@ -3,8 +3,8 @@
 // tested without a model, through one of three runners:
 // - `stubRunner`: scripted outputs, in order, e.g. a bad plan then a good one for the repair loop
 //   (#23). It never spawns anything.
-// - `replayRunner`: a recorded real run (recording.ts). A missing or stale recording is an error;
-//   it never falls through to a live call.
+// - `replayRunner`: a recorded real run (recording.ts). A missing recording, or one made for
+//   another fixture input (input.ts), is an error; it never falls through to a live call.
 // - `liveRunner`: headless `claude -p`, always with `--max-budget-usd`. Only `npm run eval` uses
 //   it, never `npm run check` or CI. The agent follows the skill (#25), and its output is the
 //   file it leaves at `outputFile`, not its final message.
@@ -25,8 +25,8 @@ export interface AiRequest {
   outputFile: string;
   /** Variables set for the agent on top of the current environment (PATH for the CLI). */
   env: Record<string, string>;
-  /** Hash of the model input (input.ts); a recording with another hash is stale. */
-  inputHash: string;
+  /** input.ts `compatibilityHash`; replay rejects a recording with another. */
+  compatibilityHash: string;
 }
 
 export interface AiRun {
@@ -76,7 +76,7 @@ export function stubRunner(outputs: readonly unknown[]): Runner & { requests: Ai
 }
 
 export class MissingRecordingError extends Error {}
-export class StaleRecordingError extends Error {}
+export class IncompatibleRecordingError extends Error {}
 
 /** The command that records `request` again, for error messages. */
 export const recordCommand = (request: Pick<AiRequest, 'fixture' | 'model'>) =>
@@ -100,11 +100,12 @@ export function replayRunner(dir: string): Runner {
           ),
         );
       }
-      if (recording.inputHash !== request.inputHash) {
+      if (recording.compatibilityHash !== request.compatibilityHash) {
         return Promise.reject(
-          new StaleRecordingError(
-            `Recording ${path} is stale: it was made for input ${recording.inputHash}, the input is now ` +
-              `${request.inputHash}. Record it again with ${recordCommand(request)}`,
+          new IncompatibleRecordingError(
+            `Recording ${path} can't be replayed: the fixture's planner input or graph IDs changed ` +
+              `(${recording.compatibilityHash} when recorded, ${request.compatibilityHash} now). ` +
+              `Record it again with ${recordCommand(request)}, or delete it`,
           ),
         );
       }

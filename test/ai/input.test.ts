@@ -1,4 +1,4 @@
-// The skill's model input on every portfolio fixture: a deterministic hash, and a size
+// The skill's model input on every portfolio fixture: deterministic hashes, and a size
 // ceiling so input bloat fails a normal test instead of a bill (#85). Sizes are `estimateTokens`
 // (characters ÷ 4); no API is called.
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
@@ -36,10 +36,11 @@ const CEILINGS: Record<string, number> = {
 };
 
 describe.each(FIXTURES)('skill input for $name', (fixture) => {
-  it('has a stable hash and stays under its size ceiling', async () => {
+  it('has stable hashes and stays under its size ceiling', async () => {
     const input = await modelInput('skill', fixture, join(root, fixture.name));
     const again = await modelInput('skill', fixture, join(root, `${fixture.name}-again`));
-    expect(again.inputHash).toBe(input.inputHash);
+    expect(again.compatibilityHash).toBe(input.compatibilityHash);
+    expect(again.promptHash).toBe(input.promptHash);
     const ceiling = CEILINGS[fixture.name];
     expect(ceiling, `add a size ceiling for ${fixture.name}`).toBeDefined();
     expect(input.estimatedTokens).toBeLessThanOrEqual(ceiling ?? 0);

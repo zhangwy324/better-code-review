@@ -1,7 +1,7 @@
 // A recorded live run (#85): only what replay needs is committed, under
 // `test/ai/recordings/<task>/<fixture>/<model>.json`. The full transcript stays local and
 // gitignored (eval.ts).
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -15,13 +15,17 @@ export const Usage = z.strictObject({
   cacheReadInputTokens: z.number().int().nonnegative(),
 });
 
+const Hash = z.string().regex(/^sha256:[0-9a-f]{64}$/);
+
 export const Recording = z.strictObject({
   task: z.string().min(1),
   fixture: z.string().min(1),
   /** The model that answered, as it reported itself. */
   model: z.string().min(1),
-  /** input.ts `inputHash` at the time of the run; replay rejects any other. */
-  inputHash: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+  /** input.ts `compatibilityHash` at the time of the run; replay rejects any other. */
+  compatibilityHash: Hash,
+  /** input.ts `promptHash` at the time of the run; with any other, the recording is out of date. */
+  promptHash: Hash,
   usage: Usage,
   costUsd: z.number().nonnegative(),
   /** The parsed JSON the agent produced. */
@@ -42,6 +46,14 @@ export function recordingPath(
 export function readRecording(path: string): Recording | null {
   if (!existsSync(path)) return null;
   return Recording.parse(JSON.parse(readFileSync(path, 'utf8')));
+}
+
+/** Every recording under `dir`, sorted, with its path relative to `dir` (`/`-separated). */
+export function readRecordings(dir: string): { path: string; recording: Recording }[] {
+  return readdirSync(dir, { recursive: true, encoding: 'utf8' })
+    .filter((p) => p.endsWith('.json'))
+    .sort()
+    .map((p) => ({ path: p.replaceAll('\\', '/'), recording: readRecording(join(dir, p))! }));
 }
 
 export function writeRecording(dir: string, recording: Recording): string {

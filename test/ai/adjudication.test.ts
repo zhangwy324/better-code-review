@@ -39,8 +39,11 @@ const answer = (edgeId: string, verdict: EdgeVerdict['verdict']): EdgeVerdict =>
   citedLine: { path: 'src/fmt.ts', side: 'new', line: 8 },
 });
 
-const run = (inputHash: string, edgeVerdicts: EdgeVerdict[]): ScoredRun => ({
-  inputHash,
+const run = (
+  hashes: Pick<ScoredRun, 'compatibilityHash' | 'promptHash'>,
+  edgeVerdicts: EdgeVerdict[],
+): ScoredRun => ({
+  ...hashes,
   costUsd: 0.01,
   usage: {
     inputTokens: 10,
@@ -98,11 +101,12 @@ describe('adjudication scoring', () => {
   it('reports runs as a table, flagging stale ones', async () => {
     const { input, graph, selection } = await signatureReview();
     const verdicts = selection.open.map((e) => answer(e.id, 'no'));
+    const hashes = { compatibilityHash: input.compatibilityHash, promptHash: input.promptHash };
     const report = reportRuns(
-      { fixture: 'signature', model: 'stub', inputHash: input.inputHash },
+      { fixture: 'signature', model: 'stub', ...hashes },
       selection,
       fixtureTruth(signature, graph),
-      [run(input.inputHash, verdicts), run('sha256:old', verdicts)],
+      [run(hashes, verdicts), run({ ...hashes, promptHash: 'sha256:old' }, verdicts)],
     );
     expect(report).toMatchObject({
       runs: 2,

@@ -2,7 +2,8 @@
   "task": "skill",
   "fixture": "signature",
   "model": "claude-haiku-5-5",
-  "inputHash": "sha256:2e46077865c313629b9b5ee2a0fcdcac29315f457bc6d5ef2293661e46c31c43",
+  "compatibilityHash": "sha256:34617ebc09f169448bc0214cf8a088662c6f30a91a8ea549f717ee6c36c22cf4",
+  "promptHash": "sha256:a15dcb3941d18ab8e01743fea412162fbf0dcfc34fd739044ba0d985b17a5fa7",
   "usage": {
     "inputTokens": 14,
     "outputTokens": 4473,
