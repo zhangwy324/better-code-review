@@ -2,7 +2,8 @@
 // Its groups follow the plan's reading order, numbered as on the canvas, with child groups nested
 // inside their parent. Each group shows its description and the real diff of every change whose
 // home it is; a change homed elsewhere shows as a reference that selects it, not as a copy (D2).
-// Selecting in any pane scrolls the view to the group, change or hunk.
+// Selecting in any pane scrolls the view to the group, change or hunk. The plan's summary and
+// fallback note are in the outline, which is beside every view, so they aren't repeated here.
 import { useRef } from 'react';
 import type { ChangeNode } from '../schemas/graph.ts';
 import type { ReviewGroup } from '../schemas/plan.ts';
@@ -24,8 +25,6 @@ export function Guided() {
   return (
     <section ref={pane} className="pane guided" aria-label="Guided review">
       <h2>Guided review</h2>
-      {plan.summary !== '' && <p className="summary">{plan.summary}</p>}
-      {plan.fallbackReason !== null && <p className="note">{plan.fallbackReason}</p>}
       <ol className="guided-groups">
         {plan.groupOrder.flatMap((id, i) => {
           const group = groups.get(id);
