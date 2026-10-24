@@ -1,15 +1,15 @@
 // The viewer's layout (design reference §6.2): a header over three resizable panes, the review
-// outline, the canvas and the detail pane. Every string from the repository or the plan is
-// rendered as React text, never as HTML (spec invariant 6).
+// outline, the views (graph, guided review and files) and the detail pane. Every string from the
+// repository or the plan is rendered as React text, never as HTML (spec invariant 6).
 import { useMemo } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { Canvas } from './Canvas.tsx';
 import type { LoadResult } from './data.ts';
 import { Detail } from './Detail.tsx';
 import { Header } from './Header.tsx';
 import { buildModel } from './model.ts';
 import { Outline } from './Outline.tsx';
 import { ReviewProvider } from './state.tsx';
+import { Views } from './Views.tsx';
 
 export function App({ result }: { result: LoadResult }) {
   const model = useMemo(() => (result.ok ? buildModel(result.data) : null), [result]);
@@ -31,8 +31,8 @@ export function App({ result }: { result: LoadResult }) {
             <Outline />
           </Panel>
           <Separator className="separator" />
-          <Panel id="canvas" defaultSize="48" minSize="20">
-            <Canvas />
+          <Panel id="views" defaultSize="48" minSize="20">
+            <Views />
           </Panel>
           <Separator className="separator" />
           <Panel id="detail" defaultSize="30" minSize="15">

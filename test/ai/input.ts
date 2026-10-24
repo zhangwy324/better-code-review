@@ -1,12 +1,12 @@
 // The model input for an AI step on a portfolio fixture (#85), and the hash that ties a recording
 // to it. The step is the skill itself (#25): the agent runs in the fixture's repository with the
-// skill installed in `.claude/skills/` and the CLI on PATH, follows SKILL.md, and leaves
-// `plan.json` in the review directory. The hash covers the task's prompt, the skill's files
+// skill's planning files installed in `.claude/skills/` and the CLI on PATH, follows SKILL.md,
+// and leaves `plan.json` in the review directory. The hash covers the task's prompt, the skill's files
 // (`HASHED_SOURCES`), `planner-input.md` and the caller-candidate batches (#43), which
 // `generate --no-lsp` writes for the fixture exactly as the agent's own run does.
 import {
   chmodSync,
-  cpSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gitSnapshotFiles, type SnapshotFiles } from '../../src/analysis/semantic/index.ts';
 import { generate, targetName } from '../../src/cli/generate.ts';
@@ -33,14 +33,24 @@ export type Task = keyof typeof TASKS;
 export const SKILL_DIR = 'skills/better-code-review';
 
 /**
+ * Every skill reference, and whether the planner reads it. Only planning references are installed
+ * for the agent and hashed, so a reference for another task, such as acting on reviewer feedback
+ * (#33), leaves the recordings valid. input.test.ts fails on a reference missing here.
+ */
+export const REFERENCES: Readonly<Record<string, 'planning' | 'other'>> = {
+  'analysis-workflow.md': 'planning',
+  'feedback-workflow.md': 'other',
+};
+
+/**
  * Repository files whose content changes what the model sees, beyond the prompt and the generated
- * input: the skill's SKILL.md and every reference. A change to any of them makes every recording
- * stale.
+ * input: the skill's SKILL.md and its planning references. They are all of the skill the agent
+ * gets, and a change to any of them makes every recording stale.
  */
 export const HASHED_SOURCES: readonly string[] = [
   `${SKILL_DIR}/SKILL.md`,
-  ...readdirSync(join(REPO_ROOT, SKILL_DIR, 'references'))
-    .filter((name) => name.endsWith('.md'))
+  ...Object.keys(REFERENCES)
+    .filter((name) => REFERENCES[name] === 'planning')
     .sort()
     .map((name) => `${SKILL_DIR}/references/${name}`),
 ];
@@ -81,9 +91,11 @@ export async function modelInput(task: Task, fixture: Fixture, dir: string): Pro
     outputDirectory: review,
     analysis: { useLsp: false, allowProjectCodeExecution: false },
   });
-  cpSync(join(REPO_ROOT, SKILL_DIR), join(repo, '.claude/skills/better-code-review'), {
-    recursive: true,
-  });
+  for (const path of HASHED_SOURCES) {
+    const installed = join(repo, '.claude/skills/better-code-review', path.slice(SKILL_DIR.length));
+    mkdirSync(dirname(installed), { recursive: true });
+    copyFileSync(join(REPO_ROOT, path), installed);
+  }
   const bin = installCli(join(dir, 'bin'));
 
   const prompt = readSource(TASKS[task]);

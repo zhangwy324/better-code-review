@@ -2,25 +2,25 @@
   "task": "skill",
   "fixture": "tests-and-config",
   "model": "claude-sonnet-5-5",
-  "inputHash": "sha256:83bed00c963926443ece0f49501a23ec0d0778f0c4fbf28ec7dbbbb775825cd5",
+  "inputHash": "sha256:d6c6b3ceac349dd83740721b574102619a685bfe97a9c5a2ca571721a7d362b9",
   "usage": {
     "inputTokens": 10,
-    "outputTokens": 1494,
-    "cacheCreationInputTokens": 13796,
-    "cacheReadInputTokens": 48737
+    "outputTokens": 1443,
+    "cacheCreationInputTokens": 13872,
+    "cacheReadInputTokens": 49681
   },
-  "costUsd": 0.07501769999999999,
+  "costUsd": 0.0749061,
   "output": {
     "schemaVersion": 1,
     "snapshotId": "bb0f22c688b862d403e3afd08365db1a20d7e62496452fcccfb131362ef63390",
     "origin": "agent",
     "fallbackReason": null,
-    "summary": "A new test covers half-up rounding in formatPrice, alongside build and tooling config changes: a Node 22 CI runtime, a coverage-enabled test script with a patch version bump, and a stricter TypeScript indexed-access check. The config changes look independent of the test addition.",
+    "summary": "The commit adds a rounding test for formatPrice and changes build and test configuration: the CI Node version, the package version and test script, and a stricter TypeScript option. The pieces have no code edges between them, so they read as independent edits.",
     "groups": [
       {
-        "id": "rounding-test",
-        "title": "New half-up rounding test for formatPrice",
-        "description": "Adds a test expecting 0.125 to format as 0.13. Check that formatPrice actually rounds half up here, since floating-point representation can affect this case.",
+        "id": "tests",
+        "title": "New formatPrice rounding test",
+        "description": "Adds a 'rounds half up' case expecting formatPrice(0.125) to give '0.13'. Check that the expectation matches formatPrice's intended rounding, since floating-point representation can affect half-way values.",
         "nodeIds": [
           "n_b2fea183ff569239",
           "n_911220e4f7631ef9"
@@ -30,28 +30,19 @@
       },
       {
         "id": "test-tooling",
-        "title": "Test script runs with coverage",
-        "description": "The test script now passes --coverage and the version is bumped to 1.0.1. Check that a coverage provider is installed, because only vitest is listed as a dependency, and that the bump is intended.",
+        "title": "Test script, version and CI Node bump",
+        "description": "The test script now runs vitest with --coverage, the package version goes to 1.0.1, and CI moves from Node 20 to 22. Check that the coverage provider is installed, because only vitest is listed in devDependencies, and that Node 22 is intended.",
         "nodeIds": [
-          "n_b151a93cb26cc97f"
-        ],
-        "referenceNodeIds": [],
-        "childGroupIds": []
-      },
-      {
-        "id": "ci-node",
-        "title": "CI uses Node 22",
-        "description": "The workflow moves from Node 20 to 22. Confirm that the project and its dependencies support Node 22.",
-        "nodeIds": [
+          "n_b151a93cb26cc97f",
           "n_4b97cb45d69b33df"
         ],
         "referenceNodeIds": [],
         "childGroupIds": []
       },
       {
-        "id": "ts-strictness",
-        "title": "Stricter TypeScript indexed access",
-        "description": "Enables noUncheckedIndexedAccess, which looks unrelated to the other edits. Check that existing code still type-checks under it.",
+        "id": "tsconfig",
+        "title": "Stricter TypeScript indexing checks",
+        "description": "Enables noUncheckedIndexedAccess. This looks unrelated to the other edits. Check that the existing code still type-checks under it.",
         "nodeIds": [
           "n_56a6af5ea21f0b8e"
         ],
@@ -60,10 +51,9 @@
       }
     ],
     "groupOrder": [
-      "rounding-test",
+      "tests",
       "test-tooling",
-      "ci-node",
-      "ts-strictness"
+      "tsconfig"
     ],
     "edgeVerdicts": [],
     "inferredRelationships": []

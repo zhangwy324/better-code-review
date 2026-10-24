@@ -158,7 +158,6 @@ pre {
 
 .groups,
 .nodes,
-.cards,
 .hunks,
 .node-links {
   list-style: none;
@@ -176,8 +175,7 @@ button {
   color: inherit;
 }
 
-.item,
-.card {
+.item {
   display: flex;
   gap: 8px;
   justify-content: space-between;
@@ -190,13 +188,11 @@ button {
   cursor: pointer;
 }
 
-.item:hover,
-.card:hover {
+.item:hover {
   background: var(--bg-hover);
 }
 
-.item[aria-current],
-.card[aria-current] {
+.item[aria-current] {
   background: var(--bg-selected);
 }
 
@@ -207,19 +203,6 @@ button {
 
 .reference {
   color: var(--fg-muted);
-}
-
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 8px;
-}
-
-.card {
-  flex-direction: column;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  background: var(--bg-pane);
 }
 
 .link {
@@ -315,6 +298,102 @@ button {
   color: var(--fg-muted);
 }
 
+/* Comments (Comments.tsx, and in the diff). A comment stays at the diff's left edge when it
+   scrolls sideways. */
+.num-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.num-button:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.diff-table tr.commented .num {
+  box-shadow: inset -3px 0 var(--accent);
+}
+
+.diff-table tr.selected {
+  background: var(--bg-selected);
+}
+
+.diff-table .comment-row td {
+  padding: 0;
+  white-space: normal;
+}
+
+.comment-box {
+  position: sticky;
+  left: 0;
+  max-width: 60ch;
+  padding: 6px 8px;
+  font-family: var(--font);
+  font-size: 13px;
+}
+
+.comment,
+.comment-form {
+  margin: 4px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-pane);
+}
+
+.comment-body {
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.comment-form textarea,
+.copy-fallback textarea {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.comment-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.group-comments {
+  margin: 8px 0;
+}
+
+.feedback-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.unsaved {
+  color: var(--tok-literal);
+  cursor: help;
+}
+
+.copy-fallback {
+  position: fixed;
+  top: 48px;
+  right: 12px;
+  z-index: 10;
+  width: min(640px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+}
+
 /* Syntax highlighting: the class names of Lezer's classHighlighter (highlight.ts). */
 .tok-keyword,
 .tok-modifier,
@@ -352,6 +431,81 @@ button {
 .tok-definition,
 .tok-function {
   color: var(--tok-definition);
+}
+
+/* The center pane's views (Views.tsx): tabs over the graph, guided review or files. */
+.views {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.views > .pane {
+  flex: 1;
+  min-height: 0;
+}
+
+.view-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-pane);
+}
+
+.view-tabs button {
+  padding: 4px 12px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.view-tabs button:hover {
+  background: var(--bg-hover);
+}
+
+.view-tabs button[aria-selected='true'] {
+  margin-bottom: -1px;
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* The guided review (Guided.tsx) and file view (Files.tsx). */
+.guided-groups {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guided-groups .guided-groups {
+  padding-left: 16px;
+  border-left: 2px solid var(--border);
+}
+
+.guided-group {
+  margin-bottom: 16px;
+}
+
+.guided-group[aria-current] > h3,
+.guided-node[aria-current] > h4 {
+  border-radius: 4px;
+  background: var(--bg-selected);
+}
+
+.guided-node,
+.file {
+  margin: 12px 0 20px;
+}
+
+.guided-node h4,
+.file h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
 }
 
 /* The graph canvas (Canvas.tsx). Node sizes match SIZES in canvas.ts, which the layout uses. */

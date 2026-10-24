@@ -1,19 +1,20 @@
 // The skill's model input on every portfolio fixture: a deterministic hash, and a size
 // ceiling so input bloat fails a normal test instead of a bill (#85). Sizes are `estimateTokens`
 // (characters ÷ 4); no API is called.
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { FIXTURES } from '../fixtures/index.ts';
-import { inputHash, modelInput } from './input.ts';
+import { inputHash, modelInput, REFERENCES, SKILL_DIR } from './input.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'bcr-ai-input-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 /**
  * Estimated tokens per fixture: the measured size plus about 10%. About 4,200 of each is the
- * skill (SKILL.md and its references), which every run reads. Raise one only after reading
+ * skill (SKILL.md and its planning references), which every run reads. Raise one only after reading
  * why it grew (planner-input.md's selection policy is in src/planner/README.md).
  */
 const CEILINGS: Record<string, number> = {
@@ -43,6 +44,11 @@ describe.each(FIXTURES)('skill input for $name', (fixture) => {
     expect(ceiling, `add a size ceiling for ${fixture.name}`).toBeDefined();
     expect(input.estimatedTokens).toBeLessThanOrEqual(ceiling ?? 0);
   });
+});
+
+it('says of every skill reference whether the planner reads it', () => {
+  const dir = fileURLToPath(new URL(`../../${SKILL_DIR}/references`, import.meta.url));
+  expect(Object.keys(REFERENCES).sort()).toEqual(readdirSync(dir).sort());
 });
 
 describe('inputHash', () => {

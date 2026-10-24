@@ -2,21 +2,32 @@
 // each line exactly as the patch has it, with the unchanged lines between them expandable from the
 // file's content. It takes everything it shows as props, so the detail pane, the file view (#31)
 // and graph nodes can all use it. Every row carries its line numbers as `data-old-line` and
-// `data-new-line`, for comments to anchor to (spec D4).
-import { type ReactNode, useMemo, useState } from 'react';
+// `data-new-line`.
+//
+// Inside ReviewProvider the diff also shows the reviewer's comments and takes new ones (#33, spec
+// D4): clicking a line number picks that line on that side, shift-clicking another in the same
+// hunk or run of context extends it to a range, and the comment shows below the range's last line.
+// The comments live in the provider (state.tsx), not here, so every view that shows a diff shows
+// the same ones.
+import { Fragment, type ReactNode, useMemo, useState } from 'react';
 import type { FileChange } from '../schemas/changeset.ts';
 import type { Side } from '../schemas/common.ts';
+import type { LineComment } from '../schemas/feedback.ts';
 import { count } from '../text/index.ts';
+import { CommentForm, CommentView } from './Comments.tsx';
 import {
   contentLines,
   contextRow,
   contextSide,
   type DiffRow,
+  type Expansion,
   type Gap,
   gaps,
   hunkRows,
+  revealing,
 } from './diff.ts';
 import { Highlighter, type Token } from './highlight.ts';
+import { useFeedback } from './state.tsx';
 
 /** How many unchanged lines one click reveals. */
 const STEP = 20;
@@ -38,7 +49,17 @@ interface Props {
   onSelectHunk?: ((id: string) => void) | undefined;
 }
 
-type Expansion = { top: number; bottom: number };
+/** Lines being picked for a comment: one side, within one hunk or one gap (`block`). */
+interface Draft {
+  side: Side;
+  block: string;
+  /** The line clicked first; shift-clicking another makes the range between them. */
+  anchor: number;
+  start: number;
+  end: number;
+}
+
+const lineOn = (row: DiffRow, side: Side) => (side === 'old' ? row.oldLine : row.newLine);
 
 export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
   const side = contextSide(file);
@@ -50,18 +71,79 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
     () => (side === null ? null : gaps(file, side, lines.length)),
     [file, side, lines],
   );
-  const highlighters = useMemo(
-    () => ({
-      old: file.oldContent === null ? null : Highlighter.for(file.oldContent, language),
-      new: file.newContent === null ? null : Highlighter.for(file.newContent, language),
-    }),
-    [file, language],
+  const highlighters = fileHighlighters(file, language);
+  const feedback = useFeedback();
+  const comments = (feedback?.comments ?? []).filter(
+    (c): c is LineComment =>
+      c.kind === 'line' && c.path === (c.side === 'old' ? file.oldPath : file.newPath),
   );
-  const [expanded, setExpanded] = useState<Record<number, Expansion>>({});
-
   const shown = new Set(hunkIds ?? file.hunks.map((h) => h.id));
   const isShown = (i: number) => file.hunks[i] !== undefined && shown.has(file.hunks[i].id);
+  // Comments on expanded context show again when the diff does.
+  const [expanded, setExpanded] = useState<Record<number, Expansion>>(() => {
+    if (side === null || fileGaps === null) return {};
+    const lines = comments
+      .filter((c) => c.hunkId === null)
+      .flatMap((c) => [c.range.startLine, c.range.endLine].map((line) => ({ side: c.side, line })));
+    return revealing(fileGaps, side, lines, isShown);
+  });
+  const [draft, setDraft] = useState<Draft | null>(null);
   const tokens = (row: DiffRow) => rowTokens(row, highlighters);
+
+  const pick = (side: Side, line: number, block: string, extend: boolean) =>
+    setDraft((d) =>
+      extend && d !== null && d.side === side && d.block === block
+        ? { ...d, start: Math.min(d.anchor, line), end: Math.max(d.anchor, line) }
+        : { side, block, anchor: line, start: line, end: line },
+    );
+  /** A row, then the comments that end on it and the comment being written, if it ends there. */
+  const renderRow = (
+    row: DiffRow,
+    key: number,
+    block: string,
+    hunkId: string | null,
+    context = false,
+  ) => {
+    if (feedback === null) {
+      return <Row key={key} row={row} tokens={tokens(row)} expanded={context} />;
+    }
+    const within = (side: Side, start: number, end: number) => {
+      const line = lineOn(row, side);
+      return line !== null && line >= start && line <= end;
+    };
+    const inDraft = draft !== null && draft.block === block;
+    const ending = comments.filter((c) => lineOn(row, c.side) === c.range.endLine);
+    return (
+      <Fragment key={key}>
+        <Row
+          row={row}
+          tokens={tokens(row)}
+          expanded={context}
+          selected={inDraft && within(draft.side, draft.start, draft.end)}
+          commented={comments.some((c) => within(c.side, c.range.startLine, c.range.endLine))}
+          onPick={(side, extend) => pick(side, lineOn(row, side)!, block, extend)}
+        />
+        {ending.map((c) => (
+          <CommentRow key={c.id}>
+            <CommentView comment={c} />
+          </CommentRow>
+        ))}
+        {inDraft && lineOn(row, draft.side) === draft.end && (
+          <CommentRow>
+            <CommentForm
+              label={`Comment on ${draft.side} ${draft.start === draft.end ? `line ${draft.start}` : `lines ${draft.start}-${draft.end}`}`}
+              onSave={(body) => {
+                const { side, start, end } = draft;
+                feedback.addLine({ file, side, startLine: start, endLine: end, hunkId }, body);
+                setDraft(null);
+              }}
+              onCancel={() => setDraft(null)}
+            />
+          </CommentRow>
+        )}
+      </Fragment>
+    );
+  };
 
   // Gap i is before hunk i; it shows when a hunk next to it does. A run of hunks left out between
   // shown ones becomes one separator row.
@@ -96,7 +178,7 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
           down={down}
           expansion={expanded[i] ?? { top: 0, bottom: 0 }}
           onExpand={(e) => setExpanded((all) => ({ ...all, [i]: e }))}
-          tokens={tokens}
+          renderRow={(row, line) => renderRow(row, line, `gap-${i}`, null, true)}
         />,
       );
     }
@@ -123,9 +205,7 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
             )}
           </td>
         </tr>
-        {rows.map((row, n) => (
-          <Row key={n} row={row} tokens={tokens(row)} />
-        ))}
+        {rows.map((row, n) => renderRow(row, n, hunk.id, hunk.id))}
       </tbody>,
     );
   }
@@ -154,7 +234,7 @@ function GapRows({
   down,
   expansion,
   onExpand,
-  tokens,
+  renderRow,
 }: {
   gap: Gap;
   side: Side;
@@ -165,7 +245,8 @@ function GapRows({
   down: boolean;
   expansion: Expansion;
   onExpand: (expansion: Expansion) => void;
-  tokens: (row: DiffRow) => Token[];
+  /** Renders the context row for `line` of `side`. */
+  renderRow: (row: DiffRow, line: number) => ReactNode;
 }) {
   const size = gap.to - gap.from + 1;
   const top = up ? Math.min(expansion.top, size) : 0;
@@ -174,8 +255,7 @@ function GapRows({
   const rows = (from: number, to: number) => {
     const result: ReactNode[] = [];
     for (let line = from; line <= to; line++) {
-      const row = contextRow(gap, side, line, lines[line - 1] ?? '');
-      result.push(<Row key={line} row={row} tokens={tokens(row)} expanded />);
+      result.push(renderRow(contextRow(gap, side, line, lines[line - 1] ?? ''), line));
     }
     return result;
   };
@@ -229,22 +309,63 @@ function Row({
   row,
   tokens,
   expanded = false,
+  selected = false,
+  commented = false,
+  onPick,
 }: {
   row: DiffRow;
   tokens: Token[];
   expanded?: boolean;
+  /** The row is in the range being commented on. */
+  selected?: boolean;
+  /** The row is in a comment's range. */
+  commented?: boolean;
+  /** Makes the line numbers buttons that pick the line on that side for a comment. */
+  onPick?: ((side: Side, extend: boolean) => void) | undefined;
 }) {
+  const classes = [
+    row.kind,
+    expanded && 'expanded',
+    selected && 'selected',
+    commented && 'commented',
+  ];
+  const num = (side: Side) => {
+    const line = lineOn(row, side);
+    if (line === null || onPick === undefined) return line;
+    return (
+      <button
+        type="button"
+        className="num-button"
+        aria-label={`Comment on ${side} line ${line}`}
+        title="Comment on this line. Shift-click another to comment on a range."
+        onClick={(e) => onPick(side, e.shiftKey)}
+      >
+        {line}
+      </button>
+    );
+  };
   return (
     <tr
-      className={expanded ? `${row.kind} expanded` : row.kind}
+      className={classes.filter(Boolean).join(' ')}
       data-old-line={row.oldLine ?? undefined}
       data-new-line={row.newLine ?? undefined}
     >
-      <td className="num">{row.oldLine}</td>
-      <td className="num">{row.newLine}</td>
+      <td className="num">{num('old')}</td>
+      <td className="num">{num('new')}</td>
       <td className="prefix">{row.prefix}</td>
       <td className="code">
         <LineText text={row.text} tokens={tokens} />
+      </td>
+    </tr>
+  );
+}
+
+/** A row under a diff line for a comment or the comment form, kept in view when the diff scrolls. */
+function CommentRow({ children }: { children: ReactNode }) {
+  return (
+    <tr className="comment-row">
+      <td colSpan={4}>
+        <div className="comment-box">{children}</div>
       </td>
     </tr>
   );
@@ -289,8 +410,30 @@ function LineText({ text, tokens }: { text: string; tokens: Token[] }) {
   return parts;
 }
 
+type Highlighters = Record<Side, Highlighter | null>;
+
+/**
+ * Each FileChange's highlighters, parsed once and shared by every diff of the file: the detail
+ * pane, the guided review and the file view show the same FileChange objects from the model.
+ */
+const highlighterCache = new WeakMap<
+  FileChange,
+  { language: string | null; sides: Highlighters }
+>();
+
+function fileHighlighters(file: FileChange, language: string | null): Highlighters {
+  const cached = highlighterCache.get(file);
+  if (cached?.language === language) return cached.sides;
+  const sides = {
+    old: file.oldContent === null ? null : Highlighter.for(file.oldContent, language),
+    new: file.newContent === null ? null : Highlighter.for(file.newContent, language),
+  };
+  highlighterCache.set(file, { language, sides });
+  return sides;
+}
+
 /** Highlighting for a row from its side's whole file: the old side for removed lines. */
-function rowTokens(row: DiffRow, highlighters: Record<Side, Highlighter | null>): Token[] {
+function rowTokens(row: DiffRow, highlighters: Highlighters): Token[] {
   if (row.kind === 'removed' && row.oldLine !== null) {
     return highlighters.old?.line(row.oldLine, row.text) ?? [];
   }

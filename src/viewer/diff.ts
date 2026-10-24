@@ -115,3 +115,33 @@ export function contextRow(gap: Gap, side: Side, line: number, text: string): Di
     newLine: side === 'new' ? line : other,
   };
 }
+
+/** How many lines of a gap show from its top (below the hunk above) and from its bottom. */
+export interface Expansion {
+  top: number;
+  bottom: number;
+}
+
+/**
+ * The expansion of each gap that reveals `lines`, e.g. the lines of comments on expanded
+ * context, so they show again when the diff is shown again. A line is revealed from the hunk
+ * above its gap when that hunk is shown (`isShown(i - 1)`), else from the one below.
+ */
+export function revealing(
+  fileGaps: readonly Gap[],
+  side: Side,
+  lines: readonly { side: Side; line: number }[],
+  isShown: (hunkIndex: number) => boolean,
+): Record<number, Expansion> {
+  const result: Record<number, Expansion> = {};
+  for (const target of lines) {
+    fileGaps.forEach((gap, i) => {
+      const line = target.side === side ? target.line : target.line - gap.offset;
+      if (line < gap.from || line > gap.to) return;
+      const e = (result[i] ??= { top: 0, bottom: 0 });
+      if (isShown(i - 1)) e.top = Math.max(e.top, line - gap.from + 1);
+      else if (isShown(i)) e.bottom = Math.max(e.bottom, gap.to - line + 1);
+    });
+  }
+  return result;
+}
