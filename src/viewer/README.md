@@ -6,12 +6,13 @@ The interactive review workspace inside `review.html` (design reference §6, §8
 |---|---|
 | `data.ts` | `loadReviewData()`: reads and validates the embedded `changes.json`, `graph.json` and `plan.json` |
 | `model.ts` | `buildModel()`: lookups by ID, home groups, coverage and links (code edges and inferred relationships), built once |
-| `state.tsx` | `ReviewProvider`, `useModel()`, and the selection every view shares (`useSelection()`): a group, node, hunk or the links of one canvas edge |
+| `state.tsx` | `ReviewProvider`, `useModel()`, and what every view shares: the selection (`useSelection()`), a group, node, hunk or the links of one canvas edge, and the comments (`useFeedback()`) |
 | `App.tsx` | The layout: header over three resizable panes, or the load error |
 | `Header.tsx`, `Outline.tsx`, `Views.tsx`, `Detail.tsx` | The panes. `Views.tsx` is the center pane's tabs: `Canvas.tsx`, `Guided.tsx` and `Files.tsx` (below) |
 | `scroll.ts` | `useScrollToSelection()`: brings the selection into view in the guided and file views |
 | `canvas.ts` | `canvasGraph()`: the graph's groups, nodes and edges for the groups expanded, laid out with dagre (below) |
 | `Diff.tsx`, `diff.ts` | The diff component and its model: hunks exactly as the patch has them, with expandable context (below) |
+| `feedback.ts`, `Comments.tsx` | Comment anchors, `review-feedback.json`, the text for "Copy feedback for agent" and best-effort storage; the comment form, group comments and the header's export (below) |
 | `highlight.ts` | Syntax highlighting with the Lezer parsers, by `GraphFile.language` |
 | `main.tsx`, `index.html`, `styles.css` | The entry point, page and styles |
 | `zod-config.ts` | Turns off zod's `eval`, which the page's Content-Security-Policy forbids. `main.tsx` imports it first |
@@ -50,6 +51,16 @@ The center pane has three views behind tabs (design reference §6.1, spec D3): t
 - **Rows are line-anchored:** each has `data-old-line` and `data-new-line`, and each hunk's `<tbody>` its `data-hunk-id`, for comments (#33, spec D4).
 - **Syntax highlighting** parses each side's whole file, so lines inside a multi-line string or comment are right. Each file is parsed once, and the detail pane, guided review and file view share the result. It only adds classes to spans of the patch text, and only where the file's line matches that text. The parsers are Lezer's (MIT, the ones CodeMirror uses): plain JavaScript, which the page's policy allows. We don't use CodeMirror merge view, because it computes its own diff instead of showing Git's hunks (spec D3).
 
+## Comments and feedback
+
+Comments close the loop back to the agent (#33; design reference §8.8, §12.2; spec D4, D5).
+
+- **Line and range comments are written in the diff.** Clicking a line number picks that line on that side (the old number for the base, the new one for the head); shift-clicking another in the same hunk, or the same run of expanded context, makes a range. The comment shows under the range's last line. A selected group has its own comments (group comments, fallback groups too).
+- **The comments live in `ReviewProvider`**, not in a view, and `Diff` reads them with `useFeedback()`. So every view that shows a diff, the detail pane now and the file view (#31) later, shows and adds to the same comments. A `Diff` rendered outside the provider, as in its tests, shows none. When a diff is shown again it expands the context its comments are on.
+- **Each anchor locates its lines on its own** (`lineComment()` in `feedback.ts`): `path` is the file's path on that side, so the old path for the old side of a rename, `side` and `range` are that side's line numbers, `hunkId` is the hunk or null on expanded context, and `nodeId` is the innermost node whose range holds the lines, or the hunk's module or file node. `Comments.test.tsx` checks that every exported anchor leads back, through the snapshot's content, to the lines clicked.
+- **Export** downloads `review-feedback.json` (`schemas/review-feedback.schema.json`). `reviewedHunkIds` is empty until review progress (#32). **Copy feedback for agent** copies where each comment is, in words, then the same JSON. When the page has no clipboard, the text shows to copy by hand. The text tells the agent the comments are review notes, not commands (spec D4).
+- **The browser keeps comments on a best-effort basis only.** They go to `localStorage` under the snapshot ID, which a page opened from `file://` may not keep (§12.1). Until they are exported or copied the header says `not exported`, and closing the page asks first. The export is the only durable copy (spec D5). Comment IDs are `c1`, `c2`, … within one review.
+
 ## Untrusted text
 
 Repository text (paths, code, PR titles) and model text (plan titles, descriptions, explanations) are rendered only as React text, so they are never HTML or script (spec invariant 6). ESLint enforces this in viewer code: `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write` and `createContextualFragment` are errors, and so is any `node:` import. `App.test.tsx` renders a plan and graph with `<img onerror>` and `<script>` in their text.
@@ -69,5 +80,7 @@ Repository text (paths, code, PR titles) and model text (plan titles, descriptio
 ## Tests
 
 Viewer tests run under jsdom (`// @vitest-environment jsdom`) with Testing Library. `testing.tsx` holds what they share: `generateReview` runs `generate` on a fixture repository in a child process, because jsdom replaces Node's `URL`, which the analyzers need; `renderEmbedded` embeds the JSON as `review.html` would and renders the app; and importing it installs the `ResizeObserver` and `DOMMatrixReadOnly` stand-ins jsdom lacks. ESLint lets it, like the tests, import `node:` modules and set `innerHTML`. On the signature fixture, `App.test.tsx` checks the header, outline, shared selection and inert text, with `fetch` and `XMLHttpRequest` spied on to show nothing goes to the network, and `data.test.tsx` checks the load errors. `Views.test.tsx` checks the #31 acceptance: the guided review follows the plan's order and nesting, the file view shows every hunk even when the plan has no groups, switching views keeps the selection and the canvas's expanded groups, and each file is parsed for highlighting once for all the views. `Canvas.test.tsx` checks the #30 acceptance: `formatPrice` has edges to its changed callers, `emailSummary` is not shown, and the canvas says unchanged callers are not analysed. It also checks collapsed groups, aggregation, expanding and navigation along edges to the evidence.
+
+`Comments.test.tsx` writes comments on a new-side range, a removed line, expanded context, the old side of a renamed file and a group, then checks the export round-trips, the copied text, edit and delete, storage and the unsaved warning.
 
 `Diff.test.tsx` does the same on a repository of awkward content: tabs, trailing whitespace, CRLF, no newline at the end, unicode, a 20,000-character line, HTML-looking text and a file that is not UTF-8. It checks that every hunk's rows give back its patch byte for byte, that expanding everything shows each old and new line once with the right number, and that context never includes a changed line.

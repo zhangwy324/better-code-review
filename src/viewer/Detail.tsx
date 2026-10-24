@@ -5,6 +5,7 @@
 import type { FileChange } from '../schemas/changeset.ts';
 import type { ChangeNode } from '../schemas/graph.ts';
 import type { ReviewGroup } from '../schemas/plan.ts';
+import { GroupComments } from './Comments.tsx';
 import { Diff } from './Diff.tsx';
 import {
   filePath,
@@ -51,6 +52,7 @@ function GroupDetail({ group }: { group: ReviewGroup }) {
     <>
       <h2>{group.title}</h2>
       {group.description !== '' && <p>{group.description}</p>}
+      <GroupComments key={group.id} groupId={group.id} />
       <NodeLinks ids={group.nodeIds} />
     </>
   );
@@ -245,9 +247,10 @@ export function Diffs({ hunkIds }: { hunkIds: readonly string[] }) {
     const file = model.hunks.get(id)?.file;
     if (file !== undefined) files.set(file, [...(files.get(file) ?? []), id]);
   }
-  return [...files].map(([file, ids], i) => (
+  // Keyed by path, so a diff's expanded context and comment form stay with its file.
+  return [...files].map(([file, ids]) => (
     <Diff
-      key={i}
+      key={filePath(file)}
       file={file}
       hunkIds={ids}
       language={model.languages.get(filePath(file)) ?? null}
