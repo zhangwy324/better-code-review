@@ -17,14 +17,21 @@ import {
   type PlanValidation,
   type ShowQuery,
 } from '../planner/index.ts';
+import { writeReview } from '../renderer/render.ts';
 import { ChangeGraph, ChangeSet, RepoPath, type ReviewTarget } from '../schemas/index.ts';
 import { displayPath, generate, type GenerateOptions } from './generate.ts';
+import { openFile } from './open.ts';
 
 /** Where `run` writes, and the directory it runs in. */
 export interface Io {
   cwd: string;
   out: (text: string) => void;
   err: (text: string) => void;
+}
+
+/** Test hooks for `run`: the generate options, and how `render --open` opens a file. */
+export interface RunOptions extends GenerateOptions {
+  open?: (path: string) => Promise<void>;
 }
 
 /** Exit codes: success, a failed run (Git, gh, the repository, the file system), bad usage. */
@@ -35,15 +42,18 @@ const USAGE = `Usage: better-code-review [--help] [--version]
        better-code-review show --dir <dir> (<id> | --file <path> [--side old|new] [--lines a-b])
        better-code-review validate --dir <dir> [--plan <file>]
        better-code-review fallback --dir <dir>
+       better-code-review render --dir <dir> [--open]
 
-generate writes changes.json, graph.json, planner-input.md, plan.json and summary.txt for a Git
-change, with no AI involved. Its plan.json groups the changes deterministically, for an agent to
-replace with its own. show prints more context from a generated review for the planner: a hunk,
+generate writes changes.json, graph.json, planner-input.md, plan.json, summary.txt and review.html
+for a Git change, with no AI involved. Its plan.json groups the changes deterministically, for an
+agent to replace with its own. review.html is the interactive review: it opens from the file in a
+browser, with no network. show prints more context from a generated review for the planner: a hunk,
 node or edge by ID, or lines of any file in the snapshot. Secrets are redacted in both.
 validate checks the planner's plan.json against the review and prints the result as JSON:
 {"valid": true, "ungroupedNodeIds": [...]} or {"valid": false, "errors": [{"path", "code",
 "message"}]}, where path is a JSON Pointer into the plan. fallback rewrites plan.json as the
-deterministic plan from graph.json, for when the agent's plan still fails validation.
+deterministic plan from graph.json, for when the agent's plan still fails validation. render
+checks plan.json as validate does and, if it is valid, rewrites review.html with it.
 
 Targets (exactly one):
   --local              The working tree (staged, unstaged and untracked) against HEAD
@@ -72,6 +82,10 @@ validate options:
 fallback options:
   --dir <dir>          The directory generate wrote; its plan.json is replaced
 
+render options:
+  --dir <dir>          The directory generate wrote; its review.html is replaced
+  --open               Open review.html in the default browser afterwards
+
 Exit codes: 0 success, 1 the run failed or the plan is invalid, 2 bad usage.
 `;
 
@@ -84,13 +98,14 @@ export function version(): string {
 
 class UsageError extends Error {}
 
-export async function run(argv: string[], io: Io, options: GenerateOptions = {}): Promise<number> {
+export async function run(argv: string[], io: Io, options: RunOptions = {}): Promise<number> {
   try {
     const [command, ...rest] = argv;
     if (command === 'generate') return await runGenerate(rest, io, options);
     if (command === 'show') return await runShow(rest, io);
     if (command === 'validate') return await runValidate(rest, io);
     if (command === 'fallback') return runFallback(rest, io);
+    if (command === 'render') return await runRender(rest, io, options);
     const { values } = parseArgs({
       args: argv,
       options: {
@@ -177,6 +192,9 @@ async function runGenerate(argv: string[], io: Io, options: GenerateOptions): Pr
     { progress: (message) => io.err(`${message}…\n`), ...options },
   );
   io.out(`${result.summary}\nWritten to ${displayPath(io.cwd, result.outputDirectory)}\n`);
+  if (result.reviewPath === null) {
+    io.err('review.html was not written: the viewer is not built (run `npm run build`).\n');
+  }
   return EXIT.ok;
 }
 
@@ -256,21 +274,27 @@ async function runValidate(argv: string[], io: Io): Promise<number> {
     throw new UsageError('validate needs --dir, the directory generate wrote');
   }
   const { graph, files } = await readReview(values.dir, io);
-
-  // The plan's own problems are the agent's to repair, so they are reported, not thrown.
-  const text = readFileSync(values.plan ?? join(values.dir, 'plan.json'), 'utf8');
-  let result: PlanValidation;
-  try {
-    result = await validatePlan(JSON.parse(text), graph, files);
-  } catch (err) {
-    if (!(err instanceof SyntaxError)) throw err;
-    result = { valid: false, errors: [{ path: '', code: 'json', message: err.message }] };
-  }
+  const result = await checkPlan(values.plan ?? join(values.dir, 'plan.json'), graph, files);
   const report = result.valid
     ? { valid: true, ungroupedNodeIds: result.ungroupedNodeIds }
     : { valid: false, errors: result.errors };
   io.out(`${JSON.stringify(report, null, 2)}\n`);
   return result.valid ? EXIT.ok : EXIT.failed;
+}
+
+/** Validates the plan at `path`. Its own problems are the agent's to repair, so they are reported. */
+async function checkPlan(
+  path: string,
+  graph: ChangeGraph,
+  files: SnapshotFiles,
+): Promise<PlanValidation> {
+  const text = readFileSync(path, 'utf8');
+  try {
+    return await validatePlan(JSON.parse(text), graph, files);
+  } catch (err) {
+    if (!(err instanceof SyntaxError)) throw err;
+    return { valid: false, errors: [{ path: '', code: 'json', message: err.message }] };
+  }
 }
 
 /** The `fallbackReason` when the agent's plan failed validation after the repair loop (D8). */
@@ -299,6 +323,52 @@ function runFallback(argv: string[], io: Io): number {
   const path = join(values.dir, 'plan.json');
   writeFileSync(path, `${JSON.stringify(plan, null, 2)}\n`);
   io.out(`Fallback plan written to ${displayPath(io.cwd, path)}\n`);
+  return EXIT.ok;
+}
+
+/**
+ * Rewrites `<dir>/review.html` (#34) once the agent's plan is in, so the skill ends with the
+ * artifact (design reference §11.2 steps 6–7). It never embeds a plan `validate` would reject: an
+ * invalid plan.json fails the command, for the skill's repair loop or `fallback` to fix. The page
+ * gets the validated plan, with any homeless nodes in Ungrouped. plan.json stays as the agent
+ * wrote it, since only the validator may make the `ungrouped` group.
+ */
+async function runRender(argv: string[], io: Io, options: RunOptions): Promise<number> {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      help: { type: 'boolean', short: 'h' },
+      dir: { type: 'string' },
+      open: { type: 'boolean', default: false },
+    },
+    strict: true,
+  });
+  if (values.help) {
+    io.out(USAGE);
+    return EXIT.ok;
+  }
+  if (values.dir === undefined) {
+    throw new UsageError('render needs --dir, the directory generate wrote');
+  }
+  const { graph, files } = await readReview(values.dir, io);
+  const result = await checkPlan(join(values.dir, 'plan.json'), graph, files);
+  if (!result.valid) {
+    const errors = result.errors.map((e) => `  ${e.path || '/'} ${e.code}: ${e.message}\n`);
+    io.err(
+      `plan.json is not valid, so review.html was not written:\n${errors.join('')}` +
+        'Repair it (validate reports the same errors), or replace it with fallback.\n',
+    );
+    return EXIT.failed;
+  }
+  const path = writeReview(values.dir, { template: options.viewerTemplate, plan: result.plan });
+  io.out(`Review written to ${displayPath(io.cwd, path)}\n`);
+  if (values.open) {
+    try {
+      await (options.open ?? openFile)(path);
+    } catch (err) {
+      io.err(`Could not open it: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+  }
   return EXIT.ok;
 }
 

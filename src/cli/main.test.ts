@@ -156,6 +156,17 @@ describe('validate', () => {
   });
 });
 
+describe('render', () => {
+  it('needs --dir and an existing review', async () => {
+    const usage = await cli('render', '--open');
+    expect(usage.exitCode).toBe(EXIT.usage);
+    expect(usage.stderr).toContain('render needs --dir');
+    const missing = await cli('render', '--dir', join(tmpdir(), 'bcr-no-such-review'));
+    expect(missing.exitCode).toBe(EXIT.failed);
+    expect(missing.stderr).toContain('changes.json');
+  });
+});
+
 describe('fallback', () => {
   const dir = mkdtempSync(join(tmpdir(), 'bcr-fallback-'));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
