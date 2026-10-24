@@ -2,7 +2,8 @@
   "task": "skill",
   "fixture": "independent-roots",
   "model": "claude-sonnet-5-5",
-  "inputHash": "sha256:b8b91f00bee7dbe924e405dbccf889eb1690d1f946356e4a5a3c25ac948b267b",
+  "compatibilityHash": "sha256:bf42be04fbaf0cbb8603f7483e0eee41cff7ceb57f70591d0d93a7a8acdc2ca7",
+  "promptHash": "sha256:a15dcb3941d18ab8e01743fea412162fbf0dcfc34fd739044ba0d985b17a5fa7",
   "usage": {
     "inputTokens": 14,
     "outputTokens": 2147,

@@ -28,6 +28,7 @@ npm run check   # format check, lint, typecheck, build, tests: the same steps CI
 | `npm run fixtures` | Lists the test fixture portfolio, or builds one fixture as a repository to try by hand ([`test/fixtures/README.md`](test/fixtures/README.md)) |
 | `npm run viewer` | Serves the viewer with a review directory's data, for development ([`src/viewer/README.md`](src/viewer/README.md)) |
 | `npm run eval` | Live, budget-capped runs of the AI steps. **Spends real AI usage**; never part of `check` or CI ([Testing AI steps](#testing-ai-steps)) |
+| `npm run eval:check-current` | Fails unless every recording is current: the gate before a milestone closes or a release is cut. Calls no model ([Milestones and releases](#milestones-and-releases)) |
 | `npm run score:adjudication` | Scores the caller verdicts of the runs `eval` kept against ground truth (#43). Reads files only ([Testing AI steps](#testing-ai-steps)) |
 | `npm run grammars` | Re-vendors the built-in tree-sitter grammars from their pins ([`src/analysis/structural/README.md`](src/analysis/structural/README.md)) |
 
@@ -70,7 +71,11 @@ The CLI makes no model calls ([MVP spec D8](docs/mvp-spec.md)). `plan.json` and 
   - it sends the short prompt in `test/ai/prompts/skill.md`
 
   The agent follows SKILL.md. The run's output is the `plan.json` it leaves in the review directory.
-- **Model input and staleness.** A recording stores the hash of its model input. The hash covers the task's prompt, the skill's files (`HASHED_SOURCES`: `SKILL.md` and the references `REFERENCES` marks `planning`) and the fixture's `planner-input.md` (#22). So any edit to those makes every recording stale. A reference for another task, such as `feedback-workflow.md`, or for the steps after `validate`, where the prompt stops (`render-workflow.md`, #34), is marked `other`: it is neither installed nor hashed (#121). Keep what the planner needs before `validate` in `SKILL.md` or a `planning` reference. If the input changes, `npm test` fails the recording as stale and names the command that re-records it. It never falls back to a live call.
+- **Model input and staleness.** A recording stores two hashes of its model input (#131):
+  - The **compatibility hash** covers what the fixture gives the agent: its `planner-input.md` (#22), its caller-candidate batches (#43) and the IDs in its graph. If it changes, the recording's plan may cite nodes, hunks or edges that no longer exist, so `npm test` fails the recording as unusable and names the command that re-records it. A recording whose plan no longer parses as a `ReviewPlan` fails too.
+  - The **prompt hash** covers how the agent is asked: the task's prompt and the skill's files (`HASHED_SOURCES`: `SKILL.md` and the references `REFERENCES` marks `planning`). If it changes, the recording still replays, so the scoring, schema and validator code stay tested, but it no longer shows how the current skill plans. `npm test` passes and warns that the recording is out of date.
+
+  A reference for another task, such as `feedback-workflow.md`, or for the steps after `validate`, where the prompt stops (`render-workflow.md`, #34), is marked `other`: it is neither installed nor hashed (#121). Keep what the planner needs before `validate` in `SKILL.md` or a `planning` reference. Replay never falls back to a live call. Re-recording after a prompt-side change is optional mid-milestone: do it when a pull request knowingly changes planning behaviour, and before the [milestone gate](#milestones-and-releases).
 - **Input size.** `test/ai/input.test.ts` estimates each fixture's input size (characters ÷ 4, no API call) and fails above a per-fixture ceiling, so input bloat fails a normal test.
 
 ### `npm run eval`
@@ -94,6 +99,12 @@ npm run eval -- --tier quality --max-budget-usd 2 --allow-large-budget
 - **Recordings.** A run that returns a schema-valid plan is recorded to `test/ai/recordings/<task>/<fixture>/<model>.json`. Commit it with the change that needed it. A run that fails is not recorded. Its transcript path is printed instead.
 - **Caller verdicts (#43).** Every valid plan is also kept in `.cache/eval/outputs/`, and `--runs <n>` repeats each fixture. `npm run score:adjudication` scores their `edgeVerdicts` on the edges the batches asked about, as #42 did: precision, recall, false rejections, `unsure`, run-to-run consistency and tokens. Ground truth is the fixture's `withLsp` facts. For any other change, such as a #42 pull request, pass `--graph <no-LSP graph.json> --truth <graph.json generated with servers> <plan.json>…`. LSP truth over-counts dispatch (#42), so audit disagreements before trusting a score.
 - **Plan checks.** Each recorded plan is scored by [`test/ai/score.ts`](test/ai/score.ts) (#26): it must pass the validator, be the agent's own and leave nothing in Ungrouped, and meet the fixture's `plan` facts ([`test/fixtures/README.md`](test/fixtures/README.md#expected-facts)). A failing check fails the run but the recording is still written, so it can be reviewed. To commit it, list its failed checks in `KNOWN_FAILS` in `replay.test.ts`, which then expects exactly those, and write it up in [`docs/research/planner-eval.md`](docs/research/planner-eval.md).
+
+### Milestones and releases
+
+There is no separate release checklist yet; this is it. Before a milestone is closed or a release is cut:
+
+- [ ] `npm run eval:check-current` passes: every recording replays and is current. It calls no model. It lists each out-of-date recording with the command that re-records it; re-recording spends real AI usage, so ask first (AGENTS.md).
 
 ## Dependencies
 

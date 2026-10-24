@@ -148,7 +148,8 @@ export function lspTruth(withoutLsp: ChangeGraph, withLsp: ChangeGraph): Truth {
 
 /** The part of a recorded run (recording.ts) scoring reads. */
 export interface ScoredRun {
-  inputHash: string;
+  compatibilityHash: string;
+  promptHash: string;
   costUsd: number;
   usage: {
     inputTokens: number;
@@ -165,7 +166,7 @@ export interface RunsReport {
   fixture: string;
   model: string;
   runs: number;
-  /** Runs made for another input than the current one: scored, but flagged. */
+  /** Runs made for another input than the current one, in either hash: scored, but flagged. */
   stale: number;
   score: Score;
   consistency: Consistency;
@@ -175,7 +176,7 @@ export interface RunsReport {
 }
 
 export function reportRuns(
-  key: { fixture: string; model: string; inputHash: string },
+  key: { fixture: string; model: string; compatibilityHash: string; promptHash: string },
   selection: Pick<CandidateSelection, 'open'>,
   truth: Truth,
   runs: readonly ScoredRun[],
@@ -189,7 +190,9 @@ export function reportRuns(
     fixture: key.fixture,
     model: key.model,
     runs: runs.length,
-    stale: runs.filter((r) => r.inputHash !== key.inputHash).length,
+    stale: runs.filter(
+      (r) => r.compatibilityHash !== key.compatibilityHash || r.promptHash !== key.promptHash,
+    ).length,
     score: sumScores(verdicts.map((v) => scoreVerdicts(selection, v, truth))),
     consistency: consistency(selection, verdicts),
     costUsd: sum((r) => r.costUsd),

@@ -2,7 +2,8 @@
   "task": "skill",
   "fixture": "feature-flow",
   "model": "claude-sonnet-5-5",
-  "inputHash": "sha256:981c7b238b53850244eedd2279d3d1e0fd10d794ef15dd16a079b4bcee7336c9",
+  "compatibilityHash": "sha256:436dce519e10b14181d3d84dc131a249c7f5b60b7c27d11bf0ea2bf0d01f858f",
+  "promptHash": "sha256:a15dcb3941d18ab8e01743fea412162fbf0dcfc34fd739044ba0d985b17a5fa7",
   "usage": {
     "inputTokens": 12,
     "outputTokens": 2017,
