@@ -15,7 +15,7 @@ import { DATA_ELEMENT_IDS } from '../renderer/embed.ts';
 import { buildViewer } from '../renderer/viewer.test-helper.ts';
 import { parseContract } from '../schemas/contracts.ts';
 import { UNGROUPED_GROUP_ID, type ReviewPlan } from '../schemas/plan.ts';
-import { EXIT, run, type RunOptions } from './main.ts';
+import { EXIT, run, type TestHooks } from './main.ts';
 
 type Element = DefaultTreeAdapterMap['element'];
 type ParentNode = DefaultTreeAdapterMap['parentNode'];
@@ -29,13 +29,13 @@ beforeAll(async () => {
 });
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
-async function cli(cwd: string, argv: string[], options: RunOptions = {}) {
+async function cli(cwd: string, argv: string[], hooks: TestHooks = {}) {
   let stdout = '';
   let stderr = '';
   const exitCode = await run(
     argv,
     { cwd, out: (t) => (stdout += t), err: (t) => (stderr += t) },
-    { viewerTemplate, ...options },
+    { viewerTemplate, ...hooks },
   );
   return { exitCode, stdout, stderr };
 }

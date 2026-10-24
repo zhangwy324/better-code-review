@@ -8,6 +8,7 @@ import {
   gitSnapshotFiles,
   type SnapshotFiles,
 } from '../analysis/semantic/index.ts';
+import type { ExtractOptions } from '../git/extract.ts';
 import { gitLine } from '../git/run.ts';
 import {
   fallbackPlan,
@@ -29,8 +30,18 @@ export interface Io {
   err: (text: string) => void;
 }
 
-/** Test hooks for `run`: the generate options, and how `render --open` opens a file. */
-export interface RunOptions extends GenerateOptions {
+/**
+ * Stand-ins for what the commands reach outside this process, for tests. The entry point passes
+ * none, so the CLI always uses the real ones.
+ */
+export interface TestHooks {
+  /** `generate`: extractor hooks, such as a fake `gh`. */
+  extract?: ExtractOptions;
+  /** `generate`: extra language-server options (`searchPath`, `timeouts`). */
+  lsp?: NonNullable<GenerateOptions['lsp']>;
+  /** `generate` and `render`: the viewer page, instead of the built one. */
+  viewerTemplate?: string;
+  /** `render --open`: what opens review.html, instead of the system's opener. */
   open?: (path: string) => Promise<void>;
 }
 
@@ -98,14 +109,14 @@ export function version(): string {
 
 class UsageError extends Error {}
 
-export async function run(argv: string[], io: Io, options: RunOptions = {}): Promise<number> {
+export async function run(argv: string[], io: Io, hooks: TestHooks = {}): Promise<number> {
   try {
     const [command, ...rest] = argv;
-    if (command === 'generate') return await runGenerate(rest, io, options);
+    if (command === 'generate') return await runGenerate(rest, io, hooks);
     if (command === 'show') return await runShow(rest, io);
     if (command === 'validate') return await runValidate(rest, io);
     if (command === 'fallback') return runFallback(rest, io);
-    if (command === 'render') return await runRender(rest, io, options);
+    if (command === 'render') return await runRender(rest, io, hooks);
     const { values } = parseArgs({
       args: argv,
       options: {
@@ -127,7 +138,7 @@ export async function run(argv: string[], io: Io, options: RunOptions = {}): Pro
   }
 }
 
-async function runGenerate(argv: string[], io: Io, options: GenerateOptions): Promise<number> {
+async function runGenerate(argv: string[], io: Io, hooks: TestHooks): Promise<number> {
   const { values } = parseArgs({
     args: argv,
     options: {
@@ -189,7 +200,7 @@ async function runGenerate(argv: string[], io: Io, options: GenerateOptions): Pr
         allowProjectCodeExecution: values['allow-project-code'],
       },
     },
-    { progress: (message) => io.err(`${message}…\n`), ...options },
+    { progress: (message) => io.err(`${message}…\n`), ...hooks },
   );
   io.out(`${result.summary}\nWritten to ${displayPath(io.cwd, result.outputDirectory)}\n`);
   if (result.reviewPath === null) {
@@ -333,7 +344,7 @@ function runFallback(argv: string[], io: Io): number {
  * gets the validated plan, with any homeless nodes in Ungrouped. plan.json stays as the agent
  * wrote it, since only the validator may make the `ungrouped` group.
  */
-async function runRender(argv: string[], io: Io, options: RunOptions): Promise<number> {
+async function runRender(argv: string[], io: Io, hooks: TestHooks): Promise<number> {
   const { values } = parseArgs({
     args: argv,
     options: {
@@ -360,11 +371,11 @@ async function runRender(argv: string[], io: Io, options: RunOptions): Promise<n
     );
     return EXIT.failed;
   }
-  const path = writeReview(values.dir, { template: options.viewerTemplate, plan: result.plan });
+  const path = writeReview(values.dir, { template: hooks.viewerTemplate, plan: result.plan });
   io.out(`Review written to ${displayPath(io.cwd, path)}\n`);
   if (values.open) {
     try {
-      await (options.open ?? openFile)(path);
+      await (hooks.open ?? openFile)(path);
     } catch (err) {
       io.err(`Could not open it: ${err instanceof Error ? err.message : String(err)}\n`);
     }
