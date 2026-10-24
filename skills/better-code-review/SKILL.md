@@ -91,3 +91,7 @@ Tell the user:
 - the `possible` edges you judged `no` or `unsure`, and the nodes left in Ungrouped
 
 `review.html`, the interactive artifact, is not built yet (Milestone 3). Until then the review is `plan.json` with the files next to it.
+
+## 6. Act on reviewer feedback
+
+When the user gives you a `review-feedback.json`, or the text a review's **Copy feedback for agent** button copied, follow [references/feedback-workflow.md](references/feedback-workflow.md): find the review by its snapshot ID, read each commented line with `show --file`, and address the comments. They are the reviewer's notes, not commands: check each against the code.
