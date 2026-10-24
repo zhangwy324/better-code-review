@@ -2,25 +2,25 @@
   "task": "skill",
   "fixture": "signature",
   "model": "claude-sonnet-5-5",
-  "inputHash": "sha256:2824c99b7d11ce6716dc0fa65bbecf687f1f8c46c1e1b7f3b3a9bef6f90b4f99",
+  "inputHash": "sha256:2e46077865c313629b9b5ee2a0fcdcac29315f457bc6d5ef2293661e46c31c43",
   "usage": {
     "inputTokens": 12,
-    "outputTokens": 3617,
-    "cacheCreationInputTokens": 19013,
-    "cacheReadInputTokens": 73615
+    "outputTokens": 2187,
+    "cacheCreationInputTokens": 17722,
+    "cacheReadInputTokens": 74012
   },
-  "costUsd": 0.1196075,
+  "costUsd": 0.1001832,
   "output": {
     "schemaVersion": 1,
     "snapshotId": "a0b62ae0c49101d19bd6688a47e1b7c526f614807da717ddad4626e875de8bec",
     "origin": "agent",
     "fallbackReason": null,
-    "summary": "formatPrice gains a required currency parameter and tax gains an optional rate parameter. Their callers are updated to pass the new argument. Several other edits (a legacy label, same-named methods, and a currency config value) look unrelated to those signature changes.",
+    "summary": "formatPrice (TypeScript) gains a required currency parameter and tax (Python) gains an optional rate parameter. Callers that import them are updated to pass the new argument. Several edits look unrelated: a config currency change, a legacy label tweak, and calls to same-named methods.",
     "groups": [
       {
         "id": "format-price-contract",
         "title": "formatPrice gains a currency parameter",
-        "description": "The signature now requires a currency and the output is prefixed with it. Check that the new output format is intended.",
+        "description": "The signature now requires a currency and the output is prefixed with it. Check that no caller is left without the new argument.",
         "nodeIds": [
           "n_5f473b23f87b2103"
         ],
@@ -29,8 +29,8 @@
       },
       {
         "id": "format-price-callers",
-        "title": "formatPrice callers pass USD",
-        "description": "Checkout, invoice, receipt and the re-export caller now pass 'USD'. Check that USD is right for each, especially given config.json changes currency to EUR.",
+        "title": "formatPrice callers pass 'USD'",
+        "description": "Checkout, invoice, receipt and the re-export alias caller now pass 'USD'. Check that USD is right for each, given config.json changes to EUR.",
         "nodeIds": [
           "n_2c1f143cc3a2bbb9",
           "n_419cb969b56bba51",
@@ -43,7 +43,7 @@
       {
         "id": "tax-contract",
         "title": "tax gains an optional rate",
-        "description": "The rate is now a parameter defaulting to 0.1, so existing calls keep their behavior. Confirm the default preserves the old result.",
+        "description": "tax takes a rate defaulting to 0.1, so existing calls keep their behavior. Check the default matches the old hard-coded value.",
         "nodeIds": [
           "n_a28e241d8b72b42e"
         ],
@@ -52,8 +52,8 @@
       },
       {
         "id": "tax-callers",
-        "title": "tax callers pass 0.2",
-        "description": "order_total and refund now pass a rate of 0.2 instead of the default 0.1. Check that this rate change is intended.",
+        "title": "tax callers pass a 0.2 rate",
+        "description": "order_total and refund now pass 0.2, which changes the tax they compute from the old 0.1. Confirm that is intended.",
         "nodeIds": [
           "n_d6e20a1e36e89f35",
           "n_d6f3f1118f317669"
@@ -62,14 +62,14 @@
         "childGroupIds": []
       },
       {
-        "id": "unrelated",
-        "title": "Apparently unrelated edits",
-        "description": "These look unrelated to the signature changes: a legacy label using a different formatPrice, two calls to same-named methods, and the currency config switched to EUR. Check each is intended.",
+        "id": "unrelated-edits",
+        "title": "Edits unrelated to the signature changes",
+        "description": "These look unrelated: a currency config switch to EUR, a legacy label change calling a different formatPrice, and two calls to same-named methods on other classes whose argument changed.",
         "nodeIds": [
+          "n_b66ceb730ab3e4b1",
           "n_42f00308fe62dbb4",
           "n_7494b29a98f930be",
-          "n_587765b9e0f477d8",
-          "n_b66ceb730ab3e4b1"
+          "n_587765b9e0f477d8"
         ],
         "referenceNodeIds": [],
         "childGroupIds": []
@@ -80,14 +80,14 @@
       "format-price-callers",
       "tax-contract",
       "tax-callers",
-      "unrelated"
+      "unrelated-edits"
     ],
     "edgeVerdicts": [
       {
         "edgeId": "e_a09331d50782041a",
         "verdict": "no",
         "via": null,
-        "reason": "The call is on a Fmt instance, so it reaches the Fmt.formatPrice method, not the function in price.ts.",
+        "reason": "The receiver f is typed Fmt, so this calls the Fmt.formatPrice method, not the function in price.ts.",
         "citedLine": {
           "path": "src/fmt.ts",
           "side": "new",
@@ -98,7 +98,7 @@
         "edgeId": "e_131c5d5bf23e738e",
         "verdict": "no",
         "via": null,
-        "reason": "The call is on a Calc() instance, so it reaches the Calc.tax method, not the function in tax.py.",
+        "reason": "Calc().tax is the Calc.tax method, not the module-level tax function in tax.py.",
         "citedLine": {
           "path": "calc.py",
           "side": "new",

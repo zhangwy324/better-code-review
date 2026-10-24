@@ -2,25 +2,25 @@
   "task": "skill",
   "fixture": "ten-callers",
   "model": "claude-sonnet-5-5",
-  "inputHash": "sha256:0ab8a01e41becf366e4b0689cbec26dbf19dfd4005df698c095b1f99aa914ac1",
+  "inputHash": "sha256:3305ca1f43f092c300491f3e8f1e69fdbcb5da41edc60a149a360a2ae745f171",
   "usage": {
-    "inputTokens": 10,
-    "outputTokens": 1247,
-    "cacheCreationInputTokens": 15653,
-    "cacheReadInputTokens": 51813
+    "inputTokens": 14,
+    "outputTokens": 2208,
+    "cacheCreationInputTokens": 16839,
+    "cacheReadInputTokens": 91223
   },
-  "costUsd": 0.0802833,
+  "costUsd": 0.09858630000000002,
   "output": {
     "schemaVersion": 1,
     "snapshotId": "68a9426859fd81a2867416ed0f585fee7cd13defc91a33546373caa60d5bcd6a",
     "origin": "agent",
     "fallbackReason": null,
-    "summary": "parseDate gains a required zone parameter that changes how the input text is interpreted. All ten report functions are updated to pass 'UTC'. Check that no other unchanged callers exist and that 'UTC' is the right zone for every report.",
+    "summary": "parseDate gains a required zone parameter and appends 'Z' when it is 'UTC'. All ten report functions are updated to pass 'UTC'. Check that no other callers outside this commit still use the one-argument form.",
     "groups": [
       {
         "id": "contract",
         "title": "parseDate gains a zone parameter",
-        "description": "The signature now requires a zone, and the result depends on whether it equals 'UTC'. Check how non-UTC zones are handled and whether text that already carries an offset is affected.",
+        "description": "The signature now requires a zone, and the parsed text gets a 'Z' suffix only for 'UTC'. Check how other zone values behave and whether a required parameter is intended.",
         "nodeIds": [
           "n_48c95b5bed81aab5"
         ],
@@ -30,7 +30,7 @@
       {
         "id": "callers",
         "title": "Reports pass 'UTC'",
-        "description": "Each of report1 to report10 makes the same one-line change to pass 'UTC'. Check that UTC is the intended zone for each report.",
+        "description": "Each of report1 to report10 makes the same one-line change to pass 'UTC'. Check that UTC is the right zone for every report.",
         "nodeIds": [
           "n_1ae9a4a0b16ea109",
           "n_76ac6ffd26596480",
