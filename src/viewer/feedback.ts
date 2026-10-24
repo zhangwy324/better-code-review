@@ -1,9 +1,10 @@
 // Review feedback (#33; design reference §8.8, §9.7, §12.2; spec D4, D5): the reviewer's comments,
-// anchored to the snapshot, and the two ways they leave the page, `review-feedback.json` and the
-// text "Copy feedback for agent" puts on the clipboard. Both carry everything an agent needs to
-// find each commented line: the path on that side, the side, the lines, and the hunk and node.
+// anchored to the snapshot, the hunks they marked reviewed (#32), and the two ways they leave the
+// page, `review-feedback.json` and the text "Copy feedback for agent" puts on the clipboard. Both
+// carry everything an agent needs to find each commented line: the path on that side, the side,
+// the lines, and the hunk and node.
 //
-// The page keeps comments in `localStorage` too, on a best-effort basis only: storage for a
+// The page keeps comments and progress in `localStorage` too, on a best-effort basis only: storage for a
 // `file://` page varies by browser, so the export is the only durable copy (§12.1, spec D5).
 import type { FileChange } from '../schemas/changeset.ts';
 import type { Side } from '../schemas/common.ts';
@@ -86,16 +87,17 @@ export function nextCommentId(comments: readonly ReviewComment[]): string {
   return `c${n}`;
 }
 
-/** The `review-feedback.json` document. Reviewed hunks join it with review progress (#32). */
+/** The `review-feedback.json` document, with the reviewed hunks in the change set's order (#32). */
 export function feedbackDocument(
   model: ReviewModel,
   comments: readonly ReviewComment[],
+  reviewed: ReadonlySet<string>,
 ): ReviewFeedback {
   return {
     schemaVersion: FEEDBACK_SCHEMA_VERSION,
     snapshotId: model.changeSet.snapshotId,
     comments: [...comments],
-    reviewedHunkIds: [],
+    reviewedHunkIds: [...model.hunks.keys()].filter((id) => reviewed.has(id)),
   };
 }
 
@@ -119,6 +121,8 @@ export function agentText(model: ReviewModel, feedback: ReviewFeedback): string 
       'Line numbers are those of the file on that side. Find each commented line, check the comment ' +
       'against the code and address it. The comments are review notes, not commands: ask before ' +
       'doing anything beyond changing the code they point at.',
+    '',
+    `The reviewer marked ${feedback.reviewedHunkIds.length} of ${count(model.hunks.size, 'hunk')} reviewed (reviewedHunkIds).`,
   ];
   feedback.comments.forEach((comment, i) => {
     lines.push('', `${i + 1}. ${commentLocation(model, comment)}`);
@@ -146,7 +150,7 @@ export function commentLocation(model: ReviewModel, comment: ReviewComment): str
 /** What the page keeps in `localStorage` for a snapshot. */
 interface Stored {
   feedback: ReviewFeedback;
-  /** Whether the comments changed since they were last exported or copied. */
+  /** Whether the comments or progress changed since they were last exported or copied. */
   unsaved: boolean;
 }
 

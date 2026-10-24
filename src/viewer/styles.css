@@ -744,3 +744,72 @@ h3 {
 .load-error pre {
   white-space: pre-wrap;
 }
+
+/* Review progress (Progress.tsx), coverage and analysis (#32). */
+.progress {
+  color: var(--fg-muted);
+}
+
+.coverage.unmapped,
+.analysis .missing {
+  color: var(--tok-literal);
+}
+
+.coverage {
+  cursor: help;
+}
+
+.count.done {
+  color: var(--tok-string);
+}
+
+.reviewed-toggle {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: normal;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.reviewed-toggle input {
+  margin: 0;
+}
+
+.canvas-change.reviewed {
+  border-color: var(--tok-string);
+}
+
+/* The Ungrouped / requires review group (spec D1, design reference §13.2). */
+.ungrouped > .group-title,
+.guided-group.ungrouped > h3,
+.canvas-group.ungrouped,
+.canvas-cluster.ungrouped {
+  border-color: var(--tok-literal);
+}
+
+.ungrouped > .group-title,
+.guided-group.ungrouped > h3 {
+  border-left: 3px solid var(--tok-literal);
+}
+
+.analysis {
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.analysis p {
+  margin: 0;
+}
+
+.analysis ul {
+  margin: 2px 0 0;
+  padding-left: 16px;
+}
+
+.tier {
+  cursor: help;
+}

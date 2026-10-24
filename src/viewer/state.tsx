@@ -1,6 +1,7 @@
 // State shared by every view (spec D3): the loaded review, what is selected, and the reviewer's
-// comments. The outline, canvas and detail pane read and change the same selection, and any view
-// that shows a diff shows and adds to the same comments, so both survive switching views.
+// comments and review progress. The outline, canvas and detail pane read and change the same
+// selection, and any view that shows a diff shows and adds to the same comments and marks the same
+// hunks reviewed, so all of it survives switching views.
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReviewComment, ReviewFeedback } from '../schemas/feedback.ts';
 import {
@@ -22,16 +23,23 @@ interface SelectionState {
   select: (selection: Selection) => void;
 }
 
-/** The reviewer's comments (feedback.ts), in the order they were written. */
+/**
+ * The reviewer's comments (feedback.ts), in the order they were written, and the hunks they marked
+ * reviewed. Progress is kept per hunk only (spec D5): a node, group or file is reviewed when all
+ * its hunks are (model.ts `progress()`), so no two views can disagree about it.
+ */
 export interface FeedbackState {
   comments: ReviewComment[];
-  /** Whether the comments changed since they were last exported or copied. */
+  reviewed: ReadonlySet<string>;
+  /** Whether the comments or progress changed since they were last exported or copied. */
   unsaved: boolean;
   addLine: (draft: LineDraft, body: string) => void;
   addGroup: (groupId: string, body: string) => void;
   edit: (id: string, body: string) => void;
   remove: (id: string) => void;
-  /** The feedback to export or copy. Taking it marks the comments saved. */
+  /** Marks every hunk in `hunkIds` reviewed, or not reviewed. */
+  markReviewed: (hunkIds: readonly string[], reviewed: boolean) => void;
+  /** The feedback to export or copy. Taking it marks the comments and progress saved. */
   take: () => ReviewFeedback;
 }
 
@@ -54,14 +62,18 @@ export function ReviewProvider({ model, children }: { model: ReviewModel; childr
 function FeedbackProvider({ model, children }: { model: ReviewModel; children: ReactNode }) {
   const [state, setState] = useState(() => {
     const stored = loadStored(model.changeSet.snapshotId);
-    return { comments: stored?.feedback.comments ?? [], unsaved: stored?.unsaved ?? false };
+    return {
+      comments: stored?.feedback.comments ?? [],
+      reviewed: new Set(stored?.feedback.reviewedHunkIds ?? []),
+      unsaved: stored?.unsaved ?? false,
+    };
   });
-  const { comments, unsaved } = state;
+  const { comments, reviewed, unsaved } = state;
 
   useEffect(() => {
-    saveStored({ feedback: feedbackDocument(model, comments), unsaved });
-  }, [model, comments, unsaved]);
-  // The browser asks before closing a page whose comments were not exported or copied.
+    saveStored({ feedback: feedbackDocument(model, comments, reviewed), unsaved });
+  }, [model, comments, reviewed, unsaved]);
+  // The browser asks before closing a page whose feedback was not exported or copied.
   useEffect(() => {
     if (!unsaved) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -71,9 +83,10 @@ function FeedbackProvider({ model, children }: { model: ReviewModel; children: R
 
   const value = useMemo((): FeedbackState => {
     const change = (f: (comments: ReviewComment[]) => ReviewComment[]) =>
-      setState((s) => ({ comments: f(s.comments), unsaved: true }));
+      setState((s) => ({ ...s, comments: f(s.comments), unsaved: true }));
     return {
       comments,
+      reviewed,
       unsaved,
       addLine: (draft, body) =>
         change((all) => [...all, lineComment(model, draft, nextCommentId(all), body)]),
@@ -81,12 +94,21 @@ function FeedbackProvider({ model, children }: { model: ReviewModel; children: R
         change((all) => [...all, { id: nextCommentId(all), kind: 'group', groupId, body }]),
       edit: (id, body) => change((all) => all.map((c) => (c.id === id ? { ...c, body } : c))),
       remove: (id) => change((all) => all.filter((c) => c.id !== id)),
+      markReviewed: (hunkIds, done) =>
+        setState((s) => {
+          const next = new Set(s.reviewed);
+          for (const id of hunkIds) {
+            if (done) next.add(id);
+            else next.delete(id);
+          }
+          return { ...s, reviewed: next, unsaved: true };
+        }),
       take: () => {
         setState((s) => ({ ...s, unsaved: false }));
-        return feedbackDocument(model, comments);
+        return feedbackDocument(model, comments, reviewed);
       },
     };
-  }, [model, comments, unsaved]);
+  }, [model, comments, reviewed, unsaved]);
   return <FeedbackContext value={value}>{children}</FeedbackContext>;
 }
 

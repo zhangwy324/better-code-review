@@ -1,9 +1,16 @@
-// Indexes over the loaded review data, built once, for the views to look things up by ID.
+// Indexes over the loaded review data, built once, for the views to look things up by ID, and
+// review progress, derived from the hunks marked reviewed (spec D5).
 import type { DiffHunk, FileChange } from '../schemas/changeset.ts';
-import type { ChangeNode, CodeEdge } from '../schemas/graph.ts';
-import type { EdgeVerdict, InferredRelationship, ReviewGroup } from '../schemas/plan.ts';
-import type { EvidenceRecord } from '../schemas/semantic.ts';
+import type { CapabilityTier, ChangeNode, CodeEdge } from '../schemas/graph.ts';
+import {
+  type EdgeVerdict,
+  type InferredRelationship,
+  type ReviewGroup,
+  UNGROUPED_GROUP_ID,
+} from '../schemas/plan.ts';
+import type { EvidenceRecord, LanguageCapability } from '../schemas/semantic.ts';
 import { hunkCoverage } from '../graph/validate.ts';
+import { homeEveryNode } from '../planner/validate.ts';
 import type { ReviewData } from './data.ts';
 
 export interface ReviewModel extends ReviewData {
@@ -16,6 +23,8 @@ export interface ReviewModel extends ReviewData {
   hunkNodes: Map<string, ChangeNode[]>;
   /** Each changed file's grammar name, by `newPath ?? oldPath`; null when none matched. */
   languages: Map<string, string | null>;
+  /** Each changed file's capability tier (design reference §10.8), by `newPath ?? oldPath`. */
+  tiers: Map<string, CapabilityTier>;
   coverage: { mapped: number; total: number };
   /** The code edges, then the plan's inferred relationships, by ID. */
   links: Map<string, Link>;
@@ -48,8 +57,13 @@ export type Link =
       relationship: InferredRelationship;
     };
 
+/**
+ * The model of `data`. A node the plan gave no home goes into the `ungrouped` group, as the plan
+ * validator would put it (spec D1, invariant 2), so even a plan it never checked hides no change.
+ */
 export function buildModel(data: ReviewData): ReviewModel {
-  const { changeSet, graph, plan } = data;
+  const { changeSet, graph } = data;
+  const { plan } = homeEveryNode(data.plan, graph);
   const hunks = new Map(
     changeSet.files.flatMap((file) => file.hunks.map((hunk) => [hunk.id, { hunk, file }] as const)),
   );
@@ -98,12 +112,14 @@ export function buildModel(data: ReviewData): ReviewModel {
   }
   return {
     ...data,
+    plan,
     hunks,
     nodes: new Map(graph.nodes.map((n) => [n.id, n])),
     groups: new Map(plan.groups.map((g) => [g.id, g])),
     homeGroup,
     hunkNodes,
     languages: new Map(graph.files.map((f) => [f.path, f.language])),
+    tiers: new Map(graph.files.map((f) => [f.path, f.capabilityTier])),
     coverage: hunkCoverage(graph, changeSet),
     links,
     evidence: new Map(graph.evidence.map((e) => [e.id, e])),
@@ -160,6 +176,47 @@ export function groupHunkIds(model: ReviewModel, group: ReviewGroup): string[] {
   return [...new Set(ids)];
 }
 
+/** How many of some hunks are marked reviewed (spec D5). */
+export interface Progress {
+  reviewed: number;
+  total: number;
+}
+
+/**
+ * The progress of `hunkIds`, each counted once. A node, group or file is reviewed when all its
+ * hunks are, so a group's progress is that of `groupHunkIds()`: its home hunks, not the hunks of
+ * the nodes it only references.
+ */
+export function progress(hunkIds: readonly string[], reviewed: ReadonlySet<string>): Progress {
+  const ids = new Set(hunkIds);
+  return { reviewed: [...ids].filter((id) => reviewed.has(id)).length, total: ids.size };
+}
+
+/** Whether `p` is complete. Something with no hunks has nothing to mark, so it never is. */
+export const isReviewed = (p: Progress) => p.total > 0 && p.reviewed === p.total;
+
+/** Whether `group` is the Ungrouped / requires review group (spec D1). */
+export const isUngrouped = (group: ReviewGroup) => group.id === UNGROUPED_GROUP_ID;
+
+/** What each capability tier means (design reference §10.8), for tooltips. */
+export const TIER_DESCRIPTIONS: Record<CapabilityTier, string> = {
+  semantic: 'Semantic: parsed, and a language server answered, so relationships can be verified',
+  structural:
+    'Structural: parsed, but no language server answered, so relationships are possible at best',
+  'git-only': 'Git only: not parsed, so it shows as a diff with no relationships',
+};
+
+/** A language server's status in words (spec D11), e.g. `no language server installed`. */
+export const LANGUAGE_STATUS: Record<LanguageCapability['status'], string> = {
+  ok: 'language server answered',
+  unhealthy: 'language server answered, but the project does not resolve',
+  'not-installed': 'no language server installed',
+  disabled: 'language servers turned off for this run',
+  'needs-opt-in': 'language server not run: it runs project code, which needs an opt-in',
+  'not-ready': 'language server never became ready',
+  failed: 'language server failed',
+};
+
 /** What the review is of, for the header, e.g. `PR #123: Add currency` or `commit 1a2b3c4`. */
 export function targetLabel({ changeSet }: ReviewData): string {
   const short = (id: string | null) => (id ?? 'empty tree').slice(0, 7);
@@ -180,13 +237,15 @@ export function filePath(file: FileChange): string {
   return (file.newPath ?? file.oldPath)!;
 }
 
-/** Added and removed lines in a hunk's patch. */
-export function lineCounts(hunk: DiffHunk): { added: number; removed: number } {
+/** Added and removed lines in the patches of `hunks`, together. */
+export function lineCounts(hunks: Iterable<DiffHunk>): { added: number; removed: number } {
   let added = 0;
   let removed = 0;
-  for (const line of hunk.patch.split('\n').slice(1)) {
-    if (line.startsWith('+')) added++;
-    else if (line.startsWith('-')) removed++;
+  for (const hunk of hunks) {
+    for (const line of hunk.patch.split('\n').slice(1)) {
+      if (line.startsWith('+')) added++;
+      else if (line.startsWith('-')) removed++;
+    }
   }
   return { added, removed };
 }

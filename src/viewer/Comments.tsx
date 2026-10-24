@@ -113,7 +113,7 @@ export function GroupComments({ groupId }: { groupId: string }) {
 
 /**
  * The header's feedback controls: the comment count, the export and the copy. Until the comments
- * are exported or copied, they say so: the browser may not keep them (spec D5).
+ * and review progress are exported or copied, they say so: the browser may not keep them (spec D5).
  */
 export function FeedbackControls() {
   const model = useModel();
@@ -121,7 +121,7 @@ export function FeedbackControls() {
   const [copied, setCopied] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   if (feedback === null) return null;
-  const none = feedback.comments.length === 0;
+  const none = feedback.comments.length === 0 && feedback.reviewed.size === 0;
 
   const exportFile = () => {
     const url = URL.createObjectURL(
@@ -148,7 +148,7 @@ export function FeedbackControls() {
       {feedback.unsaved && (
         <span
           className="unsaved"
-          title="This browser may not keep comments for a page opened from a file. Export or copy them to keep them."
+          title="This browser may not keep comments or review progress for a page opened from a file. Export or copy them to keep them."
         >
           not exported
         </span>

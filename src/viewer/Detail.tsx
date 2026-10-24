@@ -1,14 +1,17 @@
 // The detail pane: the selected group, node, hunk or canvas edge. A node or hunk shows its real diff
-// (Diff.tsx), and a node its related changes, to navigate along edges. An edge shows its links'
+// (Diff.tsx), and a node its related changes, to navigate along edges. A group or node can be
+// marked reviewed at once, and each hunk in its diff (#32, spec D5). An edge shows its links'
 // direction, provenance and evidence (spec D6). All code shown comes from changes.json (spec
 // invariant 5).
 import type { FileChange } from '../schemas/changeset.ts';
 import type { ChangeNode } from '../schemas/graph.ts';
 import type { ReviewGroup } from '../schemas/plan.ts';
+import { count } from '../text/index.ts';
 import { GroupComments } from './Comments.tsx';
 import { Diff } from './Diff.tsx';
 import {
   filePath,
+  groupHunkIds,
   hunkHeader,
   type Link,
   lineCounts,
@@ -16,6 +19,7 @@ import {
   linkSentence,
   STYLE_DESCRIPTIONS,
 } from './model.ts';
+import { progressLabel, ReviewedCheckbox, useProgress } from './Progress.tsx';
 import { type Selection, useModel, useSelection } from './state.tsx';
 
 export function Detail() {
@@ -48,10 +52,23 @@ function DetailBody({ selection }: { selection: Selection }) {
 }
 
 function GroupDetail({ group }: { group: ReviewGroup }) {
+  const model = useModel();
+  const hunkIds = groupHunkIds(model, group);
+  const p = useProgress(hunkIds);
   return (
     <>
       <h2>{group.title}</h2>
       {group.description !== '' && <p>{group.description}</p>}
+      <p>
+        <span className="count">
+          {count(p.total, 'hunk')} · {progressLabel(p)}
+        </span>{' '}
+        <ReviewedCheckbox
+          hunkIds={hunkIds}
+          label={`Mark group ${group.title} reviewed`}
+          text="Group reviewed"
+        />
+      </p>
       <GroupComments key={group.id} groupId={group.id} />
       <NodeLinks ids={group.nodeIds} />
     </>
@@ -84,13 +101,14 @@ function NodeDetail({ node }: { node: ChangeNode }) {
               {home.title}
             </button>
           </>
-        )}
+        )}{' '}
+        <ReviewedCheckbox hunkIds={node.hunkIds} label={`Mark ${node.displayName} reviewed`} />
       </p>
       <ul className="hunks">
         {node.hunkIds.map((id) => {
           const entry = model.hunks.get(id);
           if (entry === undefined) return null;
-          const { added, removed } = lineCounts(entry.hunk);
+          const { added, removed } = lineCounts([entry.hunk]);
           return (
             <li key={id}>
               <button type="button" className="link" onClick={() => select({ kind: 'hunk', id })}>
