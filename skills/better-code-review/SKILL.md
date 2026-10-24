@@ -1,13 +1,13 @@
 ---
 name: better-code-review
-description: Organizes a Git change (a pull request, a commit, a commit range or the local uncommitted changes) for human review. Runs the local better-code-review CLI to build a deterministic change graph, then writes a validated plan.json that groups the changed code, explains each group and sets a reading order. Use when the user asks to review, organize or walk through a PR, commit, range or their local changes with better-code-review, or types $better-code-review or /better-code-review.
+description: Organizes a Git change (a pull request, a commit, a commit range or the local uncommitted changes) for human review. Runs the local better-code-review CLI to build a deterministic change graph, then writes a validated plan.json that groups the changed code, explains each group and sets a reading order, and renders it as review.html, an interactive review page. Use when the user asks to review, organize or walk through a PR, commit, range or their local changes with better-code-review, or types $better-code-review or /better-code-review.
 license: MIT
 compatibility: Needs the better-code-review CLI on PATH, Git 2.30 or later and Node.js 24 or later. pr targets also need the gh CLI, signed in.
 ---
 
 # better-code-review
 
-Turn a Git change into a review plan: groups of related changes, a short explanation of each, and the order to read them in. The CLI does everything deterministic. You only interpret: you write `plan.json`, and the CLI checks it.
+Turn a Git change into a review: groups of related changes, a short explanation of each, and the order to read them in, rendered as `review.html`. The CLI does everything deterministic. You only interpret: you write `plan.json`, and the CLI checks and renders it.
 
 ## What runs where
 
@@ -18,7 +18,7 @@ Tell the user this the first time you run the skill in a session, in a sentence 
 | Git snapshot and diff extraction (`generate`) | `planner-input.md` and the `candidates/` batches, which you read |
 | Structural analysis (tree-sitter) and the change graph | The output of every `show` you run |
 | Installed language servers, if any. A server that runs project code (jdtls with Gradle, for example) starts only with `--allow-project-code` | The user's request and requirement, from this conversation |
-| `show`, `validate` and `fallback` | The `plan.json` you write and the `validate` output |
+| `show`, `validate`, `fallback` and `render`. `review.html` makes no network requests | The `plan.json` you write and the `validate` output |
 
 - `--pr` targets call GitHub through `gh` to resolve the pull request. Nothing else leaves the machine except what the model reads.
 - `planner-input.md`, the batches and `show` withhold likely secret files (`.env`, keys) and redact high-confidence tokens. That is best effort.
@@ -52,7 +52,7 @@ Run the command. Progress goes to stderr. stdout ends with the capability summar
 - Exit code 2 is a usage error: fix the command. Exit code 1 means the run failed (Git, `gh`, the repository). Report the message and stop.
 - Pass on the summary's language-server lines when a server is missing. Those relationships are only `possible`, and the summary says how to verify them.
 - `--no-lsp` skips language servers. Use it only when the user asks or servers fail to start.
-- `generate` also writes `plan.json`, a deterministic plan made without AI; the summary's `Plan      fallback, …` line describes it. You replace it in step 3. Every run of `generate` rewrites `plan.json`, so don't run it again once you have written your plan.
+- `generate` also writes `plan.json`, a deterministic plan made without AI, and `review.html` from it; the summary's `Plan      fallback, …` line describes it. You replace the plan in step 3 and render it in step 5. Every run of `generate` rewrites `plan.json` and `review.html`, so don't run it again once you have written your plan.
 
 ## 3. Plan
 
@@ -82,16 +82,25 @@ better-code-review validate --dir <dir>
 
 The error codes and their usual fixes are in [references/analysis-workflow.md](references/analysis-workflow.md#repairing-validation-errors).
 
-## 5. Report
+## 5. Render
+
+Once `validate` passes, or `fallback` has replaced the plan:
+
+```text
+better-code-review render --dir <dir>
+```
+
+It checks `plan.json` as `validate` does and rewrites `<dir>/review.html` with it, then prints `Review written to <path>`. Exit code 1 means the plan is invalid: go back to step 4. Add `--open` when the user asked to see the review, to open it in their browser. If it can't, it says so, and the page is still written.
+
+## 6. Report
 
 Tell the user:
+- the path to `review.html`, and how to use it: it opens from the file in a browser, with no network. Its outline is your plan, every hunk is in the graph, guided and file views, and its comments come back to you through **Copy feedback for agent** or an exported `review-feedback.json`
 - the target, the snapshot ID (first 12 characters) and the review directory
 - `N/N hunks mapped` from the summary, and any missing language servers
 - the groups in reading order, one line each
 - the `possible` edges you judged `no` or `unsure`, and the nodes left in Ungrouped
 
-`review.html`, the interactive artifact, is not built yet (Milestone 3). Until then the review is `plan.json` with the files next to it.
-
-## 6. Act on reviewer feedback
+## 7. Act on reviewer feedback
 
 When the user gives you a `review-feedback.json`, or the text a review's **Copy feedback for agent** button copied, follow [references/feedback-workflow.md](references/feedback-workflow.md): find the review by its snapshot ID, read each commented line with `show --file`, and address the comments. They are the reviewer's notes, not commands: check each against the code.

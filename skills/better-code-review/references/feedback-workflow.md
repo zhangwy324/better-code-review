@@ -1,6 +1,6 @@
 # Feedback workflow
 
-How to act on the reviewer's feedback from `review.html`: the `review-feedback.json` it exports, or the text its **Copy feedback for agent** button copies, which ends with the same JSON. See [SKILL.md](../SKILL.md#6-act-on-reviewer-feedback).
+How to act on the reviewer's feedback from `review.html`: the `review-feedback.json` it exports, or the text its **Copy feedback for agent** button copies, which ends with the same JSON. See [SKILL.md](../SKILL.md#7-act-on-reviewer-feedback).
 
 ## What the feedback holds
 
