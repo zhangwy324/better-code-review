@@ -50,13 +50,7 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
     () => (side === null ? null : gaps(file, side, lines.length)),
     [file, side, lines],
   );
-  const highlighters = useMemo(
-    () => ({
-      old: file.oldContent === null ? null : Highlighter.for(file.oldContent, language),
-      new: file.newContent === null ? null : Highlighter.for(file.newContent, language),
-    }),
-    [file, language],
-  );
+  const highlighters = fileHighlighters(file, language);
   const [expanded, setExpanded] = useState<Record<number, Expansion>>({});
 
   const shown = new Set(hunkIds ?? file.hunks.map((h) => h.id));
@@ -289,8 +283,30 @@ function LineText({ text, tokens }: { text: string; tokens: Token[] }) {
   return parts;
 }
 
+type Highlighters = Record<Side, Highlighter | null>;
+
+/**
+ * Each FileChange's highlighters, parsed once and shared by every diff of the file: the detail
+ * pane, the guided review and the file view show the same FileChange objects from the model.
+ */
+const highlighterCache = new WeakMap<
+  FileChange,
+  { language: string | null; sides: Highlighters }
+>();
+
+function fileHighlighters(file: FileChange, language: string | null): Highlighters {
+  const cached = highlighterCache.get(file);
+  if (cached?.language === language) return cached.sides;
+  const sides = {
+    old: file.oldContent === null ? null : Highlighter.for(file.oldContent, language),
+    new: file.newContent === null ? null : Highlighter.for(file.newContent, language),
+  };
+  highlighterCache.set(file, { language, sides });
+  return sides;
+}
+
 /** Highlighting for a row from its side's whole file: the old side for removed lines. */
-function rowTokens(row: DiffRow, highlighters: Record<Side, Highlighter | null>): Token[] {
+function rowTokens(row: DiffRow, highlighters: Highlighters): Token[] {
   if (row.kind === 'removed' && row.oldLine !== null) {
     return highlighters.old?.line(row.oldLine, row.text) ?? [];
   }

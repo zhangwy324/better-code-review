@@ -2,8 +2,9 @@
 // #31 acceptance: the guided review follows the plan's order and nesting, the file view reaches
 // every hunk whatever the plan says, and switching views keeps the selection and the canvas.
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ReviewData } from './data.ts';
+import { Highlighter } from './highlight.ts';
 import { embedded, renderEmbedded, signatureReview } from './testing.tsx';
 
 let data: ReviewData;
@@ -14,6 +15,7 @@ afterAll(() => dispose());
 afterEach(() => {
   cleanup();
   document.body.innerHTML = '';
+  vi.restoreAllMocks();
 });
 
 const show = (name: string) => fireEvent.click(screen.getByRole('tab', { name }));
@@ -102,5 +104,18 @@ describe('Views', () => {
     expect(again.querySelector('.canvas-change[aria-current]')!.textContent).toContain(
       node.displayName,
     );
+  });
+
+  it('parses each file once for all the views that show it', () => {
+    const parse = vi.spyOn(Highlighter, 'for');
+    renderEmbedded(embedded(data));
+    const outline = screen.getByRole('navigation', { name: 'Review outline' });
+    fireEvent.click(within(outline).getAllByText(data.graph.nodes[0]!.displayName)[0]!);
+    show('Guided');
+    show('Files');
+
+    // The node's file is in the detail pane, the guided review and the file view.
+    const sides = data.changeSet.files.flatMap((f) => [f.oldContent, f.newContent]);
+    expect(parse.mock.calls.length).toBe(sides.filter((c) => c !== null).length);
   });
 });
