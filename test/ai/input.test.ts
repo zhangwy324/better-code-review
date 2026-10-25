@@ -33,6 +33,7 @@ const CEILINGS: Record<string, number> = {
   'dynamic-calls': 5_800, // 5,238
   'unsupported-binary': 5_800, // 5,263
   'large-generated': 16_300, // 14,799
+  'malicious-content': 6_850, // 6,221
 };
 
 describe.each(FIXTURES)('skill input for $name', (fixture) => {

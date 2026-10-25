@@ -195,7 +195,8 @@ export function plannerInput(
     const withheld = withheldReason(file, g);
     for (const hunk of file.hunks) {
       const nodes = nodesOfHunk.get(hunk.id) ?? [];
-      const label = nodes.length > 0 ? ` (${list(nodes.map((n) => n.displayName))})` : '';
+      const label =
+        nodes.length > 0 ? ` (${list(nodes.map((n) => quotePath(n.displayName)))})` : '';
       const lines = hunk.patch.replace(/\n$/, '').split('\n');
       const body = lines.length - 1;
       const truncated = withheld === null && body > maxHunkLines;
