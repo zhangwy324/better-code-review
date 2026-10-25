@@ -45,12 +45,31 @@ export function writeReview(dir: string, options: WriteReviewOptions = {}): stri
       name,
       name === 'plan' && options.plan !== undefined
         ? options.plan
-        : (JSON.parse(readFileSync(join(dir, file), 'utf8')) as unknown),
+        : readReviewJson(join(dir, file)),
     ]),
   ) as Record<DataName, unknown>;
   const path = join(dir, REVIEW_FILE);
   writeFileSync(path, renderReview(template, documents));
   return path;
+}
+
+/**
+ * The JSON document at `path`, parsed. When the file can't be read or isn't JSON, the error names
+ * it (#110), so the user or agent knows which of the review's files to fix; the original is the
+ * `cause`.
+ */
+export function readReviewJson(path: string): unknown {
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    throw new Error(`Could not read ${path}: ${(error as Error).message}`, { cause: error });
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch (error) {
+    throw new Error(`${path} is not valid JSON: ${(error as Error).message}`, { cause: error });
+  }
 }
 
 /** The viewer page is missing: a checkout that has not run `npm run build`. */

@@ -18,7 +18,7 @@ import {
   type PlanValidation,
   type ShowQuery,
 } from '../planner/index.ts';
-import { writeReview } from '../renderer/render.ts';
+import { readReviewJson, writeReview } from '../renderer/render.ts';
 import { ChangeGraph, ChangeSet, RepoPath, type ReviewTarget } from '../schemas/index.ts';
 import { displayPath, generate, type GenerateOptions } from './generate.ts';
 import { openFile } from './open.ts';
@@ -329,7 +329,7 @@ function runFallback(argv: string[], io: Io): number {
   if (values.dir === undefined) {
     throw new UsageError('fallback needs --dir, the directory generate wrote');
   }
-  const graph = ChangeGraph.parse(JSON.parse(readFileSync(join(values.dir, 'graph.json'), 'utf8')));
+  const graph = ChangeGraph.parse(readReviewJson(join(values.dir, 'graph.json')));
   const plan = fallbackPlan(graph, REJECTED_PLAN_REASON);
   const path = join(values.dir, 'plan.json');
   writeFileSync(path, `${JSON.stringify(plan, null, 2)}\n`);
@@ -388,7 +388,7 @@ async function readReview(
   dir: string,
   io: Io,
 ): Promise<{ changeSet: ChangeSet; graph: ChangeGraph; files: SnapshotFiles }> {
-  const read = (name: string): unknown => JSON.parse(readFileSync(join(dir, name), 'utf8'));
+  const read = (name: string): unknown => readReviewJson(join(dir, name));
   const changeSet = ChangeSet.parse(read('changes.json'));
   const graph = ChangeGraph.parse(read('graph.json'));
   if (graph.snapshotId !== changeSet.snapshotId) {
