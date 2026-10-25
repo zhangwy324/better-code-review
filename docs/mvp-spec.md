@@ -174,7 +174,7 @@ These come from §9.8, and every milestone's tests must keep them:
 - [ ] The default graph matches D1: collapsed groups with aggregated edges, expand on demand, and distinct styles for `verified`, `possible` and `inferred`.
 - [ ] Every hunk can be opened from the graph, guided and file views. Selection, comments and progress agree across all three (D3, D5).
 - [ ] Line/range comments (including on context lines) and group comments export to `review-feedback.json` and to "Copy for agent". Given the export, an agent can locate every commented line on every fixture (D4).
-- [ ] An injected `<script>` in a fixture's source, file names and plan text renders as text (#35).
+- [x] An injected `<script>` in a fixture's source, file names and plan text renders as text (#35). *The `malicious-content` fixture; checklist in [`SECURITY.md`](../SECURITY.md).*
 
 ### M4 · v0.1 Release
 - [ ] #40 sets numeric thresholds (artifact time and size on representative PRs, browser matrix, round-trip fidelity) and they are met.

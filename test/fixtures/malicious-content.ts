@@ -141,7 +141,7 @@ export const maliciousContent: Fixture = {
  */
 export function hostilePlan(plan: ReviewPlan, graph: ChangeGraph): ReviewPlan {
   const node = (name: string) => graph.nodes.find((n) => n.displayName === name)!.id;
-  const edge = graph.codeEdges.find((e) => e.from === node('page'))!;
+  const edge = graph.codeEdges.find((e) => e.granularity === 'entity' && e.from === node('page'))!;
   return {
     ...plan,
     origin: 'agent',

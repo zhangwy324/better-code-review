@@ -110,9 +110,11 @@ describe('malicious content through the CLI', () => {
       ['script', 'type=application/json', 'id=bcr-graph'],
       ['script', 'type=application/json', 'id=bcr-plan'],
     ]);
-    const data = (id: string) => {
+    const data = (id: string): unknown => {
       const element = elements(parse(page)).find((e) => e.attrs.some((a) => a.value === id))!;
-      return JSON.parse(element.childNodes.map((c) => ('value' in c ? c.value : '')).join(''));
+      return JSON.parse(
+        element.childNodes.map((c) => ('value' in c ? c.value : '')).join(''),
+      ) as unknown;
     };
     expect(data('bcr-changes')).toEqual(readJson(join(out, 'changes.json')));
     expect(data('bcr-plan')).toEqual(plan);

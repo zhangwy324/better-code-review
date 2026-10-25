@@ -115,3 +115,4 @@ Before adding a dependency, check its licence against the [dependency licence po
 - Branch from a fresh `main`.
 - Reference the issue the change belongs to.
 - `npm run check` should pass; CI runs it on Linux, macOS and Windows.
+- Code that reads repository, PR or model text keeps [`SECURITY.md`](SECURITY.md)'s checklist true. A change that weakens a safeguard says so.
