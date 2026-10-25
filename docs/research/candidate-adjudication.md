@@ -340,6 +340,7 @@ The model behaves as well as in the spike: 0 audited false accepts and 1 audited
 **Fixes, for follow-up issues:**
 1. **Show the old side too** when an edge has hits on both sides and the code around them differs, or ask about each side. This would cover the 15 jsoup misses. The truth there is technically right, but it is the kind of over-count #42 warned about: a JDK interface reaching a test stub. Whether such old-side-only dispatch edges matter to a reviewer is worth deciding at the same time.
 2. **Keep up to 3 hits per side for a test-file edge** in the evidence (#42's policy), not 1, so the batch can show them. This would cover the 2 click misses.
+   #95 did this. The first 3 in file order would still all be line 421's test, so hits inside an entity that declares the target (the test whose nested `cli` it is) come before the rest. `generate --no-lsp` on click now shows lines 452, 456 and 463 for one edge and 421, 476 and 481 for the other. Batch 2 grew from about 7.9k to 9.9k characters; nothing else changed.
 3. **Show the `new X() {` line for a method of an anonymous class**, and say in the dispatch rule that an implementation defined in a test or an anonymous class counts too. This would cover the 1 reasoning error. The prompt was not changed in #43.
 4. **Ask the server about every member of an overload set** (#16/#17). The 3 wrong truths came from asking about only the first.
 
