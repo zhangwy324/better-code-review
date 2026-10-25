@@ -567,7 +567,7 @@ describe('analyzeSemantics: constructors', () => {
 });
 
 describe('analyzeSemantics: test files and caps', () => {
-  it('keeps one edge per (test file, changed entity) (D2)', async () => {
+  it('keeps one edge per (test file, changed entity) (D2), with up to 3 hits per side', async () => {
     const test = (n: number) =>
       lines(
         "import { formatPrice } from '../src/price';",
@@ -578,6 +578,7 @@ describe('analyzeSemantics: test files and caps', () => {
         '});',
         "it('formats again', () => {",
         `  expect(formatPrice(${n + 2})).toBe('3');`,
+        `  expect(formatPrice(${n + 3})).toBe('4');`,
         '});',
       );
     const result = await analyse(
@@ -586,16 +587,48 @@ describe('analyzeSemantics: test files and caps', () => {
         'src/other.ts': lines('export function formatPrice() {', '  return 1;', '}'),
         'test/price.test.ts': test(1),
       },
-      { 'src/price.ts': PRICE_HEAD, 'test/price.test.ts': test(4) },
+      { 'src/price.ts': PRICE_HEAD, 'test/price.test.ts': test(5) },
     );
     expect(newSide(summary(result))).toEqual([
       'new calls formats -> formatPrice @test/price.test.ts:4 text-search:candidate import-resolution:confirmed',
+      'new calls formats -> formatPrice @test/price.test.ts:5 text-search:candidate import-resolution:confirmed',
+      'new calls formats again -> formatPrice @test/price.test.ts:8 text-search:candidate import-resolution:confirmed',
     ]);
     const first = result.evidence.records.find((r) => r.location.side === 'new')!;
-    expect(first.detail).toBe('call; test file: one hit for 3 new-side hits');
-    // One hit per side, so the edge still shows the call was there before the change too.
-    expect(oldSide(summary(result))).toEqual([
-      'old calls formats -> formatPrice @test/price.test.ts:4 text-search:candidate import-resolution:confirmed',
+    expect(first.detail).toBe('call; test file: 3 of 4 new-side hits kept');
+    // Hits on each side, so the edge still shows the call was there before the change too.
+    expect(oldSide(summary(result))).toHaveLength(3);
+  });
+
+  it("prefers a test file's hits inside the test that declares the target (#95)", async () => {
+    // Each test declares its own `cli`, so the first `cli` call in the file reaches another
+    // test's. The hits kept for the second test's `cli` are its own calls (click #2796).
+    const test = (n: number) =>
+      lines(
+        'def test_one():',
+        '    def cli():',
+        `        return ${n}`,
+        `    assert run(cli) == ${n}`,
+        `    assert run(cli) == ${n}`,
+        `    assert run(cli) == ${n}`,
+        '',
+        'def test_two():',
+        '    def cli():',
+        `        return ${n + 1}`,
+        `    assert run(cli) == ${n + 1}`,
+        `    assert run(cli) == ${n + 1}`,
+        '',
+        'def run(f):',
+        '    return f()',
+      );
+    const result = await analyse(
+      { 'tests/test_cli.py': test(1) },
+      { 'tests/test_cli.py': test(3) },
+    );
+    expect(newSide(summary(result)).filter((s) => s.includes('-> test_two.cli'))).toEqual([
+      'new references test_one -> test_two.cli @tests/test_cli.py:4 text-search:candidate',
+      'new references test_two -> test_two.cli @tests/test_cli.py:11 text-search:candidate',
+      'new references test_two -> test_two.cli @tests/test_cli.py:12 text-search:candidate',
     ]);
   });
 

@@ -7,8 +7,9 @@
 // Selection: a `possible` edge needs a verdict unless a deterministic step already accepted one of
 // its hits, by import-path resolution or the unambiguous rule (#17). `verified` edges are settled
 // by a language server, and the hits it or import resolution rejected made no edge (#18). Test
-// files are already one edge per (test file, changed entity) (D2). At most `MAX_ADJUDICATED_EDGES`
-// edges are asked about; the rest are "not adjudicated" and stay `possible`.
+// files are already one edge per (test file, changed entity), with up to 3 hits per side (D2).
+// At most `MAX_ADJUDICATED_EDGES` edges are asked about; the rest are "not adjudicated" and stay
+// `possible`.
 //
 // Context, per #42's policy: each changed entity once per batch, with its declaration line on each
 // side and the other definitions of its name in the snapshot ("NOT the changed entity"); then,
@@ -48,8 +49,6 @@ export const CANDIDATES_DIR = 'candidates';
 const MAX_WHOLE_ENTITY_LINES = 60;
 /** Lines either side of a hit in a window. */
 const HIT_CONTEXT = 4;
-/** Example hits shown for a test-file edge (#42). The graph keeps one per side (D2). */
-const MAX_TEST_FILE_HITS = 3;
 /** Same-name definitions listed per changed entity. */
 const MAX_DEFINITIONS_LISTED = 10;
 /** Re-export lines shown per alias. */
@@ -285,8 +284,7 @@ function groupCandidates(graph: ChangeGraph, open: CodeEdge[]): Group[] {
       .filter((r) => r.method === 'text-search');
     // The new side when the edge has a hit there, else the old (a removed call, #66).
     const side: Side = hits.some((r) => r.location.side === 'new') ? 'new' : 'old';
-    let shown = hits.filter((r) => r.location.side === side);
-    if (edge.granularity === 'test-file') shown = shown.slice(0, MAX_TEST_FILE_HITS);
+    const shown = hits.filter((r) => r.location.side === side);
     const key =
       edge.granularity === 'entity'
         ? JSON.stringify([edge.from, side])

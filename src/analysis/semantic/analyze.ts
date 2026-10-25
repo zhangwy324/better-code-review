@@ -13,7 +13,7 @@
 //   6. old-side candidates no new-side hit stands for (removed calls, and pairs the new-side
 //      server rejected) go to a base-side server, started only then (#66); a new-side rejection
 //      is carried over to the matching old-side hit that server did not decide;
-//   7. test files keep one hit per side for each (test file, changed entity) (D2).
+//   7. test files keep up to 3 hits per side for each (test file, changed entity) (D2).
 // AI adjudication of what is left (#43) is not part of this module.
 //
 // Every hit is a `text-search` candidate record. Import resolution and LSP add their own record
@@ -56,6 +56,8 @@ import { changeSetFiles, type SnapshotFiles } from './snapshot-files.ts';
 
 /** Source entities kept per (changed entity, relation); the rest is reported as a cap (D1). */
 export const MAX_CANDIDATES_PER_ENTITY = 100;
+/** Hits kept per side for a test-file edge (D2), as examples to judge it from (#42). */
+const MAX_TEST_FILE_HITS = 3;
 /** Files parsed to count a name's definitions; beyond this the name counts as ambiguous. */
 export const MAX_DEFINITION_FILES = 200;
 
@@ -730,9 +732,11 @@ function carryOverRejections(pairs: Pair[]): void {
 }
 
 /**
- * One edge per (test file, changed entity) (D2): keeps the most decided hit of each on each
- * side, so the edge still shows whether the call was added, removed or kept, and notes how many
- * there were. The other hits stay visible in the diff.
+ * One edge per (test file, changed entity) (D2): keeps up to `MAX_TEST_FILE_HITS` hits of each
+ * on each side, as examples for whoever judges the edge (#42, #95), so the edge still shows
+ * whether the call was added, removed or kept, and notes how many there were. The most decided
+ * come first, then hits inside an entity that declares the target (a test's nested function,
+ * which only that test can call), then the file's order. The other hits stay visible in the diff.
  */
 function collapseTestFiles(pairs: Pair[]): Pair[] {
   const groups = new Map<string, Pair[]>();
@@ -743,13 +747,33 @@ function collapseTestFiles(pairs: Pair[]): Pair[] {
   }
   const keep = new Set<Pair>();
   for (const group of groups.values()) {
-    const best = group.reduce((a, b) => (rank(b) < rank(a) ? b : a));
-    if (group.length > 1) {
-      best.notes.push(`test file: one hit for ${group.length} ${best.file.side}-side hits`);
+    // A stable sort, so ties keep the file's order.
+    const kept = [...group]
+      .sort((a, b) => rank(a) - rank(b) || Number(declaresTarget(b)) - Number(declaresTarget(a)))
+      .slice(0, MAX_TEST_FILE_HITS);
+    for (const pair of kept) keep.add(pair);
+    if (group.length > kept.length) {
+      const first = group.find((p) => keep.has(p))!;
+      first.notes.push(
+        `test file: ${kept.length} of ${group.length} ${first.file.side}-side hits kept`,
+      );
     }
-    keep.add(best);
   }
   return pairs.filter((p) => !p.file.test || keep.has(p));
+}
+
+/** The hit's enclosing entity declares the target, so the name is in scope there (#95). */
+function declaresTarget(pair: Pair): boolean {
+  const { source, target, file } = pair;
+  const outer = file.side === 'new' ? source.newRange : source.oldRange;
+  const inner = file.side === 'new' ? target.entity.newRange : target.entity.oldRange;
+  return (
+    source.kind !== 'module' &&
+    source.path === target.entity.path &&
+    outer !== null &&
+    inner !== null &&
+    within(inner, outer)
+  );
 }
 
 function rank(pair: Pair): number {

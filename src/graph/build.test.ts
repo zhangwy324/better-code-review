@@ -360,7 +360,7 @@ describe('buildGraph: nodes', () => {
       { 'src/price.ts': price("amount + ''"), 'test/price.test.ts': test(2) },
     );
     const graph = full(result);
-    // The analyzer keeps one hit per (test file, entity) and side, so the edge cites two records.
+    // One hit on each side, so the edge cites two records.
     expect(edgeSummary(graph)).toEqual([
       'possible calls file test/price.test.ts -> formatPrice (4)',
     ]);
