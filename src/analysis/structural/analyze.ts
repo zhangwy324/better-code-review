@@ -28,7 +28,7 @@ import {
   type ChangedEntity,
 } from '../../schemas/structural.ts';
 import { hunkLines } from '../../git/patch.ts';
-import { extractFacts, type Entity, type FileFacts } from './entities.ts';
+import { extractFacts, type Entity, type FileFacts, type LineRange } from './entities.ts';
 import { detectLanguage, type GrammarName } from './languages.ts';
 import { matchEntities, type EntityPair, type FileEntities } from './match.ts';
 import { StructuralParser, freeTrees, type ParseResult } from './parser.ts';
@@ -52,11 +52,6 @@ interface AnalysedFile {
   old: FileFacts | null;
   new: FileFacts | null;
   unparsed: Unparsed;
-}
-
-interface LineRange {
-  startLine: number;
-  endLine: number;
 }
 
 /** Each side's lines with no trusted entity: syntax errors and the entities dropped around them. */
