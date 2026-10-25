@@ -62,10 +62,32 @@ describe('App', () => {
     const hunk = data.changeSet.files
       .flatMap((f) => f.hunks)
       .find((h) => h.id === node.hunkIds[0])!;
-    fireEvent.click(within(detail).getByText(hunkHeader(hunk)));
+    fireEvent.click(
+      within(detail.querySelector<HTMLElement>('ul.hunks')!).getByText(hunkHeader(hunk)),
+    );
     const shown = detail.querySelectorAll(`tbody[data-hunk-id="${hunk.id}"]`);
     expect(shown).toHaveLength(1);
     expect(shown[0]!.querySelector('.hunk-header')!.textContent).toBe(hunk.patch.split('\n')[0]);
+  });
+
+  it("shows each hunk's @@ line the same in a node's hunk list and its diff (#108)", () => {
+    renderEmbedded(embedded(data));
+    const outline = screen.getByRole('navigation', { name: 'Review outline' });
+    const detail = screen.getByRole('region', { name: 'Selected change' });
+    const seen: string[] = [];
+    for (const node of data.graph.nodes) {
+      fireEvent.click(within(outline).getAllByText(node.displayName)[0]!);
+      expect(within(detail).getAllByRole('heading')[0]!.textContent).toBe(node.displayName);
+      const listed = [...detail.querySelectorAll('ul.hunks code')].map((c) => c.textContent);
+      const diffed = [...detail.querySelectorAll('.hunk-header td:nth-child(2)')].map(
+        (td) => td.textContent,
+      );
+      expect(listed).toEqual(diffed);
+      seen.push(...listed);
+    }
+    // Git leaves out a one-line range's ",1", and adds the enclosing function after the second @@.
+    expect(seen).toContain('@@ -1 +1 @@');
+    expect(seen.some((h) => /^@@ [^@]+ @@ \S/.test(h))).toBe(true);
   });
 
   it('renders repository and plan text as text, never as HTML', () => {
