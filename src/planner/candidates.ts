@@ -484,7 +484,24 @@ class Context {
       );
 
       const range = source === null ? null : side === 'new' ? source.newRange : source.oldRange;
-      const wanted = codeLines(source?.kind === 'symbol' ? range : null, hitLines, lines.length);
+      // A test file's windows also show the line naming each hit's entity, e.g. `def test_…` (#95).
+      const enclosing =
+        source !== null
+          ? []
+          : group.decisions.flatMap((d) =>
+              d.hits.flatMap((h) => {
+                const entity = this.#entities.get(h.sourceEntityId);
+                const r = side === 'new' ? entity?.newRange : entity?.oldRange;
+                if (!entity || entity.kind === 'module' || !r) return [];
+                return [declarationLine(facts, entity, r)];
+              }),
+            );
+      const wanted = codeLines(
+        source?.kind === 'symbol' ? range : null,
+        hitLines,
+        lines.length,
+        enclosing,
+      );
       const shown = wanted.slice(0, maxCodeLines);
       const more = wanted.length - shown.length;
       const visible = new Set(shown);
@@ -636,14 +653,20 @@ class Context {
 
 /**
  * The code lines to show for a group: the whole entity when it is short, else its first line and
- * windows around the hits. `range` is null for a module or test-file group (windows only).
+ * windows around the hits. `range` is null for a module or test-file group (windows only), and
+ * `extra` adds lines to the windows, such as the declaration of each hit's entity.
  */
-function codeLines(range: SourceRange | null, hits: Set<number>, total: number): number[] {
+function codeLines(
+  range: SourceRange | null,
+  hits: Set<number>,
+  total: number,
+  extra: number[] = [],
+): number[] {
   let wanted: number[];
   if (range !== null && range.endLine - range.startLine + 1 <= MAX_WHOLE_ENTITY_LINES) {
     wanted = between(range.startLine, range.endLine);
   } else {
-    const set = new Set<number>(range === null ? [] : [range.startLine]);
+    const set = new Set<number>(range === null ? extra : [range.startLine, ...extra]);
     for (const line of hits) {
       for (const l of between(line - HIT_CONTEXT, line + HIT_CONTEXT)) set.add(l);
     }

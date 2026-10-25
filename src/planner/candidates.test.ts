@@ -205,6 +205,43 @@ describe('candidateBatches', () => {
     );
   });
 
+  it("shows the declaration line of each test-file hit's entity (#95)", async () => {
+    // Two tests each declare a nested `cli`, so the calls are ambiguous. `def test_two():` is
+    // outside every hit's window.
+    const test = (n: number) =>
+      lines(
+        'def test_one():',
+        '    def cli():',
+        `        return ${n}`,
+        `    assert run(cli) == ${n}`,
+        '',
+        '',
+        '',
+        '',
+        '',
+        'def test_two():',
+        '    a = 1',
+        '    b = 2',
+        '    c = 3',
+        '    d = 4',
+        '    def cli():',
+        `        return ${n + 1}`,
+        '    e = 5',
+        `    assert run(cli) == ${n + 1}`,
+        '',
+        'def run(f):',
+        '    return f()',
+      );
+    const { structure, graph, files } = await setup(
+      { 'tests/test_cli.py': test(1) },
+      { 'tests/test_cli.py': test(3) },
+    );
+    const { batches } = await candidateBatches(structure, graph, files);
+    const text = batches.map((b) => b.text).join('\n');
+    expect(text).toContain('   …\n   10| def test_two():\n   …\n   14|     d = 4');
+    expect(text).toContain('>> 18|     assert run(cli) == 4');
+  });
+
   it('puts at most the given number of groups in a batch', async () => {
     const { structure, graph, files } = await setup(SIGNATURE_BASE, SIGNATURE_HEAD);
     const { batches } = await candidateBatches(structure, graph, files, { maxGroupsPerBatch: 1 });
