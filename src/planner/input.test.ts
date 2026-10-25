@@ -76,6 +76,16 @@ describe('plannerInput', () => {
     expect(result.text).toContain('- src/a.test.ts: modified, typescript, structural, test');
   });
 
+  it('says when a file parsed partially', async () => {
+    const { input: result } = await input(
+      { 'src/a.ts': lines('export const a = 1;') },
+      { 'src/a.ts': lines('export const a = (1;') },
+    );
+    expect(result.text).toContain(
+      '- src/a.ts: modified, typescript, structural, parsed partially: code around syntax errors has no entity',
+    );
+  });
+
   it('withholds sensitive, generated and lock files, and redacts secrets', async () => {
     const key = 'AKIA' + 'ABCDEFGHIJKLMNOP';
     const { input: result } = await input(

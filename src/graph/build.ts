@@ -158,6 +158,7 @@ function unanalysedFile(file: FileChange): AnalyzedFile {
     tier: 'text-only',
     test: null,
     skipped: null,
+    partialParse: false,
   };
 }
 

@@ -146,6 +146,7 @@ export function plannerInput(
     const parts = [file.status, g?.language ?? 'no grammar', g?.capabilityTier ?? 'git-only'];
     if (g?.test) parts.push('test');
     if (g?.skipped) parts.push(`skipped: ${g.skipped}`);
+    if (g?.partialParse) parts.push('parsed partially: code around syntax errors has no entity');
     const withheld = withheldReason(file, g);
     if (withheld !== null) parts.push(`diffs not inlined: ${withheld}`);
     const { added, removed } = lineCounts(file.hunks);
