@@ -218,7 +218,10 @@ button {
   text-decoration: underline;
 }
 
-/* The diff (Diff.tsx). Lines never wrap: a long line scrolls the diff sideways. */
+/* The diff (Diff.tsx). Lines never wrap: a long line scrolls the diff sideways, and the gutter (line
+   numbers and prefix) and the expansion controls stay at its left edge (#107). For that the gutter
+   columns have fixed widths, from the widest line number (`--line-digits`, set on the table), and
+   its cells are opaque, taking their row's background, so code scrolls under them. */
 .diff {
   margin: 12px 0;
 }
@@ -230,6 +233,9 @@ button {
 }
 
 .diff-table {
+  --num-width: calc(var(--line-digits, 3) * 1ch + 12px);
+  --prefix-width: calc(1ch + 4px);
+  --gutter-width: calc(2 * var(--num-width) + var(--prefix-width));
   min-width: 100%;
   border-collapse: collapse;
   font-family: var(--mono);
@@ -244,16 +250,48 @@ button {
   tab-size: 4;
 }
 
+/* Zero specificity, so each kind of row's own background wins. */
+:where(.diff-table tr) {
+  background-color: var(--bg);
+}
+
+.diff-table .num,
+.diff-table .prefix,
+.diff-table .gutter {
+  position: sticky;
+  left: 0;
+  background: inherit;
+}
+
 .diff-table .num {
-  min-width: 3.5em;
+  width: var(--num-width);
+  min-width: var(--num-width);
   text-align: right;
   color: var(--fg-muted);
   user-select: none;
 }
 
+.diff-table .num + .num {
+  left: var(--num-width);
+}
+
 .diff-table .prefix {
+  left: calc(2 * var(--num-width));
+  width: var(--prefix-width);
+  min-width: var(--prefix-width);
   padding: 0 2px;
   user-select: none;
+}
+
+/* Text in the code column that stays in view: the expansion controls, just right of the gutter,
+   and the note of hunks left out. */
+.diff-table .pinned {
+  position: sticky;
+  left: 6px;
+}
+
+.expand .pinned {
+  left: calc(var(--gutter-width) + 6px);
 }
 
 .diff-table .code {

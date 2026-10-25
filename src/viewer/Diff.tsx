@@ -9,7 +9,7 @@
 // hunk or run of context extends it to a range, and the comment shows below the range's last line.
 // The comments live in the provider (state.tsx), not here, so every view that shows a diff shows
 // the same ones. So does review progress (#32): each hunk's header has its "reviewed" checkbox.
-import { Fragment, type ReactNode, useMemo, useState } from 'react';
+import { type CSSProperties, Fragment, type ReactNode, useMemo, useState } from 'react';
 import type { FileChange } from '../schemas/changeset.ts';
 import type { Side } from '../schemas/common.ts';
 import type { LineComment } from '../schemas/feedback.ts';
@@ -26,6 +26,7 @@ import {
   type HiddenChar,
   hiddenChars,
   hunkRows,
+  lineDigits,
   revealing,
 } from './diff.ts';
 import { Highlighter, type Token } from './highlight.ts';
@@ -76,6 +77,7 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
     () => (side === null ? null : gaps(file, side, lines.length)),
     [file, side, lines],
   );
+  const digits = useMemo(() => lineDigits(file), [file]);
   const path = file.newPath ?? file.oldPath;
   const highlighters = fileHighlighters(file, language);
   const feedback = useFeedback();
@@ -164,7 +166,9 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
       parts.push(
         <tbody key={`skip-${parts.length}`} className="skipped">
           <tr>
-            <td colSpan={4}>⋯ {count(skipped, 'other hunk')}</td>
+            <td colSpan={4}>
+              <span className="pinned">⋯ {count(skipped, 'other hunk')}</span>
+            </td>
           </tr>
         </tbody>,
       );
@@ -203,7 +207,7 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
     parts.push(
       <tbody key={hunk.id} className="hunk" data-hunk-id={hunk.id}>
         <tr className="hunk-header">
-          <td colSpan={3}>
+          <td colSpan={3} className="gutter">
             <ReviewedCheckbox
               hunkIds={[hunk.id]}
               label={`Mark ${path} ${hunkHeader(hunk)} reviewed`}
@@ -236,7 +240,11 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
       )}
       {parts.length > 0 && (
         <div className="diff-scroll">
-          <table className="diff-table" data-path={path}>
+          <table
+            className="diff-table"
+            data-path={path}
+            style={{ '--line-digits': Math.max(digits, 3) } as CSSProperties}
+          >
             {parts}
           </table>
         </div>
@@ -285,38 +293,40 @@ function GapRows({
       {rows(gap.from, gap.from + top - 1)}
       {hidden > 0 && (
         <tr className="expand">
-          <td colSpan={3} />
+          <td colSpan={3} className="gutter" />
           <td>
-            {count(hidden, 'unchanged line')}{' '}
-            {hidden <= STEP ? (
-              <button type="button" className="link" onClick={all}>
-                Show
-              </button>
-            ) : (
-              <>
-                {up && (
-                  <button
-                    type="button"
-                    className="link"
-                    onClick={() => onExpand({ top: top + STEP, bottom })}
-                  >
-                    ↓ Show {STEP}
-                  </button>
-                )}{' '}
-                {down && (
-                  <button
-                    type="button"
-                    className="link"
-                    onClick={() => onExpand({ top, bottom: bottom + STEP })}
-                  >
-                    ↑ Show {STEP}
-                  </button>
-                )}{' '}
+            <span className="pinned">
+              {count(hidden, 'unchanged line')}{' '}
+              {hidden <= STEP ? (
                 <button type="button" className="link" onClick={all}>
-                  Show all
+                  Show
                 </button>
-              </>
-            )}
+              ) : (
+                <>
+                  {up && (
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => onExpand({ top: top + STEP, bottom })}
+                    >
+                      ↓ Show {STEP}
+                    </button>
+                  )}{' '}
+                  {down && (
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => onExpand({ top, bottom: bottom + STEP })}
+                    >
+                      ↑ Show {STEP}
+                    </button>
+                  )}{' '}
+                  <button type="button" className="link" onClick={all}>
+                    Show all
+                  </button>
+                </>
+              )}
+            </span>
           </td>
         </tr>
       )}
