@@ -56,7 +56,7 @@ Run the command. Progress goes to stderr. stdout ends with the capability summar
 
 ## 3. Plan
 
-Read `<dir>/planner-input.md` in full, and every `<dir>/candidates/batch-<n>.md` its Caller candidates section names. Then write `<dir>/plan.json`, replacing any fallback plan already there, with a verdict for each candidate edge. Fetch what the input leaves out with:
+Read `<dir>/planner-input.md` in full, and every `<dir>/candidates/batch-<n>.md` its Caller candidates section names. Then write `<dir>/plan.json`, replacing any fallback plan already there, with a verdict for each candidate edge. Write it with your file-writing tool, not through the shell: a heredoc or `echo` of JSON costs a turn when the shell's permission check refuses it. Fetch what the input leaves out with:
 
 ```text
 better-code-review show --dir <dir> <h_… | n_… | e_…>
@@ -77,7 +77,7 @@ better-code-review validate --dir <dir>
 ```
 
 - Exit 0 prints `{"valid": true, "ungroupedNodeIds": [...]}`. If any nodes are listed, place them or confirm they belong in Ungrouped.
-- Exit 1 prints `{"valid": false, "errors": [{"path", "code", "message"}]}`. `path` is a JSON Pointer into `plan.json`. Fix every error, rewrite the file, and validate again.
+- Exit 1 prints `{"valid": false, "errors": [{"path", "code", "message"}]}`. `path` is a JSON Pointer into `plan.json`. Fix every error in the file, with your file tools as in step 3, and validate again.
 - **At most 3 repair rounds.** If the plan is still invalid, move it to `<dir>/plan.rejected.json` and run `better-code-review fallback --dir <dir>`, which writes the deterministic plan back to `plan.json`. Tell the user the review uses the fallback plan, and show them the remaining errors.
 
 The error codes and their usual fixes are in [references/analysis-workflow.md](references/analysis-workflow.md#repairing-validation-errors).
