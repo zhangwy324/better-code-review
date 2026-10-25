@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractChangeSet } from '../../git/extract.ts';
+import { extractChangeSet, MAX_CONTENT_BYTES } from '../../git/extract.ts';
 import { TestRepo } from '../../git/test-repo.test-helper.ts';
 import { changeSetFiles, gitSnapshotFiles } from './snapshot-files.ts';
 
@@ -10,6 +10,7 @@ async function fixture() {
     'edit.ts': 'old formatPrice\n',
     'gone.ts': 'formatPrice\n',
     'other.ts': 'nothing here\n',
+    'huge.ts': 'x'.repeat(MAX_CONTENT_BYTES + 1),
   });
   const head = repo.commit([base], {
     'edit.ts': 'new\n',
@@ -31,6 +32,14 @@ describe('gitSnapshotFiles', () => {
     expect(await files.read('old', 'same.ts')).toBe('export const formatPrice = 1;\n');
     expect(await files.read('new', 'same.ts')).toBe('export const formatPrice = 1;\n');
     expect(await files.read('new', 'missing.ts')).toBeNull();
+  });
+
+  it('reads no unchanged file over the content cap, nor anything outside the snapshot', async () => {
+    const { repo, changes } = await fixture();
+    const files = gitSnapshotFiles(repo.path, changes);
+    expect(await files.read('new', 'huge.ts')).toBeNull();
+    expect(await files.read('new', '../same.ts')).toBeNull();
+    expect(await files.read('new', '/etc/hosts')).toBeNull();
   });
 
   it('searches each side for a whole word', async () => {

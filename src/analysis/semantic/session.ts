@@ -2,10 +2,11 @@
 // for references with the readiness, constructor and override rules from #4 and #42, checks
 // project health, and reports per-language capability. LSP is optional: nothing here throws for
 // a missing, broken or slow server; it reports a capability gap or an `unknown` answer instead.
-import { readFileSync } from 'node:fs';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { readFileSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { MAX_CONTENT_BYTES } from '../../git/extract.ts';
 import type { EntityKind, LanguageCapability, SourceRange } from '../../schemas/index.ts';
 import { fileUriToPath, LspClient, normaliseUri, type Spawner, spawnProcess } from './client.ts';
 import { ErrorCodes, RpcError } from './jsonrpc.ts';
@@ -35,6 +36,7 @@ import type {
 import {
   checkProjectPackages,
   type DiscoveryContext,
+  isInside,
   type Launch,
   overrideLaunch,
   type ServerId,
@@ -687,7 +689,7 @@ export class LspSession {
     const header = typeHeaderAt(lines, range);
     const at = header?.at ?? range.start;
     const rel = relative(this.#root, abs);
-    const inside = rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+    const inside = rel !== '' && isInside(abs, this.#root);
     const file = inside ? rel.split(sep).join('/') : abs;
     return { name, header, inside, abs, key: `${file}:${at.line}:${at.character}` };
   }
@@ -724,7 +726,7 @@ export class LspSession {
   ): Promise<{ type: DeclaredType; ancestors: Ancestors } | null> {
     const at = family.target.ownerClass;
     if (!at) return null;
-    const abs = join(this.#root, at.path);
+    const abs = this.#abs(at.path);
     const line = at.line - 1;
     const character = at.column - 1;
     const name = /^[A-Za-z_$][\w$]*/.exec((this.#fileLines(abs)[line] ?? '').slice(character));
@@ -749,7 +751,7 @@ export class LspSession {
     target: ReferenceTarget,
   ): Promise<boolean> {
     if (!this.#supported(state, client, 'textDocument/definition', 'definition')) return false;
-    const want = join(this.#root, target.path);
+    const want = this.#abs(target.path);
     const position = { line: target.line - 1, character: target.column - 1 };
     try {
       const answer = await client.request<Location | (Location | LocationLink)[] | null>(
@@ -843,7 +845,7 @@ export class LspSession {
         continue;
       }
       const rel = relative(this.#root, abs);
-      if (!rel || rel.startsWith('..') || isAbsolute(rel)) continue;
+      if (!rel || !isInside(abs, this.#root)) continue;
       const lines = this.#fileLines(abs);
       if (isImportLine(lines, loc.range.start.line)) continue;
       if (isAliasDeclaration(lines, loc.range)) continue;
@@ -967,14 +969,19 @@ export class LspSession {
     return new NotReadyError(state.notReady);
   }
 
+  /** A repository path's file in the snapshot root. One that would land outside it throws (#35). */
   #abs(path: string): string {
-    return join(this.#root, ...path.split('/'));
+    const abs = join(this.#root, ...path.split('/'));
+    if (!isInside(abs, this.#root)) throw new Error(`${path} is outside the snapshot`);
+    return abs;
   }
 
+  /** A file's lines, or none when it cannot be read or is over the content cap (#35). */
   #fileLines(abs: string): string[] {
     let lines = this.#lines.get(abs);
     if (!lines) {
       try {
+        if (statSync(abs).size > MAX_CONTENT_BYTES) throw new Error(`${abs} is too large`);
         lines = readFileSync(abs, 'utf8').split(/\r?\n/);
       } catch {
         lines = [];

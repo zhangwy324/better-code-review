@@ -392,7 +392,8 @@ function withPackagesNote(ctx: DiscoveryContext, found: Discovery): Discovery {
     : { launch: null, why: `${found.why}; ${note}` };
 }
 
-function isInside(path: string, dir: string): boolean {
+/** Whether `path` is `dir` or inside it, by name: `..x` is a name, `../x` is outside. */
+export function isInside(path: string, dir: string): boolean {
   const rel = relative(dir, path);
   return !isAbsolute(rel) && rel.split(sep)[0] !== '..';
 }
