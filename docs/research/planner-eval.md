@@ -147,7 +147,7 @@ Automated is `passed/total`. Verdicts are `judged/possible`.
 
 Workflow notes, from the transcripts in `.cache/eval/transcripts/`:
 - Each run took 6 to 10 tool calls.
-- In `feature-flow` and `independent-roots`, the agent first tried to write `plan.json` with a shell heredoc. Claude Code's permission check refused it ("brace with quote character"), and the agent used `Write` instead. That costs a turn but does no harm.
+- In `feature-flow` and `independent-roots`, the agent first tried to write `plan.json` with a shell heredoc. Claude Code's permission check refused it ("brace with quote character"), and the agent used `Write` instead. That costs a turn but does no harm. SKILL.md step 3 now says to write `plan.json` with the file-writing tool (#100).
 
 Round 1 committed its failing recordings for review, with their failed checks listed in `KNOWN_FAILS` in `replay.test.ts`. They were deleted as stale before round 2.
 
