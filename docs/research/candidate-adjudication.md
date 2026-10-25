@@ -349,6 +349,8 @@ The model behaves as well as in the spike: 0 audited false accepts and 1 audited
 
 **hono: no edges.** The spike found 27 items there. Here, `src/context.ts` is skipped with `parse-error`, so it has no entities, so it gets no candidates. The structural analyzer (#15) treats a tree-sitter tree with errors as unparseable. A partial parse, keeping the entities outside the error regions, would recover most of this. This is a recall gap in candidate search, not in the AI step.
 
+#93 fixed it. The errors are a grammar gap, not bad code: `tree-sitter-typescript` 0.23.2 cannot parse a generic call signature (`<T>(…): R`) that follows another member on a new line with no `;` ([upstream #335](https://github.com/tree-sitter/tree-sitter-typescript/issues/335)), as in hono's `Get`, `Set`, `TextRespond`, `JSONRespond` and `HTMLRespond`. The analyzer now keeps the entities outside the error regions and marks the file `partialParse`. `generate --no-lsp` on the same range then finds 21 possible edges, among them `Context.text/json/html` calling `#newResponse`, referencing `ResponseInit` and `ResponseOrInit`, and called from `src/types.test.ts`; 6 go to the caller batch. The three changed hunks inside `TextRespond`, `JSONRespond` and `HTMLRespond` stay on the file node. The AI step was not rerun.
+
 ## Post-MVP note
 
 With a healthy language server, finding *unchanged* callers repo-wide is cheap (one `references` query per changed entity, about 1.5 s) and accurate. A post-MVP option for #2 is to show unchanged callers only when they are LSP-verified, and say they're unavailable otherwise. The AI fallback does not scale to that volume (see [Recommendation](#recommendation)).
