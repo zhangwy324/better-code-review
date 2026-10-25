@@ -1,8 +1,10 @@
 // Deterministic Git repositories built from file maps, with no test runner involved, so both the
 // tests (src/git/test-repo.test-helper.ts) and `npm run fixtures` can use them. Files are written
-// straight into the index, so any path works on any OS and no checkout is needed.
+// straight into the index, so any path works on any OS and no checkout is needed. A git process
+// takes tens of milliseconds to start on Windows, so a commit runs five, however many files it has
+// (#146).
 import { execFileSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Fixture } from './fixture.ts';
 
@@ -40,7 +42,14 @@ export class GitRepo {
     this.git('init', '-q', '-b', 'main');
     // Git for Windows rejects NTFS-invalid paths (quotes, tabs) even in the index; nothing is
     // checked out here, so the check only gets in the way.
-    this.git('config', 'core.protectNTFS', 'false');
+    this.config('core.protectNTFS', 'false');
+  }
+
+  /** Sets `section.key` in the repository's config by writing the file, with no git process. */
+  config(name: string, value: string): void {
+    const [, section, key] = /^(\w+)\.(\w+)$/.exec(name) ?? [];
+    if (section === undefined || key === undefined) throw new Error(`Unsupported config ${name}`);
+    appendFileSync(join(this.path, '.git', 'config'), `[${section}]\n\t${key} = ${value}\n`);
   }
 
   git(...args: string[]): string {
@@ -73,21 +82,48 @@ export class GitRepo {
   commit(parents: string[], files: Record<string, FileSpec>, message = 'commit'): string {
     if (parents[0]) this.git('read-tree', parents[0]);
     else this.git('read-tree', '--empty');
-    for (const [path, spec] of Object.entries(files)) {
-      if (spec === null) {
-        this.git('update-index', '--force-remove', '--', path);
-        continue;
-      }
-      const { mode, content } =
-        typeof spec === 'string' || Buffer.isBuffer(spec)
-          ? { mode: '100644', content: spec }
-          : spec;
-      const oid = this.gitInput(content, 'hash-object', '-w', '--stdin').trim();
-      this.git('update-index', '--add', '--cacheinfo', `${mode},${oid},${path}`);
+    const entries = Object.entries(files).map(([path, spec]) =>
+      spec === null
+        ? { path, mode: '0', content: null }
+        : typeof spec === 'string' || Buffer.isBuffer(spec)
+          ? { path, mode: '100644', content: spec }
+          : { path, ...spec },
+    );
+    const oids = this.writeBlobs(entries.flatMap((e) => (e.content === null ? [] : [e.content])));
+    // NUL-terminated, so any path works. Mode 0 removes a path.
+    const indexInfo = entries.map(
+      (e) => `${e.mode} ${e.content === null ? '0'.repeat(40) : oids.shift()}\t${e.path}\0`,
+    );
+    if (indexInfo.length > 0) {
+      this.gitInput(indexInfo.join(''), 'update-index', '-z', '--index-info');
     }
     const tree = this.git('write-tree').trim();
     const parentArgs = parents.flatMap((p) => ['-p', p]);
     return this.git('commit-tree', tree, ...parentArgs, '-m', message).trim();
+  }
+
+  /** Writes each content as a blob, byte for byte, in one git process; returns their IDs. */
+  private writeBlobs(contents: (string | Buffer)[]): string[] {
+    if (contents.length === 0) return [];
+    const dir = join(this.path, '.git', 'fixture-blobs');
+    mkdirSync(dir);
+    try {
+      const paths = contents.map((content, i) => {
+        const path = join(dir, String(i));
+        writeFileSync(path, content);
+        return path;
+      });
+      const out = this.gitInput(
+        paths.join('\n'),
+        'hash-object',
+        '-w',
+        '--no-filters',
+        '--stdin-paths',
+      );
+      return out.trim().split('\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
 }
 
@@ -113,11 +149,15 @@ export function buildFixtureRepo(
     ...isolatedGitEnv(join(dir, '.git', 'no-global-config')),
   });
   // Checked-out files keep the fixture's line endings, whatever Git for Windows would do.
-  repo.git('config', 'core.autocrlf', 'false');
+  repo.config('core.autocrlf', 'false');
   const base = repo.commit([], fixture.base, `${fixture.name}: base`);
   const head = repo.commit([base], fixture.head, `${fixture.name}: head`);
-  repo.git('update-ref', 'refs/heads/main', head);
-  repo.git('tag', 'base', base);
+  // The branch and a lightweight tag, as `git tag base base` makes it.
+  repo.gitInput(
+    `update refs/heads/main ${head}\ncreate refs/tags/base ${base}\n`,
+    'update-ref',
+    '--stdin',
+  );
   if (checkout) repo.git('reset', '-q', '--hard', 'main');
   return { repo, base, head };
 }
