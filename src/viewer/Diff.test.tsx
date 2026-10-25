@@ -12,7 +12,7 @@ import { GitRepo, isolatedGitEnv } from '../../test/fixtures/repo.ts';
 import type { ChangeSet, FileChange } from '../schemas/changeset.ts';
 import type { ChangeGraph } from '../schemas/graph.ts';
 import { Diff } from './Diff.tsx';
-import { contentLines } from './diff.ts';
+import { contentLines, hiddenChars } from './diff.ts';
 import { lineCounts } from './model.ts';
 import { generateReview } from './testing.tsx';
 
@@ -21,6 +21,9 @@ const numbered = (n: number, f: (i: number) => string) =>
 
 const html = '<img src=x onerror="globalThis.pwned=1"><script>globalThis.pwned=1</script>';
 const long = `const long = "${'x'.repeat(20_000)}";`;
+// Each kind of hidden character (#106), with emoji whose joiner and selector are not hidden.
+const hidden =
+  "export const w20 = '\u2067a\u200bb\u200cc\u200dd\u2060e\ufefff\u00adg\u3164\u{e0041}\ufe00\ufe01 👨\u200d👩 ❤\ufe0f';";
 
 const base = {
   // Three hunks with unchanged lines between them, and a multi-line comment around the first.
@@ -47,6 +50,7 @@ const head = {
     .replace('const trailing = 2;   ', 'const trailing = 3;   ')
     .replace(`'${html}'`, `'${html} changed'`)
     .replace("export const w15 = 'é ü ✓ 🙂 مرحبا';", "export const w15 = 'ß 你好 ​';")
+    .replace("export const w20 = 'é ü ✓ 🙂 مرحبا';", hidden)
     .replace(long, `${long} // changed`),
   'crlf.txt': base['crlf.txt'].replace('line 15\r\n', 'line 15 changed\r\n'),
   'no-eol.py': `${base['no-eol.py']}\nx13 = 13`,
@@ -213,6 +217,26 @@ describe('Diff', () => {
     expect(trailing).toEqual(expect.arrayContaining(['\t\t', '   ']));
   });
 
+  it('marks each bidirectional control and invisible character, keeping the text', () => {
+    const { container } = renderDiff(file('src/tricky.ts'));
+    const row = codeRows(container).find((r) => r.text === hidden);
+    expect(row?.kind).toBe('added');
+    const tr = container.querySelector(`tr[data-new-line="${row!.new}"]`)!;
+    const marks = [...tr.querySelectorAll('.bidi, .invisible')].map((m) => [
+      m.className,
+      m.getAttribute('data-code'),
+      m.getAttribute('title'),
+    ]);
+    expect(marks).toEqual([
+      ['bidi', 'U+2067', 'Bidirectional control U+2067'],
+      ...['200B', '200C', '200D', '2060', 'FEFF', '00AD', '3164', 'E0041', 'FE00', 'FE01'].map(
+        (c) => ['invisible', `U+${c}`, `Invisible character U+${c}`],
+      ),
+    ]);
+    // The file has one more: the zero-width space of line w15, and the note counts both lines.
+    expect(container.querySelector('.hidden-note')!.textContent).toMatch(/^12 hidden characters /);
+  });
+
   it('marks CRLF line ends, keeping the carriage return in the text', () => {
     const { container } = renderDiff(file('crlf.txt'));
     const crs = container.querySelectorAll('.code > .cr');
@@ -228,5 +252,45 @@ describe('Diff', () => {
     expect(container.querySelector('.note')!.textContent).toMatch(/not valid UTF-8/);
     expect(container.querySelector('.expand')).toBeNull();
     expect(shownPatch(container.querySelector('tbody.hunk')!)).toBe(f.hunks[0]!.patch);
+  });
+});
+
+describe('hiddenChars', () => {
+  const codes = (text: string) => hiddenChars(text).map((h) => `${h.kind} ${h.code}`);
+
+  it('finds bidirectional controls', () => {
+    const bidi = '\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069';
+    expect(codes(`a${bidi}b`)).toEqual(
+      [...bidi].map((c) => `bidi U+${c.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`),
+    );
+  });
+
+  it('finds zero-width and other invisible characters, with their positions', () => {
+    expect(hiddenChars('a\u200bb\u{e0041}c')).toEqual([
+      { index: 1, length: 1, kind: 'invisible', code: 'U+200B' },
+      { index: 3, length: 2, kind: 'invisible', code: 'U+E0041' },
+    ]);
+    const each =
+      '\u00ad\u034f\u115f\u1160\u180e\u200b\u200c\u200d\u2060\u2064\u206a\u206f\u3164\ufeff\uffa0\ufff9\ufffb';
+    expect(codes(each)).toHaveLength([...each].length);
+    expect(codes('x\u{e007f}\u{e0100}\u{e01ef}')).toEqual([
+      'invisible U+E007F',
+      'invisible U+E0100',
+      'invisible U+E01EF',
+    ]);
+  });
+
+  it('leaves alone emoji joiners and single variation selectors, but not a run of selectors', () => {
+    expect(codes('👨\u200d👩\u200d👧 👍🏽\u200d🔥 ❤\ufe0f ✓\ufe0e')).toEqual([]);
+    expect(codes('a\u200d👩 👨\u200db')).toEqual(['invisible U+200D', 'invisible U+200D']);
+    expect(codes('a\ufe00\ufe0f\ufe05')).toEqual([
+      'invisible U+FE00',
+      'invisible U+FE0F',
+      'invisible U+FE05',
+    ]);
+  });
+
+  it('finds nothing in ordinary text, whitespace or unicode', () => {
+    expect(codes("\tconst s = 'é ü ✓ 🙂 مرحبا 你好';   \r")).toEqual([]);
   });
 });

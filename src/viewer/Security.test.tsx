@@ -102,5 +102,8 @@ describe('malicious content', () => {
       ['U+2069', '⁩'],
       ['U+2066', '⁦'],
     ]);
+    // And the file's diff says it has them.
+    const diff = row.closest('.diff')!;
+    expect(diff.querySelector('.hidden-note')!.textContent).toMatch(/^4 hidden characters /);
   });
 });
