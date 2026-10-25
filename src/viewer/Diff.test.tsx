@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cleanup, fireEvent, render } from '@testing-library/react';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { GitRepo, isolatedGitEnv } from '../../test/fixtures/repo.ts';
 import type { ChangeSet, FileChange } from '../schemas/changeset.ts';
 import type { ChangeGraph } from '../schemas/graph.ts';
@@ -109,6 +109,42 @@ function codeRows(container: HTMLElement) {
     new: tr.hasAttribute('data-new-line') ? Number(tr.getAttribute('data-new-line')) : null,
     text: tr.querySelector('.code')!.textContent,
   }));
+}
+
+/** Offset `offset` of the code text of `tr`, as a DOM point inside its text nodes. */
+function point(tr: Element, offset: number): [Node, number] {
+  const cell = tr.querySelector('.code')!;
+  const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+  let left = offset;
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    const length = node.textContent!.length;
+    if (left <= length) return [node, left];
+    left -= length;
+  }
+  throw new Error(`offset ${offset} is past the end of the line`);
+}
+
+/**
+ * Selects from `anchor` (a row and an offset in its code) to `focus`, then copies. Returns what
+ * the diff put on the clipboard, or null when it left the copy to the browser.
+ */
+function copySelection(
+  container: HTMLElement,
+  anchor: [Element, number],
+  focus: [Element, number],
+) {
+  window.getSelection()!.setBaseAndExtent(...point(...anchor), ...point(...focus));
+  const setData = vi.fn();
+  const notPrevented = fireEvent.copy(container.querySelector('.diff-table')!, {
+    clipboardData: { setData },
+  });
+  if (notPrevented) {
+    expect(setData).not.toHaveBeenCalled();
+    return null;
+  }
+  expect(setData).toHaveBeenCalledOnce();
+  expect(setData.mock.calls[0]![0]).toBe('text/plain');
+  return setData.mock.calls[0]![1] as string;
 }
 
 /** Clicks "Show" and "Show all" until no unchanged line is hidden. */
@@ -268,6 +304,66 @@ describe('Diff', () => {
     expect(container.querySelector('.note')!.textContent).toMatch(/not valid UTF-8/);
     expect(container.querySelector('.expand')).toBeNull();
     expect(shownPatch(container.querySelector('tbody.hunk')!)).toBe(f.hunks[0]!.patch);
+  });
+});
+
+describe('copying from a diff', () => {
+  const row = (container: HTMLElement, selector: string) => container.querySelector(selector)!;
+
+  it('copies only the old side when the selection starts on a removed line', () => {
+    // crlf.txt changes line 15: context 12-14, removed 15, added 15, context 16-18.
+    const { container } = renderDiff(file('crlf.txt'));
+    const removed = row(container, 'tr.removed');
+    const after = row(container, 'tr[data-new-line="16"]');
+    expect(copySelection(container, [removed, 0], [after, 4])).toBe('line 15\nline');
+  });
+
+  it('copies only the new side when the selection starts on an added line, even backwards', () => {
+    const { container } = renderDiff(file('crlf.txt'));
+    const added = row(container, 'tr.added');
+    const before = row(container, 'tr[data-new-line="14"]');
+    // Dragged upwards: the selection starts at the end of the added line.
+    expect(copySelection(container, [added, 'line 15 changed'.length], [before, 2])).toBe(
+      'ne 14\nline 15 changed',
+    );
+  });
+
+  it('takes the side of the first changed line when the selection starts on context', () => {
+    const { container } = renderDiff(file('crlf.txt'));
+    const start = row(container, 'tr[data-new-line="13"]');
+    const end = row(container, 'tr[data-new-line="17"]');
+    // No line numbers, no prefixes, and no carriage returns: they end the lines, not the code.
+    expect(copySelection(container, [start, 0], [end, 7])).toBe(
+      'line 13\nline 14\nline 15\nline 16\nline 17',
+    );
+    const text = container.querySelector('.diff-table')!.textContent;
+    expect(text).toContain('line 15\r');
+    expect(text).toContain('line 15 changed\r');
+  });
+
+  it('leaves out the `@@` lines and expansion controls between hunks', () => {
+    const f = file('src/tricky.ts');
+    const { container } = renderDiff(f);
+    const [first, second] = [...container.querySelectorAll('tbody.hunk')];
+    const last = [...first!.querySelectorAll('tr.context')].at(-1)!;
+    const next = second!.querySelector('tr.context')!;
+    const copied = copySelection(container, [last, 0], [next, 3]);
+    expect(copied).toBe(
+      `${last.querySelector('.code')!.textContent}\n${next.querySelector('.code')!.textContent.slice(0, 3)}`,
+    );
+  });
+
+  it('leaves a copy that selects no code to the browser', () => {
+    const { container } = renderDiff(file('crlf.txt'));
+    const header = container.querySelector('tr.hunk-header td:last-child')!;
+    window.getSelection()!.selectAllChildren(header);
+    expect(fireEvent.copy(container.querySelector('.diff-table')!, { clipboardData: {} })).toBe(
+      true,
+    );
+    window.getSelection()!.removeAllRanges();
+    expect(fireEvent.copy(container.querySelector('.diff-table')!, { clipboardData: {} })).toBe(
+      true,
+    );
   });
 });
 

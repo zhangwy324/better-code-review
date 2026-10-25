@@ -23,22 +23,22 @@ const KINDS: Record<string, DiffRow['kind']> = {
 };
 
 /**
- * The hunk's `@@` line and its other lines, in patch order. Joining the header and each row's
- * `prefix + text` with newlines gives back `hunk.patch` without its final newline.
+ * The hunk's lines after its `@@` line (`hunkHeader()` in `model.ts`), in patch order. Joining the
+ * `@@` line and each row's `prefix + text` with newlines gives back `hunk.patch` without its final
+ * newline.
  */
-export function hunkRows(hunk: DiffHunk): { header: string; rows: DiffRow[] } {
+export function hunkRows(hunk: DiffHunk): DiffRow[] {
   const lines = hunk.patch.split('\n');
   if (lines.at(-1) === '') lines.pop();
   let oldLine = hunk.oldStart;
   let newLine = hunk.newStart;
-  const rows = lines.slice(1).map((line): DiffRow => {
+  return lines.slice(1).map((line): DiffRow => {
     const prefix = line.slice(0, 1);
     const kind = KINDS[prefix] ?? 'marker';
     const old = kind === 'context' || kind === 'removed' ? oldLine++ : null;
     const nu = kind === 'context' || kind === 'added' ? newLine++ : null;
     return { kind, prefix, text: line.slice(1), oldLine: old, newLine: nu };
   });
-  return { header: lines[0]!, rows };
 }
 
 /**
