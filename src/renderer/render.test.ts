@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type DefaultTreeAdapterMap, parse } from 'parse5';
@@ -123,5 +123,26 @@ describe('writeReview', () => {
     const plan = { groups: [] };
     writeReview(dir, { template, plan });
     expect(readFileSync(path, 'utf8')).toBe(renderReview(template, { ...documents, plan }));
+  });
+
+  it('names the file it cannot read or parse', () => {
+    const dir = join(tmp, 'broken');
+    mkdirSync(dir);
+    writeFileSync(join(dir, 'changes.json'), JSON.stringify(documents.changes));
+    writeFileSync(join(dir, 'graph.json'), JSON.stringify(documents.graph));
+
+    const missing = join(dir, 'plan.json');
+    expect(() => writeReview(dir, { template })).toThrow(`Could not read ${missing}: ENOENT`);
+
+    writeFileSync(missing, '{"groups": [');
+    let error: unknown;
+    try {
+      writeReview(dir, { template });
+    } catch (caught) {
+      error = caught;
+    }
+    expect((error as Error).message).toMatch(`${missing} is not valid JSON: `);
+    expect((error as Error).cause).toBeInstanceOf(SyntaxError);
+    expect(existsSync(join(dir, 'review.html'))).toBe(false);
   });
 });
