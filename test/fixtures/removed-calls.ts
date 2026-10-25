@@ -86,5 +86,13 @@ export const removedCalls: Fixture = {
     ],
   },
   // With a language server every edge is verified, the old-side ones by a base-side server (#66).
+  // The notification moving to a queue and the refund no longer auditing are separate changes.
+  // Neither order is clear: the replacement reads as well from placeOrder as from its callees.
+  plan: {
+    apart: [
+      ['notifyByEmail', 'src/queue.ts', 'enqueueNotification', 'placeOrder'],
+      ['audit', 'refundOrder'],
+    ],
+  },
   later: [],
 };

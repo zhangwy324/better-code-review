@@ -50,6 +50,8 @@ export const overrideDispatch: Fixture = {
   },
   // Both TypeScript servers return the call among the override's own references, and
   // `baseMethods` (Shape.area) returns it too; its receiver's type, Shape, is a base of Square.
+  // No plan facts: neither edit changes what the other relies on (area's result is the same), so
+  // neither a reading order nor a separation is clear.
   later: [],
 };
 
@@ -95,5 +97,6 @@ export const overrideDispatchPython: Fixture = {
   },
   // pyright returns nothing for the override itself (#42). The call comes from the base method
   // Account.interest (`baseMethods`), and its receiver's type, Account, is a base of Savings.
+  // No plan facts, as for the TypeScript twin.
   later: [],
 };

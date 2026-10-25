@@ -121,5 +121,14 @@ export const sameName: Fixture = {
       'submitForm calls validate [src/orders/validate.ts] (both)',
     ],
   },
+  // The three validates are unrelated symbols that share a name. Their callers are left out: a
+  // plan may group the three message changes by purpose.
+  plan: {
+    apart: [
+      ['validate [src/users/validate.ts]'],
+      ['validate [src/orders/validate.ts]'],
+      ['Form.validate'],
+    ],
+  },
   later: [],
 };

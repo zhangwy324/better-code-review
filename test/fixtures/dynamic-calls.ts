@@ -68,5 +68,7 @@ export const dynamicCalls: Fixture = {
     edges: [],
   },
   // A language server cannot see through the computed access either, so there are no edges.
+  // No plan facts: the three are related only through names in strings. A plan may link them or
+  // keep them apart as independent roots, and either way no reading order is clear.
   later: ['M2: an agent may link them as an inferred relationship, never as a code edge (D6).'],
 };

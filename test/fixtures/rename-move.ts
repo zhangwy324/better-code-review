@@ -90,5 +90,9 @@ export const renameMove: Fixture = {
     // The old side calls slugify, the new side toSlug: one edge, on both sides.
     edges: ['postUrl calls toSlug (both)'],
   },
+  // The renamed function is read before the import and call that follow it. The pure move has
+  // no hunks, so it may come before or after src/layout.ts's import, and the two moves need not
+  // be apart: together they empty src/utils/, which can read as one change.
+  plan: { order: [[['toSlug'], ['src/urls.ts', 'postUrl']]] },
   later: ['M3: the toSlug node shows its old name and path.'],
 };

@@ -45,6 +45,7 @@ export const unchangedCaller: Fixture = {
     nodes: ['symbol findUser'],
     edges: [],
   },
+  // No plan facts: the change is one node, so there is no order or separation to check.
   later: [
     'Post-MVP (#2): greeting is found as an unchanged but affected caller of findUser.',
     'M3: the artifact says that unchanged callers are not analysed (D12).',
