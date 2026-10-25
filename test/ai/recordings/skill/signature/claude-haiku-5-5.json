@@ -2,47 +2,26 @@
   "task": "skill",
   "fixture": "signature",
   "model": "claude-haiku-5-5",
-  "compatibilityHash": "sha256:34617ebc09f169448bc0214cf8a088662c6f30a91a8ea549f717ee6c36c22cf4",
+  "compatibilityHash": "sha256:b231fa7fe98283d71c4e46e271ad2276f18dc8c100e7ddee0a162d0196633846",
   "promptHash": "sha256:a15dcb3941d18ab8e01743fea412162fbf0dcfc34fd739044ba0d985b17a5fa7",
   "usage": {
-    "inputTokens": 14,
-    "outputTokens": 4473,
-    "cacheCreationInputTokens": 20193,
-    "cacheReadInputTokens": 97584
+    "inputTokens": 16,
+    "outputTokens": 4585,
+    "cacheCreationInputTokens": 20410,
+    "cacheReadInputTokens": 120926
   },
-  "costUsd": 0.00725234,
+  "costUsd": 0.00758536,
   "output": {
     "schemaVersion": 1,
     "snapshotId": "a0b62ae0c49101d19bd6688a47e1b7c526f614807da717ddad4626e875de8bec",
     "origin": "agent",
     "fallbackReason": null,
-    "summary": "Two signature changes with callers. tax() in tax.py gains a rate parameter (default 0.1), and the Python callers in orders.py and refunds.py now pass 0.2. formatPrice() in src/price.ts gains a currency parameter, and four TypeScript callers now pass 'USD'. Unrelated edits: a hardcoded tax argument in calc.py, a method call in fmt.ts, a legacy label text change, and config.json switching currency from USD to EUR. The callers still hardcode 'USD' while the config now says EUR. The reviewer should confirm whether that is intended.",
+    "summary": "Two signature changes with their callers: formatPrice gains a required currency parameter and tax gains an optional rate parameter. Each formatPrice caller now passes 'USD', and the two tax callers in orders.py and refunds.py pass 0.2. Unrelated edits are a config currency change to EUR, a text change in legacyLabel, and a changed argument in calc.py's Calc.tax call. Check that 'USD' and 0.2 are the intended values, and that the EUR config change is intended.",
     "groups": [
       {
-        "id": "tax-contract",
-        "title": "tax() gains a rate parameter",
-        "description": "The definition adds rate with default 0.1 and multiplies by it. Read it first; the default keeps old single-argument calls working.",
-        "nodeIds": [
-          "n_a28e241d8b72b42e"
-        ],
-        "referenceNodeIds": [],
-        "childGroupIds": []
-      },
-      {
-        "id": "tax-callers",
-        "title": "Python callers pass a 0.2 rate",
-        "description": "order_total and refund now pass 0.2 explicitly, so they no longer use the 0.1 default. Check that 0.2 is the intended rate for both.",
-        "nodeIds": [
-          "n_d6e20a1e36e89f35",
-          "n_d6f3f1118f317669"
-        ],
-        "referenceNodeIds": [],
-        "childGroupIds": []
-      },
-      {
-        "id": "format-contract",
-        "title": "formatPrice() gains a currency parameter",
-        "description": "The function now requires a currency string and returns it as a prefix. Output changes for every caller, since the value is no longer a bare number.",
+        "id": "price-contract",
+        "title": "formatPrice gains a currency parameter",
+        "description": "The definition takes a currency and returns it as a prefix. Read this first: every caller in the next group depends on it.",
         "nodeIds": [
           "n_5f473b23f87b2103"
         ],
@@ -50,9 +29,9 @@
         "childGroupIds": []
       },
       {
-        "id": "format-callers",
-        "title": "Callers pass 'USD' to formatPrice()",
-        "description": "Four summaries and aliasCaller now pass 'USD'. Check that none should use another currency, and that config.json's EUR setting does not need to reach them.",
+        "id": "price-callers",
+        "title": "Callers pass 'USD' to formatPrice",
+        "description": "Checkout, invoice, receipt and the aliased caller now pass 'USD'. Check that none should use another currency. aliasCaller reaches formatPrice through a re-export.",
         "nodeIds": [
           "n_2c1f143cc3a2bbb9",
           "n_419cb969b56bba51",
@@ -63,12 +42,33 @@
         "childGroupIds": []
       },
       {
+        "id": "tax-contract",
+        "title": "tax gains an optional rate parameter",
+        "description": "The default rate stays 0.1, so calls without a rate are unchanged. Check that the default is still the intended rate.",
+        "nodeIds": [
+          "n_a28e241d8b72b42e"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
+        "id": "tax-callers",
+        "title": "Callers pass a 0.2 rate to tax",
+        "description": "order_total and refund now pass 0.2 explicitly. Check that 0.2 is the intended rate for both.",
+        "nodeIds": [
+          "n_d6e20a1e36e89f35",
+          "n_d6f3f1118f317669"
+        ],
+        "referenceNodeIds": [],
+        "childGroupIds": []
+      },
+      {
         "id": "unrelated-edits",
         "title": "Unrelated edits",
-        "description": "These changes do not follow from the two signature changes. calc.py and fmt.ts call a method of the same name on a different class, so they are not callers of the changed functions. legacyLabel uses the legacy formatter. config.json switches currency to EUR. Review each on its own.",
+        "description": "These changes do not follow from formatPrice or tax. The method call in viaMethod and the Calc.tax call in use_calc name the same functions but are different symbols. The config currency change and the legacyLabel text change have no code link to the others. Confirm each is intended.",
         "nodeIds": [
-          "n_587765b9e0f477d8",
           "n_7494b29a98f930be",
+          "n_587765b9e0f477d8",
           "n_42f00308fe62dbb4",
           "n_b66ceb730ab3e4b1"
         ],
@@ -77,10 +77,10 @@
       }
     ],
     "groupOrder": [
+      "price-contract",
+      "price-callers",
       "tax-contract",
       "tax-callers",
-      "format-contract",
-      "format-callers",
       "unrelated-edits"
     ],
     "edgeVerdicts": [
@@ -88,7 +88,7 @@
         "edgeId": "e_a09331d50782041a",
         "verdict": "no",
         "via": null,
-        "reason": "viaMethod calls formatPrice as a method on an Fmt receiver, which is Fmt.formatPrice in fmt.ts, not the exported function changed in price.ts.",
+        "reason": "viaMethod calls f.formatPrice on a Fmt instance, which is the Fmt.formatPrice method in fmt.ts, not the changed formatPrice function in price.ts.",
         "citedLine": {
           "path": "src/fmt.ts",
           "side": "new",
@@ -99,7 +99,7 @@
         "edgeId": "e_131c5d5bf23e738e",
         "verdict": "no",
         "via": null,
-        "reason": "use_calc calls tax as a method on a Calc() instance, which is Calc.tax in calc.py, not the module-level tax function changed in tax.py.",
+        "reason": "use_calc calls the tax method on a Calc() instance, which is Calc.tax in calc.py, not the module-level tax function in tax.py.",
         "citedLine": {
           "path": "calc.py",
           "side": "new",
@@ -107,26 +107,6 @@
         }
       }
     ],
-    "inferredRelationships": [
-      {
-        "id": "currency-config-vs-usd",
-        "kind": "logically-related",
-        "from": "n_b66ceb730ab3e4b1",
-        "to": "n_2c1f143cc3a2bbb9",
-        "explanation": "config.json now sets currency to EUR, but checkoutSummary hardcodes 'USD'. The reviewer should check whether the config is read anywhere that these callers should follow.",
-        "citedLines": [
-          {
-            "path": "config.json",
-            "side": "new",
-            "line": 1
-          },
-          {
-            "path": "src/checkout.ts",
-            "side": "new",
-            "line": 4
-          }
-        ]
-      }
-    ]
+    "inferredRelationships": []
   }
 }
