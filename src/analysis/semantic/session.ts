@@ -24,6 +24,7 @@ import {
   typeHeaderAt,
   typeNameAt,
 } from './normalise.ts';
+import type { SnapshotModules } from './modules.ts';
 import type {
   CallHierarchyIncomingCall,
   CallHierarchyItem,
@@ -92,6 +93,8 @@ export interface LspOptions {
   searchPath?: string;
   /** How server processes are started. Tests pass a fake. */
   spawn?: Spawner;
+  /** For a root written out by src/git/checkout.ts: its `node_modules` (`linkInstalledModules`). */
+  modules?: SnapshotModules;
 }
 
 /** A position in a file, 1-based like `SourceRange`. */
@@ -249,7 +252,10 @@ export class LspSession {
     options: LspOptions = {},
   ): Promise<LspSession> {
     const session = new LspSession(root, options);
-    if (!options.allowProjectCode) session.#untrustedPackages = checkProjectPackages(root);
+    if (!options.allowProjectCode) {
+      // A linked node_modules is the working tree's: check that one, as `--local` would.
+      session.#untrustedPackages = checkProjectPackages(options.modules?.linkedFrom ?? root);
+    }
     const specs = new Set<ServerSpec>();
     for (const language of languages) {
       if (session.#languages.includes(language)) continue;
@@ -378,6 +384,10 @@ export class LspSession {
       return;
     }
     state.launch = found.launch;
+    if (spec.id === 'typescript' && this.#options.modules?.linkedFrom) {
+      const configuration = `${found.launch.configuration}; node_modules linked from the working tree`;
+      state.launch = { ...found.launch, configuration };
+    }
     if (spec.runsProjectCode && !ctx.allowProjectCode) {
       state.status = 'needs-opt-in';
       state.guidance = `${gap} — ${spec.runsProjectCode}; allow project code to use it`;
@@ -935,10 +945,16 @@ export class LspSession {
     if (state.unhealthy) {
       return {
         status: 'unhealthy',
-        guidance: `${state.spec.label}: in files whose imports do not resolve, references the server did not return are not rejections — ${state.unhealthy}. ${state.spec.healthHint}`,
+        guidance: `${state.spec.label}: in files whose imports do not resolve, references the server did not return are not rejections — ${state.unhealthy}. ${this.#healthHint(state.spec)}`,
       };
     }
     return { status: 'ok', guidance: null };
+  }
+
+  /** Only TypeScript resolves packages from `node_modules`, so only its hint depends on it. */
+  #healthHint(spec: ServerSpec): string {
+    const modules = spec.id === 'typescript' ? this.#options.modules?.healthHint : null;
+    return modules ?? spec.healthHint;
   }
 
   #supported(

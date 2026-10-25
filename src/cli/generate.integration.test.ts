@@ -1,7 +1,7 @@
 // `generate` with real language servers on the signature fixture (MVP spec M1: "with
 // typescript-language-server and pyright installed"). Skipped unless both a TypeScript and a
 // Python server are found; `npm run test:lsp` installs them (src/analysis/semantic/README.md).
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -64,5 +64,72 @@ describe.skipIf(ts === undefined || py === undefined)('generate with language se
     ]);
     // The servers' checkouts are not worktrees.
     expect(repo.git('worktree', 'list').trim().split('\n')).toHaveLength(1);
+  }, 180_000);
+});
+
+// #117: a checkout has no node_modules, so a package import kept the TypeScript server unhealthy
+// on both sides and the summary asked for `npm ci`, though the working tree had it installed.
+describe.skipIf(ts === undefined)("generate with the working tree's node_modules", () => {
+  // The TypeScript half of the signature fixture, with a package import in fmt.ts, whose
+  // `f.formatPrice` collision only the server can reject.
+  const withDep = (files: Record<string, string | null>) =>
+    Object.fromEntries(
+      Object.entries(files)
+        .filter(([path]) => !path.endsWith('.py'))
+        .map(([path, text]) => [
+          path,
+          path === 'src/fmt.ts' ? `import type { Dep } from 'dep';\n${text}` : text,
+        ]),
+    );
+
+  async function generate(installed: boolean) {
+    const repo = new TestRepo();
+    const head = repo.commit([repo.commit([], withDep(SIGNATURE_BASE))], withDep(SIGNATURE_HEAD));
+    if (installed) {
+      const dep = join(repo.path, 'node_modules', 'dep');
+      mkdirSync(dep, { recursive: true });
+      writeFileSync(join(dep, 'package.json'), '{ "name": "dep", "types": "index.d.ts" }\n');
+      writeFileSync(join(dep, 'index.d.ts'), 'export interface Dep {}\n');
+    }
+    const dir = join(out, installed ? 'installed' : 'none');
+    let stderr = '';
+    const exitCode = await run(
+      ['generate', '--commit', head, '--out', dir],
+      { cwd: repo.path, out: () => {}, err: (t) => (stderr += t) },
+      { lsp: { searchPath: ts!, timeouts: { emptyGraceMs: 3000, retryDelayMs: 500 } } },
+    );
+    expect(stderr).not.toContain('error');
+    expect(exitCode).toBe(0);
+    const graph = ChangeGraph.parse(JSON.parse(readFileSync(join(dir, 'graph.json'), 'utf8')));
+    if (installed) {
+      // The user's install is still there after the checkout was removed.
+      expect(existsSync(join(repo.path, 'node_modules', 'dep', 'index.d.ts'))).toBe(true);
+    }
+    return { graph, summary: readFileSync(join(dir, 'summary.txt'), 'utf8') };
+  }
+
+  const typescript = (graph: ChangeGraph) =>
+    graph.languages.filter((l) => l.language === 'typescript');
+
+  it('resolves packages on both sides from the working tree', async () => {
+    const { graph } = await generate(true);
+    expect(typescript(graph).map((l) => [l.side, l.status])).toEqual([
+      ['new', 'ok'],
+      ['old', 'ok'],
+    ]);
+    expect(typescript(graph)[0]!.server!.configuration).toContain(
+      'node_modules linked from the working tree',
+    );
+  }, 180_000);
+
+  it('asks for an install in the working tree when it has none', async () => {
+    const { graph, summary } = await generate(false);
+    const [head] = typescript(graph);
+    expect(head!.status).toBe('unhealthy');
+    expect(head!.guidance).toContain("Cannot find module 'dep'");
+    expect(head!.guidance).toContain(
+      "the working tree has no node_modules to lend it. Install the project's dependencies in the working tree",
+    );
+    expect(summary).toContain('working tree has no node_modules');
   }, 180_000);
 });
