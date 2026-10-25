@@ -72,6 +72,11 @@ export const unsupportedBinary: Fixture = {
     ],
     edges: [],
   },
+  // The port moving to 9090 (server, guide and banner) is one change; the deploy script's dry
+  // run is another. The logo is left out: it may sit with either, or with the other files.
+  plan: {
+    apart: [['cmd/server/main.go', 'docs/guide.md', 'banner'], ['scripts/deploy.rb']],
+  },
   later: [
     'M1: the language report lists TypeScript only; Ruby and Go are not built in (#45).',
     'M3: the binary file is listed with no diff text, and each file node opens its hunks.',

@@ -101,6 +101,65 @@ describe('scorePlan on the signature fixture', async () => {
   });
 });
 
+const jobs = Array.from({ length: 120 }, (_, i) => `job${i}`);
+const steps = Array.from({ length: 30 }, (_, i) => `step${i}`);
+
+/** A plan by hand for each fixture whose plan facts #101 added, meeting every one of them. */
+const HAND_PLANS: Record<string, Record<string, string[]>> = {
+  'removed-calls': {
+    notifications: [
+      'notifyByEmail',
+      'src/queue.ts',
+      'enqueueNotification',
+      'src/orders.ts',
+      'placeOrder',
+    ],
+    refunds: ['audit', 'refundOrder'],
+  },
+  'rename-move': {
+    slug: ['toSlug', 'src/urls.ts', 'postUrl'],
+    clamp: ['src/math/clamp.ts', 'src/layout.ts'],
+  },
+  'interface-impl': {
+    contract: ['PaymentGateway'],
+    implementations: [
+      'StripeGateway',
+      'StripeGateway.refund',
+      'src/payments/paypal.ts',
+      'PaypalGateway',
+      'PaypalGateway.charge',
+      'PaypalGateway.refund',
+      'src/payments/stripe-connect.ts',
+      'StripeConnectGateway',
+    ],
+    callers: ['src/checkout.ts', 'cancel', 'refundStripe', 'refundPaypal', 'refundConnect'],
+  },
+  'same-name': {
+    users: ['validate [src/users/validate.ts]', 'signup'],
+    orders: ['validate [src/orders/validate.ts]', 'submit'],
+    forms: ['Form.validate', 'submitForm'],
+  },
+  'unsupported-binary': {
+    port: ['cmd/server/main.go', 'banner', 'docs/guide.md'],
+    other: ['scripts/deploy.rb', 'assets/logo.png'],
+  },
+  'large-generated': {
+    logging: ['log', ...jobs],
+    pipeline: steps,
+    other: ['src/generated/client.ts', 'data/catalogue.json'],
+  },
+};
+
+describe.each(Object.entries(HAND_PLANS))('a plan by hand for %s', (name, groups) => {
+  it('passes every check', async () => {
+    const fixture = FIXTURES.find((f) => f.name === name)!;
+    const { graph, files } = await modelInput('skill', fixture, join(root, `${name}-hand`));
+    const { checks } = await scorePlan(fixture, planFromLabels(graph, groups), graph, files);
+    expect(failed(checks)).toEqual([]);
+    expect(checks.length).toBeGreaterThan(3);
+  });
+});
+
 describe('formatScore', () => {
   const verdicts = {
     asked: 3,

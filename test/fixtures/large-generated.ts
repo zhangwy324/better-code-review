@@ -108,6 +108,12 @@ export const largeGenerated: Fixture = {
     ],
     caps: ['log calls 100/120'],
   },
+  // log gains a level, and every job passes one: the contract before its callers, including the
+  // 20 over the fan-out cap. The pipeline's version bump is a separate change.
+  plan: {
+    order: [[['log'], range(JOBS).map((i) => `job${i}`)]],
+    apart: [range(STEPS).map((i) => `step${i}`), ['log', ...range(JOBS).map((i) => `job${i}`)]],
+  },
   later: [
     'M1: generation stays within the #40 time and size thresholds.',
     'M3: the graph collapses the 151 symbols into groups, and the cap reads "Showing 100 of 120".',

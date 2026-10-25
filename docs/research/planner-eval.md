@@ -52,7 +52,10 @@ The issue's four cases, mapped to the TypeScript-only portfolio (#9):
 | Unrelated changes (§13.5) | `independent-roots` | Three groups with no forced link between them |
 | Unrelated changes (§13.5) | `tests-and-config` | Tests apart from configuration. No code group, since no code under test changed |
 
-The other ten fixtures get only the general checks below.
+Only these five were run in rounds 1 and 2. The other fixtures got only the general checks below until #101, which gave plan facts to every fixture with a clear reading order or separation (see [the fixture facts](#automated-testaiscorets)). No live run has scored those facts yet. Four fixtures have none, and say why in their source:
+- `unchanged-caller`: one node.
+- `override-dispatch` and `override-dispatch-python`: neither edit changes what the other relies on.
+- `dynamic-calls`: the three nodes are linked only through names in strings, so a plan may join them or keep them apart.
 
 ### Decisions
 
@@ -95,6 +98,13 @@ The fixture facts:
 | `feature-flow` | Order: `postOrder` → `createOrder` → `insertOrder` → `createOrder.assigns an id` |
 | `independent-roots` | Apart: `cartTotal`, `logLevel`, `welcomeMessage` |
 | `tests-and-config` | Together: the 2 test nodes. Apart: the test nodes and the 3 config files. Round 1 also required the 3 config files to share a group |
+| `malicious-content` | Apart: `greet` and `README.md` (#35) |
+| `removed-calls` (#101) | Apart: the notification moving to a queue (`notifyByEmail`, `src/queue.ts`, `enqueueNotification`, `placeOrder`) and the refund no longer auditing (`audit`, `refundOrder`) |
+| `rename-move` (#101) | Order: `toSlug` → `src/urls.ts`, `postUrl`. The pure move of `clamp.ts` is free |
+| `interface-impl` (#101) | Order: `PaymentGateway` → every implementation and caller |
+| `same-name` (#101) | Apart: the three `validate`s. Their callers are free, so the three message changes may share a group |
+| `unsupported-binary` (#101) | Apart: the port change (`cmd/server/main.go`, `docs/guide.md`, `banner`) and `scripts/deploy.rb` |
+| `large-generated` (#101) | Order: `log` → all 120 jobs, including the 20 over the fan-out cap. Apart: the 30 pipeline steps and the logging change |
 
 ### Manual: read each plan
 
@@ -121,6 +131,17 @@ During #26 the fallback plan changed in two ways:
 | `feature-flow` | 2/3 | 2/3 | `order`: callee first reads persistence → service → route, the reverse of the decided flow |
 | `independent-roots` | 1/5 | 5/5 | |
 | `tests-and-config` | 4/5 | 5/5 | |
+
+The facts #101 added, on the fallback plan as it is now:
+
+| Fixture | `agent` aside | Failing |
+|---|---|---|
+| `removed-calls` | 2/3 | `apart`: both changes touch `src/orders.ts`, so one cluster holds them |
+| `rename-move` | 3/3 | |
+| `interface-impl` | 3/3 | |
+| `same-name` | 2/5 | `apart` three times: the receiver call's `possible` edges join the three `validate`s in one cluster, as on `signature` |
+| `unsupported-binary` | 2/3 | `apart`: `main.go`, `guide.md` and `deploy.rb` are lone files, which share "Other changed files" |
+| `large-generated` | 3/4 | `order`: `job100` to `job119` have no edge to `log` (the cap), so callee first doesn't place them after it |
 
 Every fixture in the portfolio now passes `homed` with the fallback plan.
 

@@ -163,7 +163,25 @@ export const interfaceImpl: Fixture = {
       'refundConnect calls PaypalGateway.refund (new)',
     ],
   },
-  later: [
-    'M2: the plan groups the interface with its implementations, and an agent judges the two refund candidates (#43).',
-  ],
+  // The interface is the root: it is read before every implementation and every caller.
+  plan: {
+    order: [
+      [
+        ['PaymentGateway'],
+        [
+          'StripeGateway',
+          'StripeGateway.refund',
+          'PaypalGateway',
+          'PaypalGateway.charge',
+          'PaypalGateway.refund',
+          'StripeConnectGateway',
+          'cancel',
+          'refundStripe',
+          'refundPaypal',
+          'refundConnect',
+        ],
+      ],
+    ],
+  },
+  later: [],
 };
