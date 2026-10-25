@@ -23,7 +23,7 @@ Each line names the code that does it and the test that checks it. A change that
 ### Paths stay inside the repository and snapshot
 
 - [x] **Paths are repository-relative.** The contracts reject an absolute path or a `..` segment (`RepoPath`), and `show --file` checks its argument the same way. `src/schemas/common.ts`, `src/cli/main.ts`.
-- [x] **Files are read from Git, not the file system,** for the snapshot and for unchanged files (`git cat-file <rev>:<path>`), so a path can only name something in the snapshot's tree. `src/analysis/semantic/snapshot-files.ts`; `snapshot-files.test.ts`.
+- [x] **Files are read from Git, not the file system,** for the snapshot and for unchanged files (`<rev>:<path>` through `git cat-file --batch`), so a path can only name something in the snapshot's tree. `src/analysis/semantic/snapshot-files.ts`; `snapshot-files.test.ts`.
 - [x] **The language-server session joins paths inside its root only.** `#abs()` throws for a path that would land outside it, and a location a server returns outside the root is dropped (`isInside()`). `src/analysis/semantic/session.ts`, `servers.ts`; `servers.test.ts`, `session.test.ts`.
 - [x] **Checkouts for language servers are Git's own.** `checkout-index` refuses paths Git considers unsafe, does not follow symlinks out of the directory, and writes into a new temporary directory. `src/git/checkout.ts`.
 - [x] **The CLI writes only fixed names** (`changes.json`, `graph.json`, `plan.json`, `planner-input.md`, `candidates/batch-<n>.md`, `summary.txt`, `review.html`) in the review directory, and appends to `.git/info/exclude`. `src/cli/generate.ts`.

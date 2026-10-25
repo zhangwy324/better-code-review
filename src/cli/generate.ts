@@ -198,13 +198,14 @@ export function targetName(changeSet: ChangeSet): string {
 
 /**
  * Test roots declared in the new side's config. `declaredTestRoots` reads synchronously and its
- * file list is fixed, so a first pass with nothing found collects the paths to read.
+ * file list is fixed, so a first pass with nothing found collects the paths to read. They are read
+ * at once, so the unchanged ones take one batch of Git calls rather than one each (#146).
  */
 async function testRoots(files: SnapshotFiles): Promise<TestRoots> {
   const paths: string[] = [];
   declaredTestRoots((path) => (paths.push(path), null));
-  const contents = new Map<string, string | null>();
-  for (const path of paths) contents.set(path, await files.read('new', path));
+  const read = await Promise.all(paths.map((path) => files.read('new', path)));
+  const contents = new Map(paths.map((path, i) => [path, read[i] ?? null]));
   return declaredTestRoots((path) => contents.get(path) ?? null);
 }
 

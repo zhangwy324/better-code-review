@@ -362,15 +362,24 @@ export class GitTooOldError extends Error {
 
 /**
  * Reads the Git version (`git version`, or the `gitVersion` test hook) and throws GitTooOldError
- * when it is older than MIN_GIT_VERSION.
+ * when it is older than MIN_GIT_VERSION. `git version` runs once per process: Git does not change
+ * while one runs, and each start costs tens of milliseconds on Windows (#146).
  */
 async function checkGitVersion(repo: string, gitVersion?: string): Promise<GitVersion> {
-  const output = gitVersion ?? (await gitLine(repo, ['version']));
+  const output = gitVersion ?? (await installedGitVersion(repo));
   const version = parseGitVersion(output);
   if (!atLeast(version, MIN_GIT_VERSION)) {
     throw new GitTooOldError(output.trim().replace(/^git version /, ''));
   }
   return version;
+}
+
+let installedGitVersionOutput: string | undefined;
+
+/** `git version` output, from the first call that succeeded. */
+async function installedGitVersion(repo: string): Promise<string> {
+  installedGitVersionOutput ??= await gitLine(repo, ['version']);
+  return installedGitVersionOutput;
 }
 
 /**
@@ -646,12 +655,13 @@ function mebibytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toLocaleString('en', { maximumFractionDigits: 1 })} MiB`;
 }
 
-function catFile(repo: string, mode: string, blobs: { oid: string }[]): Promise<Buffer> {
+/** `git cat-file --batch-check` or `--batch` over the objects `blobs` name, each once. */
+export function catFile(repo: string, mode: string, blobs: { oid: string }[]): Promise<Buffer> {
   const oids = new Set(blobs.map((b) => b.oid));
   return runGit(repo, ['cat-file', mode], [...oids].map((o) => `${o}\n`).join(''));
 }
 
-interface Blob {
+export interface Blob {
   size: number;
   /** Empty when only sizes were read. */
   content: Buffer;
@@ -667,7 +677,7 @@ function blobOf(blobs: Map<string, Blob>, oid: string): Blob {
  * Parses `git cat-file --batch-check` (`<oid> <type> <size>\n` per object) or, `withContent`,
  * `--batch` output, which follows each header with `<content>\n`.
  */
-function parseCatFile(out: Buffer, withContent: boolean): Map<string, Blob> {
+export function parseCatFile(out: Buffer, withContent: boolean): Map<string, Blob> {
   const blobs = new Map<string, Blob>();
   let pos = 0;
   while (pos < out.length) {
