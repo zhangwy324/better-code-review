@@ -36,7 +36,8 @@ const STEP = 20;
 
 const OMITTED_NOTES: Record<NonNullable<FileChange['contentOmitted']>, string> = {
   binary: 'Binary file: there is no text diff.',
-  'too-large': 'The file is over the size cap, so only the changed lines and their context show.',
+  'too-large':
+    'The file, or the change as a whole, is over the size cap, so only the changed lines and their context show.',
   'not-utf8':
     'The file is not valid UTF-8: invalid bytes show as �, and only the changed lines and their context show.',
 };
