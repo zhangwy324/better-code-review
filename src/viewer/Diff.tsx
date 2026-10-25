@@ -53,6 +53,24 @@ const OMITTED_NOTES: Record<NonNullable<FileChange['contentOmitted']>, string> =
     'The file is not valid UTF-8: invalid bytes show as �, and only the changed lines and their context show.',
 };
 
+/**
+ * What a file change with no hunks and no omitted content is (FileChange `hunks`): a pure rename
+ * or copy, or a mode change, e.g. `Mode 100644 → 100755. No content changes.`
+ */
+function noHunksNote(file: FileChange): string {
+  const mode =
+    file.oldMode !== null && file.newMode !== null && file.oldMode !== file.newMode
+      ? `Mode ${file.oldMode} → ${file.newMode}. `
+      : '';
+  const what =
+    file.status === 'renamed'
+      ? 'Renamed with no content changes.'
+      : file.status === 'copied'
+        ? 'Copied with no content changes.'
+        : 'No content changes.';
+  return `${mode}${what}`;
+}
+
 interface Props {
   file: FileChange;
   /** The hunks to show, in any order; they show in file order. All of the file's by default. */
@@ -217,7 +235,7 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
         <tr className="hunk-header">
           <td colSpan={3} className="gutter">
             <ReviewedCheckbox
-              hunkIds={[hunk.id]}
+              itemIds={[hunk.id]}
               label={`Mark ${path} ${header} reviewed`}
               text=""
             />
@@ -240,6 +258,9 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
   return (
     <div className="diff">
       {file.contentOmitted !== null && <p className="note">{OMITTED_NOTES[file.contentOmitted]}</p>}
+      {file.hunks.length === 0 && file.contentOmitted === null && (
+        <p className="note">{noHunksNote(file)}</p>
+      )}
       {hidden > 0 && (
         <p className="note hidden-note">
           {count(hidden, 'hidden character')} in these changes (bidirectional controls or invisible

@@ -1,7 +1,7 @@
 // State shared by every view (spec D3): the loaded review, what is selected, and the reviewer's
 // comments and review progress. The outline, canvas and detail pane read and change the same
 // selection, and any view that shows a diff shows and adds to the same comments and marks the same
-// hunks reviewed, so all of it survives switching views.
+// hunks (and hunk-less file changes) reviewed, so all of it survives switching views.
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReviewComment, ReviewFeedback } from '../schemas/feedback.ts';
 import {
@@ -10,6 +10,7 @@ import {
   lineComment,
   loadStored,
   nextCommentId,
+  reviewedItems,
   saveStored,
 } from './feedback.ts';
 import type { ReviewModel } from './model.ts';
@@ -24,12 +25,14 @@ interface SelectionState {
 }
 
 /**
- * The reviewer's comments (feedback.ts), in the order they were written, and the hunks they marked
- * reviewed. Progress is kept per hunk only (spec D5): a node, group or file is reviewed when all
- * its hunks are (model.ts `progress()`), so no two views can disagree about it.
+ * The reviewer's comments (feedback.ts), in the order they were written, and the review items they
+ * marked reviewed. Progress is kept per item only (spec D5): per hunk, and per file change with no
+ * hunks (#127). A node, group or file is reviewed when all its items are (model.ts `progress()`),
+ * so no two views can disagree about it.
  */
 export interface FeedbackState {
   comments: ReviewComment[];
+  /** Review items: hunk IDs, and `fileItemId()`s of hunk-less file changes (model.ts). */
   reviewed: ReadonlySet<string>;
   /** Whether the comments or progress changed since they were last exported or copied. */
   unsaved: boolean;
@@ -37,8 +40,8 @@ export interface FeedbackState {
   addGroup: (groupId: string, body: string) => void;
   edit: (id: string, body: string) => void;
   remove: (id: string) => void;
-  /** Marks every hunk in `hunkIds` reviewed, or not reviewed. */
-  markReviewed: (hunkIds: readonly string[], reviewed: boolean) => void;
+  /** Marks every review item in `itemIds` reviewed, or not reviewed. */
+  markReviewed: (itemIds: readonly string[], reviewed: boolean) => void;
   /** The feedback to export or copy. Taking it marks the comments and progress saved. */
   take: () => ReviewFeedback;
 }
@@ -64,7 +67,7 @@ function FeedbackProvider({ model, children }: { model: ReviewModel; children: R
     const stored = loadStored(model.changeSet.snapshotId);
     return {
       comments: stored?.feedback.comments ?? [],
-      reviewed: new Set(stored?.feedback.reviewedHunkIds ?? []),
+      reviewed: stored === null ? new Set<string>() : reviewedItems(stored.feedback),
       unsaved: stored?.unsaved ?? false,
     };
   });
@@ -94,10 +97,10 @@ function FeedbackProvider({ model, children }: { model: ReviewModel; children: R
         change((all) => [...all, { id: nextCommentId(all), kind: 'group', groupId, body }]),
       edit: (id, body) => change((all) => all.map((c) => (c.id === id ? { ...c, body } : c))),
       remove: (id) => change((all) => all.filter((c) => c.id !== id)),
-      markReviewed: (hunkIds, done) =>
+      markReviewed: (itemIds, done) =>
         setState((s) => {
           const next = new Set(s.reviewed);
-          for (const id of hunkIds) {
+          for (const id of itemIds) {
             if (done) next.add(id);
             else next.delete(id);
           }

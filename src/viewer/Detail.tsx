@@ -6,17 +6,19 @@
 import type { FileChange } from '../schemas/changeset.ts';
 import type { ChangeNode } from '../schemas/graph.ts';
 import type { ReviewGroup } from '../schemas/plan.ts';
-import { count } from '../text/index.ts';
 import { GroupComments } from './Comments.tsx';
 import { Diff, Marked } from './Diff.tsx';
 import {
   filePath,
-  groupHunkIds,
+  groupItemIds,
   hunkHeader,
+  itemFile,
+  itemsLabel,
   type Link,
   lineCounts,
   linkLabel,
   linkSentence,
+  nodeItemIds,
   STYLE_DESCRIPTIONS,
 } from './model.ts';
 import { progressLabel, ReviewedCheckbox, useProgress } from './Progress.tsx';
@@ -53,18 +55,18 @@ function DetailBody({ selection }: { selection: Selection }) {
 
 function GroupDetail({ group }: { group: ReviewGroup }) {
   const model = useModel();
-  const hunkIds = groupHunkIds(model, group);
-  const p = useProgress(hunkIds);
+  const itemIds = groupItemIds(model, group);
+  const p = useProgress(itemIds);
   return (
     <>
       <h2>{group.title}</h2>
       {group.description !== '' && <p>{group.description}</p>}
       <p>
         <span className="count">
-          {count(p.total, 'hunk')} · {progressLabel(p)}
+          {itemsLabel(p)} · {progressLabel(p)}
         </span>{' '}
         <ReviewedCheckbox
-          hunkIds={hunkIds}
+          itemIds={itemIds}
           label={`Mark group ${group.title} reviewed`}
           text="Group reviewed"
         />
@@ -80,6 +82,7 @@ function NodeDetail({ node }: { node: ChangeNode }) {
   const { select } = useSelection();
   const home = model.homeGroup.get(node.id);
   const range = node.newRange ?? node.oldRange;
+  const itemIds = nodeItemIds(model, node);
   return (
     <>
       <h2>{node.displayName}</h2>
@@ -102,7 +105,7 @@ function NodeDetail({ node }: { node: ChangeNode }) {
             </button>
           </>
         )}{' '}
-        <ReviewedCheckbox hunkIds={node.hunkIds} label={`Mark ${node.displayName} reviewed`} />
+        <ReviewedCheckbox itemIds={itemIds} label={`Mark ${node.displayName} reviewed`} />
       </p>
       <ul className="hunks">
         {node.hunkIds.map((id) => {
@@ -122,7 +125,7 @@ function NodeDetail({ node }: { node: ChangeNode }) {
         })}
       </ul>
       <RelatedChanges node={node} />
-      <Diffs hunkIds={node.hunkIds} />
+      <Diffs itemIds={itemIds} />
     </>
   );
 }
@@ -256,19 +259,24 @@ function HunkDetail({ id }: { id: string }) {
       </h2>
       <p className="path">{filePath(entry.file)}</p>
       <NodeLinks ids={(model.hunkNodes.get(id) ?? []).map((n) => n.id)} />
-      <Diffs hunkIds={[id]} />
+      <Diffs itemIds={[id]} />
     </>
   );
 }
 
-/** One diff per file the hunks are in, in the order the files first appear. */
-export function Diffs({ hunkIds }: { hunkIds: readonly string[] }) {
+/**
+ * One diff per file the review items are in, in the order the files first appear. A file change
+ * with no hunks (#127) shows as its diff does in the file view: a note on what changed.
+ */
+export function Diffs({ itemIds }: { itemIds: readonly string[] }) {
   const model = useModel();
   const { select } = useSelection();
   const files = new Map<FileChange, string[]>();
-  for (const id of hunkIds) {
-    const file = model.hunks.get(id)?.file;
-    if (file !== undefined) files.set(file, [...(files.get(file) ?? []), id]);
+  for (const id of itemIds) {
+    const file = itemFile(model, id);
+    if (file === undefined) continue;
+    const ids = files.get(file) ?? [];
+    files.set(file, model.hunks.has(id) ? [...ids, id] : ids);
   }
   // Keyed by path, so a diff's expanded context and comment form stay with its file.
   return [...files].map(([file, ids]) => (
@@ -277,7 +285,7 @@ export function Diffs({ hunkIds }: { hunkIds: readonly string[] }) {
       file={file}
       hunkIds={ids}
       language={model.languages.get(filePath(file)) ?? null}
-      onSelectHunk={hunkIds.length > 1 ? (id) => select({ kind: 'hunk', id }) : undefined}
+      onSelectHunk={itemIds.length > 1 ? (id) => select({ kind: 'hunk', id }) : undefined}
     />
   ));
 }

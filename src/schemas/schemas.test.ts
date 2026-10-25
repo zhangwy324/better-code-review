@@ -271,6 +271,7 @@ const feedback: ReviewFeedback = {
     { id: 'c3', kind: 'group', groupId: UNGROUPED_GROUP_ID, body: 'Why is the logo here?' },
   ],
   reviewedHunkIds: [hunkCheckout],
+  reviewedFilePaths: ['assets/logo.png'],
 };
 
 const examples: Record<ContractName, unknown> = {

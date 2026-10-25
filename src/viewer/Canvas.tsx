@@ -38,9 +38,11 @@ import {
   stableLayout,
 } from './canvas.ts';
 import {
-  groupHunkIds,
+  groupItemIds,
   groupNodeIds,
   isReviewed,
+  itemsLabel,
+  nodeItemIds,
   isUngrouped,
   type Link,
   lineCounts,
@@ -181,7 +183,7 @@ function GroupNode({ data }: NodeProps<GroupItem>) {
   const selected = useIsSelected('group', data.groupId);
   const group = model.groups.get(data.groupId)!;
   const changes = groupNodeIds(model, group).length;
-  const p = useProgress(groupHunkIds(model, group));
+  const p = useProgress(groupItemIds(model, group));
   return (
     <div
       className={isUngrouped(group) ? 'canvas-group ungrouped' : 'canvas-group'}
@@ -199,7 +201,7 @@ function GroupNode({ data }: NodeProps<GroupItem>) {
           {group.title}
         </strong>
         <span className={isReviewed(p) ? 'count done' : 'count'}>
-          {count(changes, 'change')} · {p.reviewed}/{count(p.total, 'hunk')} reviewed
+          {count(changes, 'change')} · {p.reviewed}/{itemsLabel(p)} reviewed
         </span>
       </button>
       {changes > 0 && (
@@ -225,7 +227,7 @@ function ClusterNode({ data }: NodeProps<GroupItem>) {
   const toggle = useContext(ExpandContext);
   const selected = useIsSelected('group', data.groupId);
   const group = model.groups.get(data.groupId)!;
-  const p = useProgress(groupHunkIds(model, group));
+  const p = useProgress(groupItemIds(model, group));
   return (
     <div
       className={isUngrouped(group) ? 'canvas-cluster ungrouped' : 'canvas-cluster'}
@@ -268,7 +270,7 @@ function ChangeNode({ data }: NodeProps<ChangeItem>) {
     node.hunkIds.flatMap((id) => model.hunks.get(id)?.hunk ?? []),
   );
   const caps = model.graph.caps.filter((c) => c.entityId === node.entityId);
-  const p = useProgress(node.hunkIds);
+  const p = useProgress(nodeItemIds(model, node));
   return (
     <div
       className={isReviewed(p) ? 'canvas-change reviewed' : 'canvas-change'}
