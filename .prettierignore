@@ -6,5 +6,5 @@ THIRD_PARTY_NOTICES
 schemas/
 # Markdown is hand-formatted (docs, ADRs); not reformatted by Prettier.
 *.md
-# Written by npm run eval.
+# Written by npm run eval:live.
 test/ai/recordings/

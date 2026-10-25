@@ -1,4 +1,4 @@
-// `npm run eval`: live, budget-capped runs of the AI steps (test/ai/eval.ts, #85). This spends
+// `npm run eval:live`: live, budget-capped runs of the AI steps (test/ai/eval.ts, #85). This spends
 // real AI usage; it is never part of `npm run check` or CI.
 import { EVAL_USAGE, EvalUsageError, parseEvalArgs, runEval } from '../test/ai/eval.ts';
 

@@ -1,9 +1,9 @@
 // Scores the caller verdicts of recorded runs against ground truth (#43, test/ai/adjudication.ts).
 // It reads files and calls no model, so it needs no approval; the runs it scores come from
-// `npm run eval`, which does.
+// `npm run eval:live`, which does.
 //
 //   node scripts/score-adjudication.ts [--outputs <dir>]
-//     Every plan `npm run eval` kept in <dir> (default .cache/eval/outputs/), per fixture and
+//     Every plan `npm run eval:live` kept in <dir> (default .cache/eval/outputs/), per fixture and
 //     model, against the fixture's `withLsp` facts.
 //   node scripts/score-adjudication.ts --graph <graph.json> --truth <graph.json> <plan.json>…
 //     Any change, e.g. a #42 pull request: the plans' verdicts on the `--graph` review (generated
@@ -105,7 +105,9 @@ if (values.graph !== undefined || values.truth !== undefined) {
     rmSync(work, { recursive: true, force: true });
   }
   if (reports.length === 0) {
-    console.error(`No runs in ${dir}. npm run eval keeps them there (it spends real AI usage).`);
+    console.error(
+      `No runs in ${dir}. npm run eval:live keeps them there (it spends real AI usage).`,
+    );
     process.exit(1);
   }
   process.stdout.write(formatReports(reports));

@@ -110,7 +110,7 @@ describe('replayRunner', () => {
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(IncompatibleRecordingError);
     expect((err as Error).message).toContain(
-      'npm run eval -- --fixture signature --model claude-haiku-5-5',
+      'npm run eval:live -- --fixture signature --model claude-haiku-5-5',
     );
   });
 

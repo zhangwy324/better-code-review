@@ -56,7 +56,7 @@ The tests also check, for every fixture (Milestone 1 acceptance, #21):
 - **Planner input** (#22): `planner-input.md` lists every node and hunk and stays within its token budget.
 - **Fallback plan** (#24): `plan.json` passes the plan validator (#23) unchanged, with every node already in a group.
 
-`plan` says what an agent's plan must do (#26). Nodes are named as in `nodes`, without the kind. It is checked by [`test/ai/score.ts`](../ai/score.ts) on every `npm run eval` run and every committed recording, never on the fallback plan:
+`plan` says what an agent's plan must do (#26). Nodes are named as in `nodes`, without the kind. It is checked by [`test/ai/score.ts`](../ai/score.ts) on every `npm run eval:live` run and every committed recording, never on the fallback plan:
 - `order`: reading chains. Every node of a step is read before every node of the next: its home group comes earlier in `groupOrder` (a group's children right after it), or it is earlier in the same group's `nodeIds`.
 - `together`: node sets that each share one home group.
 - `apart`: node sets that share no home group with each other.

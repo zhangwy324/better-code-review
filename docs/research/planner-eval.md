@@ -74,7 +74,7 @@ A fixture **passes** when every automated check passes and every manual criterio
 
 ### Automated: `test/ai/score.ts`
 
-`npm run eval` runs these on every live run. `replay.test.ts` runs them on every committed recording, against its list of known failures (`KNOWN_FAILS`).
+`npm run eval:live` runs these on every live run. `replay.test.ts` runs them on every committed recording, against its list of known failures (`KNOWN_FAILS`).
 
 | Check | Criterion it covers | Passes when |
 |---|---|---|

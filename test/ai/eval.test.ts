@@ -1,4 +1,4 @@
-// `npm run eval` with the `claude` process replaced: no model is called.
+// `npm run eval:live` with the `claude` process replaced: no model is called.
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';

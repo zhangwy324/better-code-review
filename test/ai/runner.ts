@@ -5,7 +5,7 @@
 //   (#23). It never spawns anything.
 // - `replayRunner`: a recorded real run (recording.ts). A missing recording, or one made for
 //   another fixture input (input.ts), is an error; it never falls through to a live call.
-// - `liveRunner`: headless `claude -p`, always with `--max-budget-usd`. Only `npm run eval` uses
+// - `liveRunner`: headless `claude -p`, always with `--max-budget-usd`. Only `npm run eval:live` uses
 //   it, never `npm run check` or CI. The agent follows the skill (#25), and its output is the
 //   file it leaves at `outputFile`, not its final message.
 import { spawn } from 'node:child_process';
@@ -80,7 +80,7 @@ export class IncompatibleRecordingError extends Error {}
 
 /** The command that records `request` again, for error messages. */
 export const recordCommand = (request: Pick<AiRequest, 'fixture' | 'model'>) =>
-  `npm run eval -- --fixture ${request.fixture} --model ${request.model}`;
+  `npm run eval:live -- --fixture ${request.fixture} --model ${request.model}`;
 
 /** Answers from the recordings under `dir`. Never calls a model. */
 export function replayRunner(dir: string): Runner {

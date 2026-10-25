@@ -1,6 +1,6 @@
 // Scoring the AI step's caller verdicts (#43) against ground truth, as #42 measured them:
 // precision, recall, false rejections, unsure answers, and run-to-run consistency. No model is
-// called here; `npm run eval` produces the plans (saved under `.cache/eval/outputs/`) and
+// called here; `npm run eval:live` produces the plans (saved under `.cache/eval/outputs/`) and
 // `scripts/score-adjudication.ts` scores them.
 //
 // Ground truth is what a language server decides for the same change: for a portfolio fixture,
