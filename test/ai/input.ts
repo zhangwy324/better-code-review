@@ -21,22 +21,17 @@ import {
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { delimiter, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { gitSnapshotFiles, type SnapshotFiles } from '../../src/analysis/semantic/index.ts';
 import { generate, targetName } from '../../src/cli/generate.ts';
 import { CANDIDATES_DIR, estimateTokens } from '../../src/planner/index.ts';
 import type { ChangeGraph } from '../../src/schemas/index.ts';
 import type { Fixture } from '../fixtures/fixture.ts';
 import { buildFixtureRepo } from '../fixtures/repo.ts';
-
-const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+import { INSTALLED_SKILL_DIR, REPO_ROOT, SKILL_DIR } from '../paths.ts';
 
 /** The tasks an AI step can run, each with its prompt. */
 export const TASKS = { skill: 'test/ai/prompts/skill.md' } as const;
 export type Task = keyof typeof TASKS;
-
-/** The skill, as the agent client installs it. */
-export const SKILL_DIR = 'skills/better-code-review';
 
 /**
  * Every skill reference, and whether the planner reads it. Only planning references are installed
@@ -107,7 +102,7 @@ export async function modelInput(task: Task, fixture: Fixture, dir: string): Pro
     analysis: { useLsp: false, allowProjectCodeExecution: false },
   });
   for (const path of HASHED_SOURCES) {
-    const installed = join(repo, '.claude/skills/better-code-review', path.slice(SKILL_DIR.length));
+    const installed = join(repo, INSTALLED_SKILL_DIR, path.slice(SKILL_DIR.length));
     mkdirSync(dirname(installed), { recursive: true });
     copyFileSync(join(REPO_ROOT, path), installed);
   }
