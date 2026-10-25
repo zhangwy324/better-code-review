@@ -66,7 +66,8 @@ The other ten fixtures get only the general checks below.
 - **Codex CLI.** The MVP spec's M2 acceptance names Claude Code and Codex CLI. Codex is deferred until after v0.1, and the harness only drives `claude -p`.
 - **Verdict accuracy.** Verdicts are counted here, but whether they are right is #43's measurement ([`candidate-adjudication.md`](candidate-adjudication.md)). In round 1 every verdict was right by inspection.
   - Since #43, the agent judges only the edges its candidate batches ask about. Edges settled by import resolution or the unambiguous rule get no verdict.
-  - So from round 2, the eval's "verdicts on N/M possible edges" line can rightly show N below M.
+  - So in round 2, the eval's "verdicts on N/M possible edges" line could rightly show N below M.
+  - Since #99, the line counts against the edges the batches ask about and lists the settled ones apart, e.g. `verdicts on 2/2 asked edges (yes 0, no 2, unsure 0); 6 settled without asking` on `signature`. The round 2 table below keeps the old `judged/possible` form.
 
 ## Criteria
 

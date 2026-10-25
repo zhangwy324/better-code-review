@@ -7,7 +7,7 @@ import { fallbackPlan } from '../../src/planner/index.ts';
 import { FIXTURES } from '../fixtures/index.ts';
 import { signature } from '../fixtures/signature.ts';
 import { modelInput } from './input.ts';
-import { planFromLabels, scorePlan } from './score.ts';
+import { formatScore, planFromLabels, scorePlan } from './score.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'bcr-score-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -40,7 +40,16 @@ describe('scorePlan on the signature fixture', async () => {
   it('passes a plan with each contract before its callers', async () => {
     const { checks, verdicts } = await score(good);
     expect(failed(checks)).toEqual([]);
-    expect(verdicts).toEqual({ possible: 8, yes: 0, no: 0, unsure: 0 });
+    // signature's 8 possible edges: 6 settled by import resolution, 2 asked about (#99).
+    expect(verdicts).toEqual({
+      asked: 2,
+      yes: 0,
+      no: 0,
+      unsure: 0,
+      settled: 6,
+      notAdjudicated: 0,
+      unasked: 0,
+    });
   });
 
   it('fails callers read before their contract, across groups or within one', async () => {
@@ -89,5 +98,30 @@ describe('scorePlan on the signature fixture', async () => {
     expect(checks).toEqual([
       { name: 'valid', ok: false, detail: expect.stringContaining('unknown-id') as string },
     ]);
+  });
+});
+
+describe('formatScore', () => {
+  const verdicts = {
+    asked: 3,
+    yes: 1,
+    no: 1,
+    unsure: 0,
+    settled: 4,
+    notAdjudicated: 0,
+    unasked: 0,
+  };
+  const checks = [{ name: 'valid', ok: true, detail: '' }];
+
+  it('counts verdicts against the edges the batches ask about, and the settled ones apart', () => {
+    expect(formatScore({ checks, verdicts })).toBe(
+      '  checks: 1/1 pass; verdicts on 2/3 asked edges (yes 1, no 1, unsure 0); 4 settled without asking\n',
+    );
+  });
+
+  it('notes edges over the cap and verdicts on edges not asked about', () => {
+    expect(
+      formatScore({ checks, verdicts: { ...verdicts, notAdjudicated: 5, unasked: 1 } }),
+    ).toContain('; 4 settled without asking; 5 over the cap; 1 verdict on edges not asked about\n');
   });
 });

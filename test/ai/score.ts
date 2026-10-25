@@ -10,10 +10,12 @@
 // - `agent`: was written by the agent, not replaced by the fallback plan after the repair loop.
 // - `homed`: gives every node a home, leaving nothing in Ungrouped.
 // Then the fixture's own `plan` facts (test/fixtures/fixture.ts): `order`, `together`, `apart`.
+// Verdicts are counted, not checked: against the edges the candidate batches ask about (#99).
 import type { SnapshotFiles } from '../../src/analysis/semantic/index.ts';
-import { validatePlan } from '../../src/planner/index.ts';
+import { selectCandidates, validatePlan } from '../../src/planner/index.ts';
 import type { ChangeGraph, ReviewPlan } from '../../src/schemas/index.ts';
 import { UNGROUPED_GROUP_ID } from '../../src/schemas/plan.ts';
+import { count } from '../../src/text/index.ts';
 import { nodeLabels } from '../fixtures/facts.ts';
 import type { Fixture } from '../fixtures/fixture.ts';
 
@@ -26,8 +28,28 @@ export interface Check {
 
 export interface PlanScore {
   checks: Check[];
-  /** Verdicts on `possible` edges, for the record; #43 scores whether they are right. */
-  verdicts: { possible: number; yes: number; no: number; unsure: number };
+  /** Verdicts, for the record; #43 scores whether they are right. */
+  verdicts: VerdictCounts;
+}
+
+/**
+ * The plan's verdicts against the edges its candidate batches ask about (#99): the candidate
+ * selection's `open` edges. A `possible` edge import resolution or the unambiguous rule settled is
+ * not asked about, so it rightly gets no verdict.
+ */
+export interface VerdictCounts {
+  /** Edges the batches ask about. */
+  asked: number;
+  /** Of those, the ones answered `yes`, `no` or `unsure`. */
+  yes: number;
+  no: number;
+  unsure: number;
+  /** `possible` edges settled without asking. */
+  settled: number;
+  /** Open edges over the cap (`MAX_ADJUDICATED_EDGES`), not asked about. */
+  notAdjudicated: number;
+  /** Verdicts on edges the batches did not ask about. */
+  unasked: number;
 }
 
 export async function scorePlan(
@@ -36,15 +58,27 @@ export async function scorePlan(
   graph: ChangeGraph,
   files: SnapshotFiles,
 ): Promise<PlanScore> {
-  const possible = graph.codeEdges.filter((e) => e.provenance === 'possible').length;
-  const verdicts = { possible, yes: 0, no: 0, unsure: 0 };
+  const selection = selectCandidates(graph);
+  const verdicts: VerdictCounts = {
+    asked: selection.open.length,
+    yes: 0,
+    no: 0,
+    unsure: 0,
+    settled: selection.settled.length,
+    notAdjudicated: selection.notAdjudicated.length,
+    unasked: 0,
+  };
   const result = await validatePlan(output, graph, files);
   if (!result.valid) {
     const errors = result.errors.map((e) => `${e.path} ${e.code}: ${e.message}`);
     return { checks: [{ name: 'valid', ok: false, detail: errors.join('; ') }], verdicts };
   }
   const plan = result.plan;
-  for (const v of plan.edgeVerdicts) verdicts[v.verdict]++;
+  const asked = new Set(selection.open.map((e) => e.id));
+  for (const v of plan.edgeVerdicts) {
+    if (asked.has(v.edgeId)) verdicts[v.verdict]++;
+    else verdicts.unasked++;
+  }
 
   const labels = nodeLabels(graph);
   const ids = new Map([...labels].map(([id, label]) => [label, id]));
@@ -134,8 +168,14 @@ const compare = (a: Place, b: Place) => a.rank - b.rank || a.index - b.index;
 /** One line per check, for `npm run eval:live`. */
 export function formatScore({ checks, verdicts }: PlanScore): string {
   const passed = checks.filter((c) => c.ok).length;
+  const v = verdicts;
+  const notes = [
+    `${v.settled} settled without asking`,
+    ...(v.notAdjudicated > 0 ? [`${v.notAdjudicated} over the cap`] : []),
+    ...(v.unasked > 0 ? [`${count(v.unasked, 'verdict')} on edges not asked about`] : []),
+  ];
   const lines = [
-    `  checks: ${passed}/${checks.length} pass; verdicts on ${verdicts.yes + verdicts.no + verdicts.unsure}/${verdicts.possible} possible edges (yes ${verdicts.yes}, no ${verdicts.no}, unsure ${verdicts.unsure})`,
+    `  checks: ${passed}/${checks.length} pass; verdicts on ${v.yes + v.no + v.unsure}/${v.asked} asked edges (yes ${v.yes}, no ${v.no}, unsure ${v.unsure}); ${notes.join('; ')}`,
     ...checks.filter((c) => !c.ok).map((c) => `  FAIL ${c.name}: ${c.detail}`),
   ];
   return `${lines.join('\n')}\n`;
