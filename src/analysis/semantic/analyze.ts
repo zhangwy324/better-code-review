@@ -747,9 +747,13 @@ function collapseTestFiles(pairs: Pair[]): Pair[] {
   }
   const keep = new Set<Pair>();
   for (const group of groups.values()) {
-    // A stable sort, so ties keep the file's order.
-    const kept = [...group]
-      .sort((a, b) => rank(a) - rank(b) || Number(declaresTarget(b)) - Number(declaresTarget(a)))
+    // A stable sort, so ties keep the file's order. Only the first hit's relation, so the kept
+    // hits make one edge, not one per relation.
+    const sorted = [...group].sort(
+      (a, b) => rank(a) - rank(b) || Number(declaresTarget(b)) - Number(declaresTarget(a)),
+    );
+    const kept = sorted
+      .filter((p) => p.relation === sorted[0]!.relation)
       .slice(0, MAX_TEST_FILE_HITS);
     for (const pair of kept) keep.add(pair);
     if (group.length > kept.length) {
