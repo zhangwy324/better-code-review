@@ -5,6 +5,7 @@ import {
   ErrorCodes,
   JsonRpcConnection,
   type JsonRpcMessage,
+  MAX_MESSAGE_BYTES,
   MessageReader,
   RpcError,
 } from './jsonrpc.ts';
@@ -33,6 +34,13 @@ describe('MessageReader', () => {
 
   it('rejects a header without Content-Length', () => {
     expect(() => new MessageReader().push(Buffer.from('X: 1\r\n\r\n{}'))).toThrow(/Content-Length/);
+  });
+
+  it('rejects a message over the size cap before reading its body', () => {
+    const header = `Content-Length: ${MAX_MESSAGE_BYTES + 1}\r\n\r\n`;
+    expect(() => new MessageReader().push(Buffer.from(header))).toThrow(/over/);
+    const endless = Buffer.alloc(MAX_MESSAGE_BYTES + 1, 'x');
+    expect(() => new MessageReader().push(endless)).toThrow(/header too long/);
   });
 });
 

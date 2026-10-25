@@ -2,7 +2,7 @@
 
 Reproducible Git changes for testing every milestone, from design reference §18.4 (issue #9). Each fixture is a TypeScript module holding a base snapshot, the changes on top of it, and the facts the deterministic graph must show. Repositories are built from these by code, never committed as `.git` directories.
 
-For v0.1 the portfolio is **TypeScript only**. The signature fixture also keeps its Python half, and `override-dispatch-python` is the Python twin of `override-dispatch`. Python, Java, Go and a mixed-language HTTP/API change are #77.
+For v0.1 the portfolio is **TypeScript only**, and every fixture but `malicious-content` follows §18.4. The signature fixture also keeps its Python half, and `override-dispatch-python` is the Python twin of `override-dispatch`. Python, Java, Go and a mixed-language HTTP/API change are #77.
 
 | Fixture | §18.4 case | What it shows |
 |---|---|---|
@@ -21,6 +21,7 @@ For v0.1 the portfolio is **TypeScript only**. The signature fixture also keeps 
 | `dynamic-calls` | Dynamic calls / reflection | Calls through computed properties and `Reflect.apply` make no edge |
 | `unsupported-binary` | Unsupported language + binary files | File nodes for a PNG, Ruby, Go and Markdown |
 | `large-generated` | Large generated diff / deeply connected graph | A 2,000-function generated file (skipped), a JSON file over the 1 MiB cap, a 30-step call chain, and 120 callers capped at 100 |
+| `malicious-content` | Untrusted input (design reference §14.2, #35) | HTML and script in code, in a file name and in a README that instructs the agent; a Trojan Source line; file names with a newline and a terminal escape; npm scripts, a tracked `node_modules/typescript` and `.gitattributes` drivers that would run code. `hostilePlan()` adds hostile plan text. `src/cli/security.test.ts` and `src/viewer/Security.test.tsx` check that it all renders as text and nothing runs. Windows cannot check its file names out, so `npm run fixtures` fails for it there |
 
 ## Files
 

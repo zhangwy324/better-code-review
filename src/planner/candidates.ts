@@ -35,7 +35,7 @@ import type { ChangeGraph, ChangeNode, CodeEdge } from '../schemas/graph.ts';
 import type { EdgeVerdict, ReviewPlan } from '../schemas/plan.ts';
 import type { EvidenceRecord } from '../schemas/semantic.ts';
 import type { ChangedEntity, StructuralChangeSet } from '../schemas/structural.ts';
-import { count } from '../text/index.ts';
+import { count, quotePath } from '../text/index.ts';
 import { DEFAULT_MAX_HUNK_LINES, DEFAULT_TOKEN_BUDGET, estimateTokens, fence } from './input.ts';
 import { redactSecrets, sensitiveFile } from './secrets.ts';
 
@@ -396,7 +396,8 @@ class Context {
   async #target(nodeId: string): Promise<string> {
     const node = this.#graph.nodes.find((n) => n.id === nodeId)!;
     const entity = node.entityId === null ? null : (this.#entities.get(node.entityId) ?? null);
-    const out = ['', `### ${node.displayName} (${node.entityKind ?? node.kind}) @ ${node.path}`];
+    const what = node.entityKind ?? node.kind;
+    const out = ['', `### ${quotePath(node.displayName)} (${what}) @ ${quotePath(node.path)}`];
     if (entity === null || entity.name === null) return out.join('\n');
 
     const declared: string[] = [];
@@ -462,7 +463,7 @@ class Context {
           (d) => d.name === e.name && d.kind === e.kind && overlaps(d.range, e.range),
         );
         const label = e.container === null ? e.name : `${e.container}.${e.name}`;
-        out.push(`${path}:${at?.nameLine ?? e.range.startLine} ${label} (${e.kind})`);
+        out.push(`${quotePath(path)}:${at?.nameLine ?? e.range.startLine} ${label} (${e.kind})`);
       }
     }
     return out;
@@ -472,8 +473,8 @@ class Context {
   async group(group: Group, maxCodeLines: number): Promise<string> {
     const { side, path, source } = group;
     const nodes = new Map(this.#graph.nodes.map((n) => [n.id, n]));
-    const label = source?.displayName ?? `${path} (test file)`;
-    const out = ['', `### ${label} @ ${path} (${side} side)`];
+    const label = quotePath(source?.displayName ?? path) + (source === null ? ' (test file)' : '');
+    const out = ['', `### ${label} @ ${quotePath(path)} (${side} side)`];
     const lines = await this.#lines(side, path);
     if (lines === null) {
       out.push('', 'Not shown: the file has no text on this side, or is withheld.');
@@ -522,7 +523,7 @@ class Context {
       out.push('Code:', fence(this.#numbered(lines, shown, hitLines), ''));
       if (more > 0) {
         out.push(
-          `… ${count(more, 'more line')}: \`show --file ${path} --side ${side} --lines ${wanted[shown.length]}-${wanted.at(-1)}\``,
+          `… ${count(more, 'more line')}: \`show --file ${quotePath(path)} --side ${side} --lines ${wanted[shown.length]}-${wanted.at(-1)}\``,
         );
       }
     }
@@ -533,7 +534,8 @@ class Context {
       const at = hits
         .map((h) => `line ${h.location.range.startLine} (${h.detail ?? edge.relation})`)
         .join('; ');
-      out.push(`- ${edge.id} → ${to.displayName} (${to.path}): ${edge.relation}; ${at}`);
+      const where = `${quotePath(to.displayName)} (${quotePath(to.path)})`;
+      out.push(`- ${edge.id} → ${where}: ${edge.relation}; ${at}`);
     }
     return out.join('\n');
   }

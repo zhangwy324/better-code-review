@@ -213,7 +213,8 @@ Language servers are programs run on the user's machine against code under revie
 
   Servers on `PATH` are used instead, if any. A `PATH` TypeScript loads plugins from its own install, not the project.
 - **`PATH`.** Without the opt-in, relative entries and entries inside the repository (e.g. an activated in-repository virtualenv) are dropped, both for discovery and from the servers' environment, so a server that runs a bare command (pyright runs `python3`) cannot pick up one the change added. On Windows, servers also get `NoDefaultCurrentDirectoryInExePath=1`, so a bare command is not looked up in the working directory, the repository, first. **Not verified on Windows**, and whether every server honours it is up to its process library.
-- Servers get the snapshot root as their workspace and nothing else. The client sends no file contents except the files it opens from that root.
+- Servers get the snapshot root as their workspace and nothing else. The client sends no file contents except the files it opens from that root. Paths are joined inside the root only, locations a server returns outside it are dropped, and files over 1 MiB are not read for an answer. A message over 64 MiB closes the connection (#35).
+- The checklist for the whole tool is [`SECURITY.md`](../../../SECURITY.md).
 
 ## Setup notes
 

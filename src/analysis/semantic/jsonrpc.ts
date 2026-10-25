@@ -25,22 +25,38 @@ export class RpcError extends Error {
   }
 }
 
+/**
+ * The largest message the client takes (#35). Answers are locations, not file contents, so a
+ * larger one means a broken server; it closes the connection instead of exhausting memory.
+ */
+export const MAX_MESSAGE_BYTES = 64 * 1024 * 1024;
+
 /** Splits a byte stream into framed messages. Tolerates chunks that split headers or bodies. */
 export class MessageReader {
   #buffer: Buffer = Buffer.alloc(0);
 
-  /** Appends a chunk and returns every message it completed. Throws on a malformed header. */
+  /**
+   * Appends a chunk and returns every message it completed. Throws on a malformed header or a
+   * message over MAX_MESSAGE_BYTES.
+   */
   push(chunk: Buffer): JsonRpcMessage[] {
     this.#buffer = this.#buffer.length ? Buffer.concat([this.#buffer, chunk]) : chunk;
     const messages: JsonRpcMessage[] = [];
     for (;;) {
       const headerEnd = this.#buffer.indexOf('\r\n\r\n');
-      if (headerEnd < 0) return messages;
+      if (headerEnd < 0) {
+        if (this.#buffer.length > MAX_MESSAGE_BYTES) throw new Error('LSP header too long');
+        return messages;
+      }
       const header = this.#buffer.subarray(0, headerEnd).toString('ascii');
       const match = /^content-length: *(\d+)$/im.exec(header);
       if (!match) throw new Error(`LSP message without Content-Length: ${JSON.stringify(header)}`);
+      const length = Number(match[1]);
+      if (length > MAX_MESSAGE_BYTES) {
+        throw new Error(`LSP message of ${length} bytes, over ${MAX_MESSAGE_BYTES}`);
+      }
       const start = headerEnd + 4;
-      const end = start + Number(match[1]);
+      const end = start + length;
       if (this.#buffer.length < end) return messages;
       messages.push(
         JSON.parse(this.#buffer.subarray(start, end).toString('utf8')) as JsonRpcMessage,

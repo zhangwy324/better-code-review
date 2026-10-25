@@ -51,8 +51,9 @@ export const FileChange = z.strictObject({
   oldContent: z.string().nullable(),
   newContent: z.string().nullable(),
   /**
-   * Why content was not captured: binary, either side over the size cap (1 MiB by default), or
-   * either side not valid UTF-8 (#13). For `not-utf8` the hunks' patch text is lossy: invalid
+   * Why content was not captured: binary, either side over the size cap (1 MiB by default) or
+   * the file past the cap for the whole change (64 MiB, #35), or either side not valid UTF-8
+   * (#13). For `not-utf8` the hunks' patch text is lossy: invalid
    * bytes are U+FFFD.
    */
   contentOmitted: z.enum(['binary', 'too-large', 'not-utf8']).nullable(),

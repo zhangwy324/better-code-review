@@ -6,6 +6,7 @@ import type { SnapshotFiles } from '../analysis/semantic/snapshot-files.ts';
 import type { ChangeSet } from '../schemas/changeset.ts';
 import type { Side } from '../schemas/common.ts';
 import type { ChangeGraph } from '../schemas/graph.ts';
+import { quotePath } from '../text/index.ts';
 import { edgeLine, nodeLine } from './input.ts';
 import { redactSecrets, sensitiveFile } from './secrets.ts';
 
@@ -38,8 +39,10 @@ function showHunk(changeSet: ChangeSet, graph: ChangeGraph, id: string): string 
   for (const file of changeSet.files) {
     const hunk = file.hunks.find((h) => h.id === id);
     if (hunk === undefined) continue;
-    const path = (file.newPath ?? file.oldPath)!;
-    const nodes = graph.nodes.filter((n) => n.hunkIds.includes(id)).map((n) => n.displayName);
+    const path = quotePath((file.newPath ?? file.oldPath)!);
+    const nodes = graph.nodes
+      .filter((n) => n.hunkIds.includes(id))
+      .map((n) => quotePath(n.displayName));
     const header = `# ${id} in ${path}${nodes.length > 0 ? ` (${nodes.join(', ')})` : ''}`;
     // Asked for explicitly, so only sensitive files are refused; MAX_SHOW_LINES caps the rest.
     const sensitive = [file.newPath, file.oldPath].map((p) => p && sensitiveFile(p)).find(Boolean);
@@ -58,7 +61,8 @@ async function showNode(graph: ChangeGraph, files: SnapshotFiles, id: string): P
   const node = graph.nodes.find((n) => n.id === id);
   if (node === undefined) throw new ShowError(`no node ${id} in this snapshot`);
   const out = [`# ${nodeLine(node)}`];
-  const name = (nodeId: string) => graph.nodes.find((n) => n.id === nodeId)?.displayName ?? nodeId;
+  const name = (nodeId: string) =>
+    quotePath(graph.nodes.find((n) => n.id === nodeId)?.displayName ?? nodeId);
   const edges = graph.codeEdges.filter(
     (e) => e.to === id || (e.granularity === 'entity' && e.from === id),
   );
@@ -69,13 +73,13 @@ async function showNode(graph: ChangeGraph, files: SnapshotFiles, id: string): P
     const range = side === 'new' ? node.newRange : node.oldRange;
     if (range === null) continue;
     const path = side === 'new' ? node.path : (node.oldPath ?? node.path);
-    out.push('', `${side === 'new' ? 'New' : 'Old'} side, ${path}:`);
+    out.push('', `${side === 'new' ? 'New' : 'Old'} side, ${quotePath(path)}:`);
     out.push(await numbered(files, path, side, range.startLine, range.endLine));
   }
   if (node.newRange === null && node.oldRange === null) {
     out.push(
       '',
-      `A ${node.kind} node: fetch its hunks, or read the file with --file ${node.path}.`,
+      `A ${node.kind} node: fetch its hunks, or read the file with --file ${quotePath(node.path)}.`,
     );
   }
   return `${out.join('\n')}\n`;
@@ -84,12 +88,13 @@ async function showNode(graph: ChangeGraph, files: SnapshotFiles, id: string): P
 async function showEdge(graph: ChangeGraph, files: SnapshotFiles, id: string): Promise<string> {
   const edge = graph.codeEdges.find((e) => e.id === id);
   if (edge === undefined) throw new ShowError(`no edge ${id} in this snapshot`);
-  const name = (nodeId: string) => graph.nodes.find((n) => n.id === nodeId)?.displayName ?? nodeId;
+  const name = (nodeId: string) =>
+    quotePath(graph.nodes.find((n) => n.id === nodeId)?.displayName ?? nodeId);
   const out = [`# ${edgeLine(edge, name, graph)}`];
   const records = graph.evidence.filter((r) => edge.evidenceIds.includes(r.id));
   const sites = new Map<string, typeof records>();
   for (const r of records) {
-    const key = `${r.location.side} ${r.location.path}:${r.location.range.startLine}`;
+    const key = `${r.location.side} ${quotePath(r.location.path)}:${r.location.range.startLine}`;
     sites.set(key, [...(sites.get(key) ?? []), r]);
   }
   for (const [key, hits] of sites) {
@@ -112,7 +117,7 @@ async function showFile(
 ): Promise<string> {
   const start = lines?.start ?? 1;
   const end = lines?.end ?? Infinity;
-  return `# ${path}, ${side} side\n\n${await numbered(files, path, side, start, end)}\n`;
+  return `# ${quotePath(path)}, ${side} side\n\n${await numbered(files, path, side, start, end)}\n`;
 }
 
 /** Lines `start`–`end` of a file, numbered and redacted, at most MAX_SHOW_LINES of them. */
@@ -127,11 +132,13 @@ async function numbered(
   if (sensitive !== null) return `Not shown: withheld: ${sensitive}.`;
   const content = await files.read(side, path);
   if (content === null) {
-    throw new ShowError(`${path} has no text content on the ${side} side of this snapshot`);
+    throw new ShowError(
+      `${quotePath(path)} has no text content on the ${side} side of this snapshot`,
+    );
   }
   const all = content.replace(/\n$/, '').split('\n');
   if (start > all.length)
-    throw new ShowError(`${path} has ${all.length} lines on the ${side} side`);
+    throw new ShowError(`${quotePath(path)} has ${all.length} lines on the ${side} side`);
   const wanted = Math.min(end, all.length);
   const last = Math.min(wanted, start + MAX_SHOW_LINES - 1);
   const width = String(last).length;

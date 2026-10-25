@@ -36,7 +36,8 @@ const STEP = 20;
 
 const OMITTED_NOTES: Record<NonNullable<FileChange['contentOmitted']>, string> = {
   binary: 'Binary file: there is no text diff.',
-  'too-large': 'The file is over the size cap, so only the changed lines and their context show.',
+  'too-large':
+    'The file, or the change as a whole, is over the size cap, so only the changed lines and their context show.',
   'not-utf8':
     'The file is not valid UTF-8: invalid bytes show as �, and only the changed lines and their context show.',
 };
@@ -382,7 +383,7 @@ function CommentRow({ children }: { children: ReactNode }) {
 /**
  * `text` exactly, split into spans: highlighted tokens, then any trailing whitespace, which is
  * marked so it can be seen. The carriage return of a CRLF line gets its own span, which the styles
- * show as `␍` without adding it to the text.
+ * show as `␍` without adding it to the text. So does each bidirectional control (`Bidi`).
  */
 function LineText({ text, tokens }: { text: string; tokens: Token[] }) {
   const body = text.endsWith('\r') ? text.slice(0, -1) : text;
@@ -392,19 +393,19 @@ function LineText({ text, tokens }: { text: string; tokens: Token[] }) {
   for (const t of tokens) {
     const to = Math.min(t.to, end);
     if (t.from < at || t.from >= to) continue;
-    if (t.from > at) parts.push(text.slice(at, t.from));
+    if (t.from > at) parts.push(...withBidi(text, at, t.from));
     parts.push(
       <span key={t.from} className={t.classes}>
-        {text.slice(t.from, to)}
+        {withBidi(text, t.from, to)}
       </span>,
     );
     at = to;
   }
-  if (end > at) parts.push(text.slice(at, end));
+  if (end > at) parts.push(...withBidi(text, at, end));
   if (end < body.length) {
     parts.push(
       <span key="ws" className="trailing-ws">
-        {body.slice(end)}
+        {withBidi(text, end, body.length)}
       </span>,
     );
   }
@@ -415,6 +416,38 @@ function LineText({ text, tokens }: { text: string; tokens: Token[] }) {
       </span>,
     );
   }
+  return parts;
+}
+
+/** The Unicode bidirectional controls (`Bidi`). */
+const BIDI = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+/**
+ * `text` from `from` to `to`, with each bidirectional control in a span of its own. Code can use
+ * them to show differently from how it runs ("Trojan Source", CVE-2021-42574). The span isolates
+ * the control, so it reorders nothing outside it, and the styles show its code point, without
+ * adding text (#35).
+ */
+function withBidi(text: string, from: number, to: number): ReactNode[] {
+  const parts: ReactNode[] = [];
+  let at = from;
+  for (const match of text.slice(from, to).matchAll(BIDI)) {
+    const i = from + match.index;
+    if (i > at) parts.push(text.slice(at, i));
+    const code = `U+${match[0].charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
+    parts.push(
+      <span
+        key={`bidi-${i}`}
+        className="bidi"
+        data-code={code}
+        title={`Bidirectional control ${code}`}
+      >
+        {match[0]}
+      </span>,
+    );
+    at = i + 1;
+  }
+  if (to > at) parts.push(text.slice(at, to));
   return parts;
 }
 

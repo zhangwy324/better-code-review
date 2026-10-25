@@ -23,6 +23,8 @@
 //   `binary` or `-diff` line there can still turn text hunks into "Binary files differ".
 // - Size cap: when either side's blob is over `maxContentBytes` (MAX_CONTENT_BYTES, 1 MiB),
 //   neither side's content is stored and `contentOmitted` is `too-large` (D7); hunks are kept.
+//   So it is for the files, in diff order, past MAX_TOTAL_CONTENT_BYTES (64 MiB) for the whole
+//   change. A diff over MAX_DIFF_BYTES (64 MiB) fails the run (#35, design reference §14.2).
 // - Generated files are stored like any other file. The structural analyzer marks them
 //   (`skipped: 'generated'`), as it needs their content to recognise them.
 // - Symlinks are never followed: their content is the link target, as Git stores it, and a
@@ -64,7 +66,7 @@ import {
 import { assertSameSnapshot, captureWorkingTree, comparePaths } from './local.ts';
 import { type PatchSection, parsePatch } from './patch.ts';
 import { type GhRunner, resolvePullRequest } from './pr.ts';
-import { GitError, gitLine, runGit, runGitWithStderr } from './run.ts';
+import { GitError, gitLine, OutputTooLargeError, runGit, runGitWithStderr } from './run.ts';
 
 export type RevisionTarget = Extract<ReviewTarget, { kind: 'commit' | 'range' }>;
 export type LocalTarget = Extract<ReviewTarget, { kind: 'local' }>;
@@ -199,6 +201,10 @@ export interface ExtractOptions {
   gh?: GhRunner;
   /** Content size cap per side, in bytes. Defaults to MAX_CONTENT_BYTES. */
   maxContentBytes?: number;
+  /** Content size cap for the whole change, in bytes. Defaults to MAX_TOTAL_CONTENT_BYTES. */
+  maxTotalContentBytes?: number;
+  /** Cap on the diff Git prints, in bytes. Defaults to MAX_DIFF_BYTES. */
+  maxDiffBytes?: number;
   /**
    * Git's rename limit (`-l`) for rename and copy detection. Defaults to DEFAULT_RENAME_LIMIT.
    * It can change which files pair up, so it is part of the snapshot ID.
@@ -214,19 +220,44 @@ export interface ExtractOptions {
  */
 export const MAX_CONTENT_BYTES = 1024 * 1024;
 
+/**
+ * The content of all files together, both sides (design reference §14.2). Past it, the remaining
+ * files in diff order are stored without content, as if over MAX_CONTENT_BYTES, so a change of
+ * thousands of files cannot exhaust memory or make an unopenable page; their hunks are kept.
+ */
+export const MAX_TOTAL_CONTENT_BYTES = 64 * 1024 * 1024;
+
+/**
+ * The most diff output (the patch of every file) one review takes (§14.2). A larger diff fails
+ * the run with a message to review a smaller change: without its patch a hunk cannot be shown,
+ * and Node cannot hold much more as one string (about 512 MiB).
+ */
+export const MAX_DIFF_BYTES = 64 * 1024 * 1024;
+
 /** Git's own default for `diff.renameLimit`. */
 export const DEFAULT_RENAME_LIMIT = 1000;
 
 function diffSettings(options: ExtractOptions, attrSource: string | null): DiffSettings {
-  const { maxContentBytes = MAX_CONTENT_BYTES, renameLimit = DEFAULT_RENAME_LIMIT } = options;
-  if (!Number.isSafeInteger(maxContentBytes) || maxContentBytes < 0) {
-    throw new Error(`maxContentBytes must be a whole number of bytes, got ${maxContentBytes}`);
+  const {
+    maxContentBytes = MAX_CONTENT_BYTES,
+    maxTotalContentBytes = MAX_TOTAL_CONTENT_BYTES,
+    maxDiffBytes = MAX_DIFF_BYTES,
+    renameLimit = DEFAULT_RENAME_LIMIT,
+  } = options;
+  for (const [name, bytes] of Object.entries({
+    maxContentBytes,
+    maxTotalContentBytes,
+    maxDiffBytes,
+  })) {
+    if (!Number.isSafeInteger(bytes) || bytes < 0) {
+      throw new Error(`${name} must be a whole number of bytes, got ${bytes}`);
+    }
   }
   // Git gives 0 a special meaning of its own; ask for an explicit limit instead.
   if (!Number.isSafeInteger(renameLimit) || renameLimit < 1) {
     throw new Error(`renameLimit must be a positive whole number, got ${renameLimit}`);
   }
-  return { maxContentBytes, renameLimit, attrSource };
+  return { maxContentBytes, maxTotalContentBytes, maxDiffBytes, renameLimit, attrSource };
 }
 
 /** Extracts the ChangeSet for a target in the repository at `repo`. */
@@ -358,6 +389,8 @@ function atLeast([major, minor]: GitVersion, [minMajor, minMinor]: GitVersion): 
 
 interface DiffSettings {
   maxContentBytes: number;
+  maxTotalContentBytes: number;
+  maxDiffBytes: number;
   renameLimit: number;
   /** The tree-ish whose .gitattributes the diff reads; null for the working tree's. */
   attrSource: string | null;
@@ -393,9 +426,20 @@ async function diffFiles(
     ...range,
   ];
   // The C locale keeps Git's warnings in English, so that they can be recognised.
-  const { stdout: out, stderr } = await runGitWithStderr(repo, args, '', {
-    ...DIFF_ENV,
-    LC_ALL: 'C',
+  const env = { ...DIFF_ENV, LC_ALL: 'C' };
+  const { stdout: out, stderr } = await runGitWithStderr(
+    repo,
+    args,
+    '',
+    env,
+    settings.maxDiffBytes,
+  ).catch((err: unknown) => {
+    if (!(err instanceof OutputTooLargeError)) throw err;
+    throw new Error(
+      `The diff is over ${mebibytes(settings.maxDiffBytes)}, the most one review takes; ` +
+        'review a smaller change (a shorter range, or fewer commits)',
+      { cause: err },
+    );
   });
   const separator = out.indexOf('\0\0');
   const raw = separator === -1 ? '' : out.subarray(0, separator + 1).toString('utf8');
@@ -418,7 +462,7 @@ async function diffFiles(
     throw new Error(`git diff printed patches for unlisted paths: ${paths.join(', ')}`);
   }
 
-  await fillContents(repo, changes, settings.maxContentBytes);
+  await fillContents(repo, changes, settings);
   const files = changes.map((c) => c.file);
   files.sort((a, b) => comparePaths(a.newPath ?? a.oldPath ?? '', b.newPath ?? b.oldPath ?? ''));
   return { files, warnings: renameLimitWarnings(stderr) };
@@ -536,14 +580,14 @@ function toFileChange(entry: RawEntry, sections: PatchSection[]): FileChange {
 const BINARY_SNIFF_BYTES = 8000;
 
 /**
- * Reads the old and new blob of every text file under the size cap. Sizes come first from one
- * `git cat-file --batch-check`, so blobs over the cap are never loaded, then the contents from
+ * Reads the old and new blob of every text file under the size caps. Sizes come first from one
+ * `git cat-file --batch-check`, so blobs over the caps are never loaded, then the contents from
  * one `git cat-file --batch`.
  */
 async function fillContents(
   repo: string,
   changes: { entry: RawEntry; file: FileChange }[],
-  maxContentBytes: number,
+  { maxContentBytes, maxTotalContentBytes }: DiffSettings,
 ) {
   // The blobs on the sides where the file exists. Gitlinks (submodules) name a commit in another
   // repository: there is no blob to read.
@@ -556,9 +600,13 @@ async function fillContents(
   if (text.length === 0) return;
 
   const sizes = parseCatFile(await catFile(repo, '--batch-check', text.flatMap(sides)), false);
+  let total = 0;
   const toRead = text.filter((c) => {
-    const tooLarge = sides(c).some((s) => blobOf(sizes, s.oid).size > maxContentBytes);
+    const bytes = sides(c).map((s) => blobOf(sizes, s.oid).size);
+    const sum = bytes.reduce((a, b) => a + b, 0);
+    const tooLarge = bytes.some((b) => b > maxContentBytes) || total + sum > maxTotalContentBytes;
     if (tooLarge) c.file.contentOmitted = 'too-large';
+    else total += sum;
     return !tooLarge;
   });
   if (toRead.length === 0) return;
@@ -592,6 +640,10 @@ function decodeUtf8(content: Buffer): string | null {
   } catch {
     return null;
   }
+}
+
+function mebibytes(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toLocaleString('en', { maximumFractionDigits: 1 })} MiB`;
 }
 
 function catFile(repo: string, mode: string, blobs: { oid: string }[]): Promise<Buffer> {

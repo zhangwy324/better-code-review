@@ -1,10 +1,12 @@
-// The fixture portfolio (README.md), in the order of design reference §18.4.
+// The fixture portfolio (README.md), in the order of design reference §18.4, then the hostile
+// content of #35.
 import { dynamicCalls } from './dynamic-calls.ts';
 import { featureFlow } from './feature-flow.ts';
 import type { Fixture } from './fixture.ts';
 import { independentRoots } from './independent-roots.ts';
 import { interfaceImpl } from './interface-impl.ts';
 import { largeGenerated } from './large-generated.ts';
+import { maliciousContent } from './malicious-content.ts';
 import { overrideDispatch, overrideDispatchPython } from './override-dispatch.ts';
 import { removedCalls } from './removed-calls.ts';
 import { renameMove } from './rename-move.ts';
@@ -31,4 +33,5 @@ export const FIXTURES: readonly Fixture[] = [
   dynamicCalls,
   unsupportedBinary,
   largeGenerated,
+  maliciousContent,
 ];
