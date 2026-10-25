@@ -316,6 +316,8 @@ interface FileFacts {
   declarations: { kind: string; name: string; nameLine: number; range: SourceRange }[];
   /** Line ranges of import statements. */
   imports: { start: number; end: number }[];
+  /** Class bodies without a declaration of their own: `new X() { … }`, `class extends X { … }`. */
+  anonymousClasses: SourceRange[];
 }
 
 /** Reads, parses and renders, with caches shared by every group and target of a review. */
@@ -382,6 +384,14 @@ class Context {
         imports: found
           .filter((d) => d.kind === 'import')
           .map((d) => ({ start: d.range.startLine, end: d.range.endLine })),
+        anonymousClasses: parsed.tree.rootNode
+          .descendantsOfType(['object_creation_expression', 'class'])
+          .filter(
+            (n) =>
+              n?.isNamed &&
+              (n.type === 'class' || n.namedChildren.some((c) => c?.type === 'class_body')),
+          )
+          .map((n) => ({ startLine: n.startPosition.row + 1, endLine: n.endPosition.row + 1 })),
       };
     } finally {
       freeTrees(parsed);
@@ -756,22 +766,30 @@ function declarationLine(
   return d?.nameLine ?? range.startLine;
 }
 
-/** The name line of the class, interface or enum a member is declared in, or null. */
+/**
+ * The first line of the class a member is declared in, or null: the name line of its class,
+ * interface or enum, or the `new X() {` line of an anonymous class (#96: jsoup's test stub was
+ * `new Appendable() { … }` in a test method, and the batch didn't say it was an `Appendable`).
+ */
 function ownerLine(
   facts: FileFacts | null,
   entity: ChangedEntity,
   range: SourceRange,
 ): number | null {
-  if (entity.container === null) return null;
+  if (entity.container === null || facts === null) return null;
   const name = entity.container.slice(entity.container.lastIndexOf('.') + 1);
-  const owner = facts?.declarations.find(
-    (d) =>
-      d.name === name &&
-      ['class', 'interface', 'enum'].includes(d.kind) &&
-      d.range.startLine <= range.startLine &&
-      d.range.endLine >= range.endLine,
-  );
-  return owner?.nameLine ?? null;
+  const encloses = (r: SourceRange) => r.startLine <= range.startLine && r.endLine >= range.endLine;
+  const owners = [
+    ...facts.declarations
+      .filter((d) => d.name === name && ['class', 'interface', 'enum'].includes(d.kind))
+      .filter((d) => encloses(d.range))
+      .map((d) => ({ start: d.range.startLine, line: d.nameLine })),
+    ...facts.anonymousClasses
+      .filter(encloses)
+      .map((r) => ({ start: r.startLine, line: r.startLine })),
+  ];
+  // The innermost: an anonymous class inside a named one owns its own methods.
+  return owners.sort((a, b) => b.start - a.start)[0]?.line ?? null;
 }
 
 /** The name to look up for a receiver: `f`, or the field in `this.f` / `self.f`. */
