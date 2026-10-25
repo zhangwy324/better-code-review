@@ -187,6 +187,57 @@ describe('candidateBatches', () => {
     // A test file is one group per changed entity it uses, shown as windows around its hits (D2).
     expect(text).toContain('### src/printer.test.ts (test file) @ src/printer.test.ts (new side)');
     expect(text).toContain(">> 3| new Printer().print('b');");
+    // `accum` is declared the same on both sides, so only the new side is shown (#94).
+    expect(text).not.toContain('Old side');
+  });
+
+  it('shows the old side too when a receiver is declared differently there (#94)', async () => {
+    // As in jsoup #2321: the old `accum` can dispatch to the changed Stub.append, the new one not.
+    const base = {
+      'src/sink.ts': lines('export interface Sink {', '  append(s: string): void;', '}'),
+      'src/quiet.ts': lines('export class Quiet {', '  append(s: string): void {}', '}'),
+      'src/stub.ts': lines(
+        "import type { Sink } from './sink.ts';",
+        '',
+        'export class Stub implements Sink {',
+        '  append(s: string): void {}',
+        '}',
+      ),
+      'src/printer.ts': lines(
+        "import type { Sink } from './sink.ts';",
+        '',
+        'export function print(accum: Sink, s: string): void {',
+        '  accum.append(s);',
+        '}',
+      ),
+    };
+    const head = {
+      ...base,
+      'src/stub.ts': base['src/stub.ts'].replace('void {}', 'void { void s; }'),
+      'src/printer.ts': lines(
+        "import type { Quiet } from './quiet.ts';",
+        '',
+        'export function print(accum: Quiet, s: string): void {',
+        '  accum.append(s.trim());',
+        '}',
+      ),
+    };
+    const { structure, graph, files } = await setup(base, head);
+    const { batches } = await candidateBatches(structure, graph, files);
+    const text = batches.map((b) => b.text).join('\n');
+    const e = edge(graph, 'print', 'Stub.append');
+    expect(text).toContain('### print @ src/printer.ts (new side)');
+    expect(text).toContain('>> 4|   accum.append(s.trim());');
+    expect(text).toContain(
+      "Old side of src/printer.ts, where a receiver is declared differently. Answer `yes` if either side uses the changed entity, citing that side's line:\nImports:\n```\n   1| import type { Sink } from './sink.ts';\n```",
+    );
+    expect(text).toContain('   3| export function print(accum: Sink, s: string): void {');
+    expect(text).toContain('>> 4|   accum.append(s);');
+    expect(text).toContain(
+      `- ${e.id} → Stub.append (src/stub.ts): calls; line 4 (call; on accum); old side: line 4 (call; on accum)`,
+    );
+    // The edge is still decided once.
+    expect(batches.flatMap((b) => b.edgeIds).filter((id) => id === e.id)).toHaveLength(1);
   });
 
   it('shows the re-export line for a hit through an alias', async () => {
