@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { type DefaultTreeAdapterMap, parse } from 'parse5';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { renderReview, writeReview } from './render.ts';
@@ -106,6 +107,15 @@ describe('renderReview', () => {
     expect(renderReview(template, structuredClone(documents))).toBe(
       renderReview(template, documents),
     );
+  });
+
+  it('gives the same bytes whether LICENSE is checked out with LF or CRLF', async () => {
+    const licence = join(tmp, 'LICENSE-crlf');
+    const text = readFileSync(new URL('../../LICENSE', import.meta.url), 'utf8');
+    writeFileSync(licence, text.replace(/\r?\n/g, '\r\n'));
+    const page = await buildViewer(join(tmp, 'crlf'), { licence: pathToFileURL(licence) });
+    expect(page.includes('\r'), 'the page contains a CR').toBe(false);
+    expect(page).toBe(template);
   });
 });
 

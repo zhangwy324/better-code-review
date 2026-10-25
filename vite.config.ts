@@ -4,21 +4,31 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, type Plugin, type UserConfig } from 'vite';
 
-export default defineConfig({
-  root: 'src/viewer',
-  base: './',
-  plugins: [react(), singleFile()],
-  build: {
-    outDir: '../../dist/viewer',
-    emptyOutDir: true,
-    // The bundled dependencies' licences, for the page's notices (ADR 0002).
-    license: true,
-    // The polyfill fetches modules, and one inline script has nothing to preload.
-    modulePreload: false,
-  },
-});
+export default defineConfig(viewerConfig());
+
+/**
+ * The viewer build. `licence` is this project's licence file, the first of the page's notices;
+ * tests point it elsewhere (src/renderer/viewer.test-helper.ts).
+ */
+export function viewerConfig({
+  licence = new URL('LICENSE', import.meta.url),
+}: { licence?: URL } = {}): UserConfig {
+  return {
+    root: 'src/viewer',
+    base: './',
+    plugins: [react(), singleFile(licence)],
+    build: {
+      outDir: '../../dist/viewer',
+      emptyOutDir: true,
+      // The bundled dependencies' licences, for the page's notices (ADR 0002).
+      license: true,
+      // The polyfill fetches modules, and one inline script has nothing to preload.
+      modulePreload: false,
+    },
+  };
+}
 
 /**
  * Inlines the script, the styles and the third-party notices into index.html, so the page loads
@@ -26,7 +36,7 @@ export default defineConfig({
  * inline styles and data: images, so no browser fetches anything for it, whatever a later change
  * tries.
  */
-function singleFile(): Plugin {
+function singleFile(licence: URL): Plugin {
   return {
     name: 'better-code-review-single-file',
     apply: 'build',
@@ -57,11 +67,14 @@ function singleFile(): Plugin {
         const css = source(style);
         assertAbsent(js, /<\/script|<!--/i, 'the viewer script');
         assertAbsent(css, /<\/style|<!--/i, 'the viewer styles');
+        // LF throughout, so a checkout or package with CRLF licence files gives the same page (#111).
         const notices = [
           'Better Code Review',
-          readFileSync(new URL('LICENSE', import.meta.url), 'utf8').trim(),
+          readFileSync(licence, 'utf8').trim(),
           source(licences).trim(),
-        ].join('\n\n');
+        ]
+          .join('\n\n')
+          .replace(/\r\n?/g, '\n');
         assertAbsent(notices, /<!--|-->|--!>/, 'the licence notices');
 
         const hash = createHash('sha256').update(js).digest('base64');
