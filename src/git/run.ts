@@ -3,6 +3,7 @@
 // the process plumbing, shared with the GitHub CLI runner (pr.ts).
 import { spawn } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
+import { devNull } from 'node:os';
 import { delimiter, extname, isAbsolute, join } from 'node:path';
 
 export class GitError extends Error {
@@ -52,6 +53,13 @@ export async function runGit(
   return (await runGitWithStderr(cwd, args, input, env, maxOutputBytes)).stdout;
 }
 
+/**
+ * Turns hooks off for every git call. The repository's own hooks are not part of a change, but
+ * plumbing still runs some (`post-index-change` on `read-tree` and `add` into our throwaway
+ * index, `reference-transaction` on `fetch`), and reviewing should run nothing (#35).
+ */
+const NO_HOOKS = ['-c', `core.hooksPath=${devNull}`];
+
 /** `runGit`, also resolving with what Git printed on stderr (warnings) when it succeeded. */
 export function runGitWithStderr(
   cwd: string,
@@ -60,7 +68,7 @@ export function runGitWithStderr(
   env?: Record<string, string>,
   maxOutputBytes?: number,
 ): Promise<CommandOutput> {
-  return runCommand('git', cwd, args, {
+  return runCommand('git', cwd, [...NO_HOOKS, ...args], {
     input,
     env,
     maxOutputBytes,
