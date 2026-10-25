@@ -19,7 +19,7 @@ The review directory then holds what §20 step 7 shows: `changes.json`, `graph.j
 `npm run build` makes the template, `dist/viewer/index.html` (`vite.config.ts`). It is the viewer with everything inline:
 
 - the script, in one `<script type="module">`, and the styles, in one `<style>`. The build fails if either contains `</script`, `</style` or `<!--`, since those would end the element early;
-- the notices for the code bundled in it (ADR 0002): this project's `LICENSE`, then the licences Vite's `build.license` collects from the bundled dependencies. They are an HTML comment at the end of `<head>`, after the charset;
+- the notices for the code bundled in it (ADR 0002): this project's `LICENSE`, then the licences Vite's `build.license` collects from the bundled dependencies. They are an HTML comment at the end of `<head>`, after the charset, with LF line endings whatever the checkout or the packages use, so the page's bytes don't depend on them (#111);
 - a Content-Security-Policy that allows that one script (by its SHA-256), inline styles and `data:` images, and nothing else: `default-src 'none'`. A browser makes no request for the page, even if a later viewer change tried to fetch. `zod-config.ts` turns off zod's `eval`, which the policy also blocks.
 
 `renderReview()` adds the three data elements before the last `</body>`. `scriptJson()` escapes every `<`, U+2028 and U+2029, so repository or model text can't close its element, open a comment or start a tag. Nothing else in the page depends on the review, so the same documents and build give the same bytes.
@@ -31,6 +31,6 @@ The review directory then holds what §20 step 7 shows: `changes.json`, `graph.j
 - no element came from the data, and each data element reads back unchanged;
 - no element has a `src` or `href`, the styles have no `url(` or `@import`, and the policy names the script's hash and no host;
 - the notices list every bundled package;
-- a second build and a second render give identical bytes.
+- a second build and a second render give identical bytes, and so does a build whose `LICENSE` has CRLF line endings (#111).
 
 `src/cli/render.test.ts` is the end-to-end test (#34 acceptance): `generate --local` on the signature fixture's uncommitted change writes a `review.html` whose embedded documents pass the viewer's own load checks, then an agent plan with a homeless node is rendered with Ungrouped made. It also checks that `render` refuses an invalid plan and leaves the page alone, and that `--open` failures are only reported.
