@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { run } from '../../src/cli/main.ts';
-import { ChangeGraph } from '../../src/schemas/index.ts';
+import { selectCandidates } from '../../src/planner/index.ts';
+import { ChangeGraph, type EdgeVerdict } from '../../src/schemas/index.ts';
 import { DEFAULT_BUDGET_USD, type EvalArgs, parseEvalArgs, runEval, TIERS } from './eval.ts';
 import { readRecording, recordingPath } from './recording.ts';
 import { planFromLabels } from './score.ts';
@@ -85,17 +86,32 @@ function fakeClaude(answer: (graph: ChangeGraph) => string): Spawn {
   };
 }
 
-/** A plan for the signature fixture that passes every check. */
+/**
+ * A plan for the signature fixture that passes every check and, as the recorded runs do, answers
+ * `no` on each edge the batches ask about (viaMethod and use_calc call same-named methods).
+ */
 const goodPlan = (graph: ChangeGraph) =>
-  JSON.stringify(
-    planFromLabels(graph, {
+  JSON.stringify({
+    ...planFromLabels(graph, {
       'format-contract': ['formatPrice'],
       'format-callers': ['checkoutSummary', 'invoiceSummary', 'receiptSummary', 'aliasCaller'],
       'tax-contract': ['tax'],
       'tax-callers': ['order_total', 'refund'],
       unrelated: ['legacyLabel', 'viaMethod', 'use_calc', 'config.json'],
     }),
-  );
+    edgeVerdicts: selectCandidates(graph).open.map((e): EdgeVerdict => {
+      const hit = graph.evidence.find(
+        (r) => e.evidenceIds.includes(r.id) && r.location.side === 'new',
+      )!;
+      return {
+        edgeId: e.id,
+        verdict: 'no',
+        via: null,
+        reason: 'It calls a method of the same name.',
+        citedLine: { path: hit.location.path, side: 'new', line: hit.location.range.startLine },
+      };
+    }),
+  });
 
 const args: EvalArgs = parseEvalArgs([]);
 
@@ -115,7 +131,10 @@ describe('runEval', () => {
     expect(printed).toContain('at most $0.25 per run');
     expect(printed).toMatch(/ok {3}signature {2}claude-haiku-5-5 {2}\$0\.0100/);
     expect(printed).toContain('Total cost: $0.0100');
-    expect(printed).toContain('checks: 8/8 pass');
+    // Every edge the batches ask about got a verdict; the rest need none (#99).
+    expect(printed).toContain(
+      'checks: 8/8 pass; verdicts on 2/2 asked edges (yes 0, no 2, unsure 0); 6 settled without asking\n',
+    );
 
     const recording = readRecording(
       recordingPath(join(dir, 'recordings'), {
