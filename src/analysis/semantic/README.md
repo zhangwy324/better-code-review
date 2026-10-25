@@ -11,6 +11,7 @@ Answers "how are the changed entities related to each other?" (design reference 
 | `jsonrpc.ts` | `Content-Length` framing, requests with timeouts, server-to-client requests |
 | `client.ts` | One server process: `initialize`, capability checks, document sync, `$/progress`, `language/status`, diagnostics, URIs |
 | `servers.ts` | Known servers, discovery, the exact command lines |
+| `modules.ts` | `linkInstalledModules()`: lends a checkout the working tree's `node_modules` (#117) |
 | `normalise.ts` | Text-level rules that make servers agree: import lines, alias names, constructor calls, method declarations, receivers |
 | `session.ts` | `LspSession`: start-up, readiness, crash recovery, references, health check, capability report |
 
@@ -69,7 +70,7 @@ In the order #42 settled (`docs/research/candidate-adjudication.md`):
 6. **The old side** (#66), when a new-side session is given. A removed call is a useful review signal (both ends are changed, D12), and an old-side candidate left undecided keeps its edge `possible` even when the new-side server rejected the same call.
    - **Base-side server.** Old-side candidates go to a session on the old side (`oldLsp`), with the same rules as step 5, only when their edge has no new-side hit left: the new side has none (a removed call), or every new-side hit was rejected. An edge a new-side hit already carries never starts it, and only the languages that need it are started. A confirmation verifies the edge even when its new-side hit was rejected.
    - **Carried-over rejections.** A new-side `lsp` rejection is carried over to the matching old-side hit when no server decided that hit and import resolution did not either: the same source, target, relation, name and receiver text (`f.formatPrice(1)` → `f.formatPrice(2)`), and the same position among the hits sharing those, when both sides have equally many. It is an `lsp` `rejected` record whose detail names the new-side hit. It never verifies anything (invariant 4), but if the receiver's type changed between the sides (`f: Fmt` → `f: Price`) it can drop a real removed call.
-   - **Known limitation.** The base tree has no installed dependencies (`node_modules`, virtualenvs), so the health check usually stops the base-side server from rejecting; its confirmations still count, which covers removed calls. The carried-over rejections cover the rest.
+   - **Known limitation.** A checkout gets the working tree's `node_modules` only (see "Checkouts and installed dependencies"), and no virtualenv, so where those do not cover its imports the health check stops the base-side server from rejecting; its confirmations still count, which covers removed calls. The carried-over rejections cover the rest.
 7. **Test files** (MVP spec D2) keep one edge per (test file, changed entity), with up to 3 hits per side as examples for the agent (#95): the most decided first (LSP-confirmed, then import-confirmed, then undecided), then hits inside an entity that declares the target (a test's nested function, which only that test can call), then file order, all with the first one's relation on both sides, so they make one edge. The edge still says whether the call was added, removed or kept, and the first hit's detail says how many hits were left out.
 8. **Caps** (D1): at most `maxCandidatesPerEntity` (default 100) source entities per (target, relation), a test file counting as one. The rest are dropped from the records and reported in `caps` as "Showing N of M".
 
@@ -172,8 +173,31 @@ pyright returned 4 of 37 references on click with no error, because `src/` was n
 | `maxRestarts` | `1` | Restarts after a crash; the failed request is retried once per restart. After that the language reports `failed` |
 | `maxUnresolvedImportShare` | `0` | Health threshold |
 | `searchPath` | `PATH` | Where to look for servers. Relative and in-repository entries are dropped without the opt-in |
+| `modules` | — | For a root written out by `src/git/checkout.ts`: what `linkInstalledModules()` returned |
 
-The CLI (`generate`, #20) starts no session with `--no-lsp` and sets `allowProjectCode` (`--allow-project-code`); the rest keep their defaults.
+The CLI (`generate`, #20) starts no session with `--no-lsp`, sets `allowProjectCode` (`--allow-project-code`), and sets `modules` for every checkout; the rest keep their defaults.
+
+### Checkouts and installed dependencies
+
+`--local` runs the new-side servers on the working tree itself. Every other root is a checkout: `--commit`, `--range` and `--pr` heads, and every base side. A checkout holds tracked files only, so before #117 a TypeScript server there could not resolve the project's packages, and the summary asked for `npm ci` though the working tree had them installed.
+
+`linkInstalledModules(repo, revision, tree, allowProjectCode)` now links `<checkout>/node_modules` to the working tree's (a junction on Windows), when:
+
+- the working tree has a `node_modules`, and the checkout has none of its own from Git (that one is passed over, as before);
+- it is the user's own install by `checkProjectPackages` (see "Security"), or project code is allowed.
+
+The session then checks the working tree's `node_modules` rather than the link, so the project's TypeScript is used as with `--local`, and the TypeScript configuration says `node_modules linked from the working tree`. The link is removed before the checkout is deleted, never what it points to.
+
+The packages are the working tree's, which need not match the revision. When the TypeScript server is unhealthy, its hint says what applies instead of the generic one:
+
+| Case | Hint |
+|---|---|
+| Linked, and the root `package.json` and lockfiles match the revision's (`git diff --quiet <revision> -- …`) | The generic one: install the dependencies (e.g. `npm ci`) |
+| Linked, and they differ | The installed packages may not match the revision |
+| The working tree has no `node_modules` | Install the dependencies in the working tree |
+| Not linked: the install is not the user's own | Why, and that installing would not change it (needs the project-code opt-in) |
+
+**Known gaps:** only the root `node_modules` is linked, so a workspace package's own `node_modules` is not; pyright and the other servers find dependencies outside the repository and are unaffected.
 
 ## Discovery and the exact commands run
 
@@ -211,7 +235,7 @@ Language servers are programs run on the user's machine against code under revie
   - it, or a top-level package in it, links into the repository outside `node_modules` (npm, yarn and pnpm workspaces and `file:` dependencies). tsserver loads `tsconfig.json` plugins from the `node_modules` its TypeScript sits in, and the reviewed change controls both `tsconfig.json` and those packages' source;
   - the check fails (not a Git repository, Git missing): we refuse rather than guess.
 
-  Servers on `PATH` are used instead, if any. A `PATH` TypeScript loads plugins from its own install, not the project.
+  Servers on `PATH` are used instead, if any. A `PATH` TypeScript loads plugins from its own install, not the project. A checkout gets the working tree's `node_modules` only under the same rules, and they are checked on the working tree, not the checkout ("Checkouts and installed dependencies").
 - **`PATH`.** Without the opt-in, relative entries and entries inside the repository (e.g. an activated in-repository virtualenv) are dropped, both for discovery and from the servers' environment, so a server that runs a bare command (pyright runs `python3`) cannot pick up one the change added. On Windows, servers also get `NoDefaultCurrentDirectoryInExePath=1`, so a bare command is not looked up in the working directory, the repository, first. **Not verified on Windows**, and whether every server honours it is up to its process library.
 - Servers get the snapshot root as their workspace and nothing else. The client sends no file contents except the files it opens from that root. Paths are joined inside the root only, locations a server returns outside it are dropped, and files over 1 MiB are not read for an answer. A message over 64 MiB closes the connection (#35).
 - The checklist for the whole tool is [`SECURITY.md`](../../../SECURITY.md).

@@ -16,7 +16,8 @@
 // For `commit`, `range` and `pr` the head commit is written to a temporary directory
 // (src/git/checkout.ts), removed afterwards. When old-side candidates need a server too (#66),
 // the base revision is written the same way, for every target including `local`. A checkout has
-// no installed `node_modules`, so servers come from PATH and the project's dependencies may not
+// no installed `node_modules`, so it gets a link to the working tree's when that is the user's own
+// install (#117, src/analysis/semantic/modules.ts). Without one the project's packages do not
 // resolve, which only stops rejections (the health check). No hooks run, and Git LFS does not
 // download objects.
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -25,9 +26,12 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
   analyzeSemantics,
   gitSnapshotFiles,
+  linkInstalledModules,
   type LspOptions,
   LspSession,
   type SnapshotFiles,
+  type SnapshotModules,
+  unlinkInstalledModules,
 } from '../analysis/semantic/index.ts';
 import { analyzeStructure } from '../analysis/structural/analyze.ts';
 import { declaredTestRoots, type TestRoots } from '../analysis/structural/test-files.ts';
@@ -111,17 +115,19 @@ export async function generate(
       allowProjectCode: request.analysis.allowProjectCodeExecution,
     };
     const base = changeSet.baseRevision;
-    const old: { dir?: string; session?: LspSession } = {};
+    const old: { checkout?: Checkout; session?: LspSession } = {};
     const oldLsp = async (needed: string[]) => {
       progress(`Starting language servers on the base side for ${needed.join(', ')}`);
-      old.dir = mkdtempSync(join(tmpdir(), 'bcr-base-'));
-      const root = join(old.dir, 'tree');
-      await checkoutRevision(repo, base!, root);
-      old.session = await LspSession.start(root, needed, lspOptions);
+      old.checkout = await checkout(repo, base!, 'bcr-base-', lspOptions.allowProjectCode);
+      const { root, modules } = old.checkout;
+      old.session = await LspSession.start(root, needed, { ...lspOptions, modules });
       return old.session;
     };
-    evidence = await withNewSide(repo, changeSet, async (root) => {
-      const lsp = await LspSession.start(root, languages, lspOptions);
+    evidence = await withNewSide(repo, changeSet, lspOptions.allowProjectCode, async (side) => {
+      const lsp = await LspSession.start(side.root, languages, {
+        ...lspOptions,
+        ...(side.modules === undefined ? {} : { modules: side.modules }),
+      });
       try {
         progress('Searching for relationships between changed entities');
         return await analyzeSemantics(changeSet, structure, {
@@ -132,7 +138,7 @@ export async function generate(
       } finally {
         await lsp.close();
         await old.session?.close();
-        if (old.dir !== undefined) rmSync(old.dir, { recursive: true, force: true });
+        old.checkout?.remove();
       }
     });
   } else {
@@ -209,20 +215,55 @@ async function testRoots(files: SnapshotFiles): Promise<TestRoots> {
   return declaredTestRoots((path) => contents.get(path) ?? null);
 }
 
-/** Runs `use` with a directory holding the new side of `changeSet`. */
+/** A revision written to a temporary directory for language servers. */
+interface Checkout {
+  root: string;
+  modules: SnapshotModules;
+  /** Deletes the directory, after removing the link to the working tree's node_modules. */
+  remove(): void;
+}
+
+/** Writes `revision` out, with the working tree's node_modules linked in when allowed (#117). */
+async function checkout(
+  repo: string,
+  revision: string,
+  prefix: string,
+  allowProjectCode: boolean,
+): Promise<Checkout> {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  const root = join(dir, 'tree');
+  let modules: SnapshotModules | undefined;
+  const remove = () => {
+    // Unlinked first: a failure leaves the directory rather than reaching into the user's install.
+    if (modules !== undefined) unlinkInstalledModules(root, modules);
+    rmSync(dir, { recursive: true, force: true });
+  };
+  try {
+    await checkoutRevision(repo, revision, root);
+    modules = await linkInstalledModules(repo, revision, root, allowProjectCode);
+  } catch (err) {
+    remove();
+    throw err;
+  }
+  return { root, modules, remove };
+}
+
+/**
+ * Runs `use` with a directory holding the new side of `changeSet`: the working tree itself for
+ * `local`, else a checkout, with `modules` saying how its dependencies were provided.
+ */
 async function withNewSide<T>(
   repo: string,
   changeSet: ChangeSet,
-  use: (root: string) => Promise<T>,
+  allowProjectCode: boolean,
+  use: (side: { root: string; modules?: SnapshotModules }) => Promise<T>,
 ): Promise<T> {
-  if (changeSet.headRevision === null) return use(repo);
-  const dir = mkdtempSync(join(tmpdir(), 'bcr-head-'));
+  if (changeSet.headRevision === null) return use({ root: repo });
+  const head = await checkout(repo, changeSet.headRevision, 'bcr-head-', allowProjectCode);
   try {
-    const tree = join(dir, 'tree');
-    await checkoutRevision(repo, changeSet.headRevision, tree);
-    return await use(tree);
+    return await use(head);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    head.remove();
   }
 }
 
