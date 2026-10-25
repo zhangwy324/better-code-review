@@ -145,3 +145,51 @@ export function revealing(
   }
   return result;
 }
+
+/**
+ * A character that shows as nothing, or reorders the text around it, so that code can read
+ * differently from how it runs ("Trojan Source", CVE-2021-42574; #35, #106). `index` and `length`
+ * are in UTF-16 code units of the text.
+ */
+export interface HiddenChar {
+  index: number;
+  length: number;
+  kind: 'bidi' | 'invisible';
+  /** The code point, e.g. `U+200B`. */
+  code: string;
+}
+
+/** The Unicode bidirectional controls: embeddings, overrides, isolates and the marks. */
+const BIDI = /^[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]$/u;
+
+/**
+ * The bidirectional controls, then characters that show as nothing (or as blank space) but are
+ * not whitespace: the soft hyphen, the combining grapheme joiner, the Hangul fillers (valid in
+ * JavaScript identifiers), the Mongolian vowel separator, zero-width spaces and non-joiners, the
+ * word joiner and invisible operators, the deprecated format characters, a byte order mark,
+ * interlinear annotation, tag characters and the supplementary variation selectors.
+ *
+ * A zero-width joiner is marked unless it joins two emoji, which is how they combine and which
+ * shows. The variation selectors of the Basic Multilingual Plane are marked only in a run: one
+ * after a character picks its form, as U+FE0F does for an emoji, but a run of them is how text
+ * hides data.
+ */
+const HIDDEN =
+  // eslint-disable-next-line no-misleading-character-class -- matching combining characters one by one is the point
+  /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\u00ad\u034f\u115f\u1160\u180e\u200b\u200c\u2060-\u2064\u206a-\u206f\u3164\ufeff\uffa0\ufff9-\ufffb\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]|\u200d(?!\p{Extended_Pictographic})|(?<!\p{Extended_Pictographic}[\ufe0f\u{1f3fb}-\u{1f3ff}]?)\u200d|[\ufe00-\ufe0f]{2,}/gu;
+
+/** Each bidirectional control and invisible character in `text`, in order. */
+export function hiddenChars(text: string): HiddenChar[] {
+  const found: HiddenChar[] = [];
+  for (const match of text.matchAll(HIDDEN)) {
+    let index = match.index;
+    // A run of variation selectors is one match; each of its characters is marked.
+    for (const char of match[0]) {
+      const code = `U+${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
+      const kind = BIDI.test(char) ? 'bidi' : 'invisible';
+      found.push({ index, length: char.length, kind, code });
+      index += char.length;
+    }
+  }
+  return found;
+}

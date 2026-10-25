@@ -23,6 +23,8 @@ import {
   type Expansion,
   type Gap,
   gaps,
+  type HiddenChar,
+  hiddenChars,
   hunkRows,
   revealing,
 } from './diff.ts';
@@ -83,6 +85,9 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
   );
   const shown = new Set(hunkIds ?? file.hunks.map((h) => h.id));
   const isShown = (i: number) => file.hunks[i] !== undefined && shown.has(file.hunks[i].id);
+  const hidden = file.hunks
+    .filter((h) => shown.has(h.id))
+    .reduce((n, h) => n + hiddenChars(h.patch).length, 0);
   // Comments on expanded context show again when the diff does.
   const [expanded, setExpanded] = useState<Record<number, Expansion>>(() => {
     if (side === null || fileGaps === null) return {};
@@ -207,10 +212,10 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
           </td>
           <td>
             {onSelectHunk === undefined ? (
-              header
+              <Marked text={header} />
             ) : (
               <button type="button" className="link" onClick={() => onSelectHunk(hunk.id)}>
-                {header}
+                <Marked text={header} />
               </button>
             )}
           </td>
@@ -223,6 +228,12 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
   return (
     <div className="diff">
       {file.contentOmitted !== null && <p className="note">{OMITTED_NOTES[file.contentOmitted]}</p>}
+      {hidden > 0 && (
+        <p className="note hidden-note">
+          {count(hidden, 'hidden character')} in these changes (bidirectional controls or invisible
+          characters), each marked with its code point.
+        </p>
+      )}
       {parts.length > 0 && (
         <div className="diff-scroll">
           <table className="diff-table" data-path={path}>
@@ -383,9 +394,12 @@ function CommentRow({ children }: { children: ReactNode }) {
 /**
  * `text` exactly, split into spans: highlighted tokens, then any trailing whitespace, which is
  * marked so it can be seen. The carriage return of a CRLF line gets its own span, which the styles
- * show as `␍` without adding it to the text. So does each bidirectional control (`Bidi`).
+ * show as `␍` without adding it to the text. So does each bidirectional control and invisible
+ * character (`Marked`).
  */
 function LineText({ text, tokens }: { text: string; tokens: Token[] }) {
+  const hidden = hiddenChars(text);
+  const marked = (from: number, to: number) => withMarks(text, hidden, from, to);
   const body = text.endsWith('\r') ? text.slice(0, -1) : text;
   const end = body.trimEnd().length;
   const parts: ReactNode[] = [];
@@ -393,19 +407,19 @@ function LineText({ text, tokens }: { text: string; tokens: Token[] }) {
   for (const t of tokens) {
     const to = Math.min(t.to, end);
     if (t.from < at || t.from >= to) continue;
-    if (t.from > at) parts.push(...withBidi(text, at, t.from));
+    if (t.from > at) parts.push(...marked(at, t.from));
     parts.push(
       <span key={t.from} className={t.classes}>
-        {withBidi(text, t.from, to)}
+        {marked(t.from, to)}
       </span>,
     );
     at = to;
   }
-  if (end > at) parts.push(...withBidi(text, at, end));
+  if (end > at) parts.push(...marked(at, end));
   if (end < body.length) {
     parts.push(
       <span key="ws" className="trailing-ws">
-        {withBidi(text, end, body.length)}
+        {marked(end, body.length)}
       </span>,
     );
   }
@@ -419,33 +433,39 @@ function LineText({ text, tokens }: { text: string; tokens: Token[] }) {
   return parts;
 }
 
-/** The Unicode bidirectional controls (`Bidi`). */
-const BIDI = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+/** `text` exactly, with each bidirectional control and invisible character marked (`withMarks`). */
+function Marked({ text }: { text: string }) {
+  return withMarks(text, hiddenChars(text), 0, text.length);
+}
+
+const MARK_TITLES: Record<HiddenChar['kind'], string> = {
+  bidi: 'Bidirectional control',
+  invisible: 'Invisible character',
+};
 
 /**
- * `text` from `from` to `to`, with each bidirectional control in a span of its own. Code can use
- * them to show differently from how it runs ("Trojan Source", CVE-2021-42574). The span isolates
- * the control, so it reorders nothing outside it, and the styles show its code point, without
- * adding text (#35).
+ * `text` from `from` to `to`, with each of the `hidden` characters in it in a span of its own.
+ * Code can use them to show differently from how it runs ("Trojan Source", CVE-2021-42574). The
+ * span isolates a bidirectional control, so it reorders nothing outside it, and the styles show
+ * each one's code point, without adding text (#35, #106).
  */
-function withBidi(text: string, from: number, to: number): ReactNode[] {
+function withMarks(text: string, hidden: HiddenChar[], from: number, to: number): ReactNode[] {
   const parts: ReactNode[] = [];
   let at = from;
-  for (const match of text.slice(from, to).matchAll(BIDI)) {
-    const i = from + match.index;
-    if (i > at) parts.push(text.slice(at, i));
-    const code = `U+${match[0].charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
+  for (const h of hidden) {
+    if (h.index < from || h.index + h.length > to) continue;
+    if (h.index > at) parts.push(text.slice(at, h.index));
     parts.push(
       <span
-        key={`bidi-${i}`}
-        className="bidi"
-        data-code={code}
-        title={`Bidirectional control ${code}`}
+        key={`mark-${h.index}`}
+        className={h.kind}
+        data-code={h.code}
+        title={`${MARK_TITLES[h.kind]} ${h.code}`}
       >
-        {match[0]}
+        {text.slice(h.index, h.index + h.length)}
       </span>,
     );
-    at = i + 1;
+    at = h.index + h.length;
   }
   if (to > at) parts.push(text.slice(at, to));
   return parts;

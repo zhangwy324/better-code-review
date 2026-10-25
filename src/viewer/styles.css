@@ -298,13 +298,21 @@ button {
   color: var(--fg-muted);
 }
 
-/* A bidirectional control (Diff.tsx): isolated, so it reorders nothing around it, and shown. */
-.bidi {
+/* A bidirectional control (Diff.tsx): isolated, so it reorders nothing around it, and shown. So
+   is an invisible character. */
+.bidi,
+.invisible {
   unicode-bidi: isolate;
   background: var(--diff-trailing-ws);
 }
 
-.bidi::before {
+.hidden-note {
+  color: var(--tok-literal);
+  font-style: normal;
+}
+
+.bidi::before,
+.invisible::before {
   content: attr(data-code);
   font-size: 0.75em;
 }
