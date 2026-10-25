@@ -6,6 +6,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { run } from '../../src/cli/main.ts';
 import { selectCandidates } from '../../src/planner/index.ts';
 import { ChangeGraph, type EdgeVerdict } from '../../src/schemas/index.ts';
+import { INSTALLED_SKILL_DIR } from '../paths.ts';
 import { DEFAULT_BUDGET_USD, type EvalArgs, parseEvalArgs, runEval, TIERS } from './eval.ts';
 import { readRecording, recordingPath } from './recording.ts';
 import { planFromLabels } from './score.ts';
@@ -61,7 +62,7 @@ describe('parseEvalArgs', () => {
 function fakeClaude(answer: (graph: ChangeGraph) => string): Spawn {
   return async (_command, args, { cwd, env }) => {
     expect(args).toContain('--max-budget-usd');
-    expect(existsSync(join(cwd, '.claude/skills/better-code-review/SKILL.md'))).toBe(true);
+    expect(existsSync(join(cwd, INSTALLED_SKILL_DIR, 'SKILL.md'))).toBe(true);
     const bin = env.PATH!.split(delimiter)[0]!;
     expect(existsSync(join(bin, 'better-code-review'))).toBe(true);
 

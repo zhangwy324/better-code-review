@@ -3,22 +3,18 @@
 // covers every validator error code.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { run } from '../../src/cli/main.ts';
+import { REPO_ROOT, SKILL_DIR, SKILL_NAME } from '../paths.ts';
 
-const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const SKILL_DIR = join(ROOT, 'skills/better-code-review');
-const DOCS = [
-  'SKILL.md',
-  ...readdirSync(join(SKILL_DIR, 'references')).map((f) => `references/${f}`),
-];
-const read = (path: string) => readFileSync(join(SKILL_DIR, path), 'utf8').replaceAll('\r\n', '\n');
+const SKILL = join(REPO_ROOT, SKILL_DIR);
+const DOCS = ['SKILL.md', ...readdirSync(join(SKILL, 'references')).map((f) => `references/${f}`)];
+const read = (path: string) => readFileSync(join(SKILL, path), 'utf8').replaceAll('\r\n', '\n');
 
 /** Flags the skill names that belong to other tools (Git's `status --porcelain`). */
 const OTHER_TOOLS_FLAGS = new Set(['--porcelain']);
 
-describe('skills/better-code-review', () => {
+describe(SKILL_DIR, () => {
   it('has Agent Skills frontmatter', () => {
     const match = /^---\n([\s\S]*?)\n---\n/.exec(read('SKILL.md'));
     expect(match).not.toBeNull();
@@ -28,7 +24,7 @@ describe('skills/better-code-review', () => {
         return [line.slice(0, i), line.slice(i + 2)] as const;
       }),
     );
-    expect(fields.get('name')).toBe('better-code-review');
+    expect(fields.get('name')).toBe(SKILL_NAME);
     const description = fields.get('description') ?? '';
     expect(description.length).toBeGreaterThan(0);
     expect(description.length).toBeLessThanOrEqual(1024);
@@ -37,7 +33,7 @@ describe('skills/better-code-review', () => {
 
   it.each(DOCS)('%s names only CLI flags that exist', async (doc) => {
     let usage = '';
-    await run(['--help'], { cwd: ROOT, out: (t) => (usage += t), err: () => {} });
+    await run(['--help'], { cwd: REPO_ROOT, out: (t) => (usage += t), err: () => {} });
     const flags = new Set(read(doc).match(/--[a-z][a-z-]*/g));
     for (const flag of flags) {
       if (!OTHER_TOOLS_FLAGS.has(flag)) expect(usage, flag).toMatch(new RegExp(`${flag}\\b`));
@@ -46,12 +42,12 @@ describe('skills/better-code-review', () => {
 
   it.each(DOCS)('%s links only to files that exist', (doc) => {
     for (const [, target] of read(doc).matchAll(/\]\(([^)#]+)(?:#[^)]*)?\)/g)) {
-      expect(existsSync(join(SKILL_DIR, dirname(doc), target!)), target).toBe(true);
+      expect(existsSync(join(SKILL, dirname(doc), target!)), target).toBe(true);
     }
   });
 
   it('explains every validator error code', () => {
-    const source = readFileSync(join(ROOT, 'src/planner/validate.ts'), 'utf8');
+    const source = readFileSync(join(REPO_ROOT, 'src/planner/validate.ts'), 'utf8');
     const union = /export type PlanErrorCode =([^;]+);/.exec(source)![1]!;
     const codes = [...union.matchAll(/'([a-z-]+)'/g)].map((m) => m[1]!);
     expect(codes.length).toBeGreaterThan(0);

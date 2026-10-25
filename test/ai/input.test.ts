@@ -4,10 +4,10 @@
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { FIXTURES } from '../fixtures/index.ts';
-import { inputHash, modelInput, REFERENCES, SKILL_DIR } from './input.ts';
+import { REPO_ROOT, SKILL_DIR } from '../paths.ts';
+import { inputHash, modelInput, REFERENCES } from './input.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'bcr-ai-input-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -49,7 +49,7 @@ describe.each(FIXTURES)('skill input for $name', (fixture) => {
 });
 
 it('says of every skill reference whether the planner reads it', () => {
-  const dir = fileURLToPath(new URL(`../../${SKILL_DIR}/references`, import.meta.url));
+  const dir = join(REPO_ROOT, SKILL_DIR, 'references');
   expect(Object.keys(REFERENCES).sort()).toEqual(readdirSync(dir).sort());
 });
 
