@@ -8,7 +8,7 @@
 // changed files.
 import type { ChangeSet, FileChange } from '../../schemas/changeset.ts';
 import type { Side } from '../../schemas/common.ts';
-import { MAX_CONTENT_BYTES } from '../../git/extract.ts';
+import { type Blob, catFile, MAX_CONTENT_BYTES, parseCatFile } from '../../git/extract.ts';
 import { GitError, runGit } from '../../git/run.ts';
 
 export interface SnapshotFiles {
@@ -35,11 +35,29 @@ export function gitSnapshotFiles(repo: string, changeSet: ChangeSet): SnapshotFi
   const changed = changedContent(changeSet);
   const revision = changeSet.headRevision ?? changeSet.baseRevision;
   const cache = new Map<string, Promise<string | null>>();
+  // Reads asked for before the event loop next turns go to Git together, as one batch (#146).
+  let queue: { path: string; resolve: (content: string | null) => void }[] = [];
+
+  const flush = (revision: string) => {
+    const batch = queue;
+    queue = [];
+    void readBlobs(
+      repo,
+      revision,
+      batch.map((b) => b.path),
+    ).then((contents) => batch.forEach((b, i) => b.resolve(contents[i] ?? null)));
+  };
 
   const readUnchanged = (path: string): Promise<string | null> => {
     let content = cache.get(path);
     if (content === undefined) {
-      content = revision === null ? Promise.resolve(null) : readBlob(repo, `${revision}:${path}`);
+      content =
+        revision === null
+          ? Promise.resolve(null)
+          : new Promise((resolve) => {
+              if (queue.length === 0) setImmediate(flush, revision);
+              queue.push({ path, resolve });
+            });
       cache.set(path, content);
     }
     return content;
@@ -80,14 +98,44 @@ export function gitSnapshotFiles(repo: string, changeSet: ChangeSet): SnapshotFi
 }
 
 /**
- * A blob's text, or null when it is missing or binary, or over the content cap as a changed file
- * would be: an import can name a file of any size (#35).
+ * Each path's text at `revision`, or null when it is missing, not a file or binary, or over the
+ * content cap as a changed file would be: an import can name a file of any size (#35). Sizes come
+ * first from one `git cat-file --batch-check`, so blobs over the cap are never loaded, then the
+ * contents from one `git cat-file --batch`. If Git fails, each path is read on its own.
  */
-function readBlob(repo: string, spec: string): Promise<string | null> {
-  return runGit(repo, ['cat-file', 'blob', spec], '', undefined, MAX_CONTENT_BYTES).then(
-    (out) => (out.includes(0) ? null : out.toString('utf8')),
-    () => null,
-  );
+async function readBlobs(
+  repo: string,
+  revision: string,
+  paths: readonly string[],
+): Promise<(string | null)[]> {
+  // An empty input line reads as missing. Each line names one object, so a path with a line
+  // break cannot be asked for, and Git stops the whole batch at a path outside the repository.
+  const specs = paths.map((p) => (/[\r\n]|^\.\.(\/|$)/.test(p) ? '' : `${revision}:${p}`));
+  try {
+    // `<oid> <type> <size>` per object found, in input order, or `<spec> missing`.
+    const headers = (
+      await runGit(repo, ['cat-file', '--batch-check'], specs.map((s) => `${s}\n`).join(''))
+    )
+      .toString('utf8')
+      .split('\n');
+    const oids = specs.map((_, i) => {
+      const m = /^([0-9a-f]+) blob (\d+)$/.exec(headers[i] ?? '');
+      return m?.[1] !== undefined && Number(m[2]) <= MAX_CONTENT_BYTES ? m[1] : null;
+    });
+    const toRead = oids.flatMap((oid) => (oid === null ? [] : [{ oid }]));
+    const blobs =
+      toRead.length === 0
+        ? new Map<string, Blob>()
+        : parseCatFile(await catFile(repo, '--batch', toRead), true);
+    return oids.map((oid) => {
+      const content = oid === null ? undefined : blobs.get(oid)?.content;
+      return content === undefined || content.includes(0) ? null : content.toString('utf8');
+    });
+  } catch {
+    return paths.length === 1
+      ? [null]
+      : Promise.all(paths.map((p) => readBlobs(repo, revision, [p]).then(([c]) => c ?? null)));
+  }
 }
 
 /** Each side's changed paths, with their content (null when omitted or binary). */

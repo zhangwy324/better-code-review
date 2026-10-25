@@ -11,6 +11,8 @@ async function fixture() {
     'gone.ts': 'formatPrice\n',
     'other.ts': 'nothing here\n',
     'huge.ts': 'x'.repeat(MAX_CONTENT_BYTES + 1),
+    'binary.dat': Buffer.from([0x61, 0, 0x62]),
+    'dir/with space.ts': 'spaced\n',
   });
   const head = repo.commit([base], {
     'edit.ts': 'new\n',
@@ -40,6 +42,30 @@ describe('gitSnapshotFiles', () => {
     expect(await files.read('new', 'huge.ts')).toBeNull();
     expect(await files.read('new', '../same.ts')).toBeNull();
     expect(await files.read('new', '/etc/hosts')).toBeNull();
+  });
+
+  it('reads unchanged files asked for at once in one batch, each as it reads alone', async () => {
+    const { repo, changes } = await fixture();
+    const expected = {
+      'same.ts': 'export const formatPrice = 1;\n',
+      'dir/with space.ts': 'spaced\n',
+      'edit.ts': 'new\n',
+      'missing.ts': null,
+      'huge.ts': null,
+      'binary.dat': null,
+      dir: null,
+      'a\nb': null,
+      '../same.ts': null,
+    };
+    const paths = Object.keys(expected);
+    const files = gitSnapshotFiles(repo.path, changes);
+    const together = await Promise.all(paths.map((p) => files.read('new', p)));
+    expect(Object.fromEntries(paths.map((p, i) => [p, together[i]]))).toEqual(expected);
+    for (const path of paths) {
+      expect(await gitSnapshotFiles(repo.path, changes).read('new', path)).toBe(
+        expected[path as keyof typeof expected],
+      );
+    }
   });
 
   it('searches each side for a whole word', async () => {
