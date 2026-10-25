@@ -283,7 +283,11 @@ export function summarise(
     `Edges     ${graph.codeEdges.length > 0 ? tally(graph.codeEdges.map((e) => e.provenance)) : 'none'}`,
   );
   if (graph.files.length > 0) {
-    lines.push(`Analysis  ${tally(graph.files.map((f) => f.capabilityTier))}`);
+    const partial = graph.files.filter((f) => f.partialParse).length;
+    lines.push(
+      `Analysis  ${tally(graph.files.map((f) => f.capabilityTier))}` +
+        (partial > 0 ? ` (${partial.toLocaleString('en')} parsed partially)` : ''),
+    );
   }
   const { hunks } = planner;
   lines.push(

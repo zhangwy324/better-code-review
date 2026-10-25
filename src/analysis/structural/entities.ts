@@ -39,13 +39,19 @@ export interface Entity {
   tokens: string[];
 }
 
+/** A span of whole lines, 1-based and inclusive. */
+export interface LineRange {
+  startLine: number;
+  endLine: number;
+}
+
 /** What a file side yields besides its entities, for test classification. */
 export interface FileFacts {
   entities: Entity[];
   /** Module specifiers of the file's imports (`vitest`, `pytest`, `org.junit.jupiter.api.Test`). */
   imports: string[];
   /** Line ranges of ERROR nodes, where tree-sitter could not parse the code. */
-  errorLines: { startLine: number; endLine: number }[];
+  errorLines: LineRange[];
 }
 
 /**
@@ -124,7 +130,7 @@ export function extractFacts(file: ParsedFile): FileFacts {
 }
 
 /** ERROR and MISSING nodes, found by descending only into subtrees that contain one. */
-function errorLines(node: Node): FileFacts['errorLines'] {
+function errorLines(node: Node): LineRange[] {
   if (!node.hasError) return [];
   if (node.isError || node.isMissing) {
     return [{ startLine: node.startPosition.row + 1, endLine: node.endPosition.row + 1 }];

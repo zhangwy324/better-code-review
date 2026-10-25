@@ -25,6 +25,8 @@ export interface ReviewModel extends ReviewData {
   languages: Map<string, string | null>;
   /** Each changed file's capability tier (design reference §10.8), by `newPath ?? oldPath`. */
   tiers: Map<string, CapabilityTier>;
+  /** The files with syntax errors, which parsed partially (#93), by `newPath ?? oldPath`. */
+  partialParses: Set<string>;
   coverage: { mapped: number; total: number };
   /** The code edges, then the plan's inferred relationships, by ID. */
   links: Map<string, Link>;
@@ -120,6 +122,7 @@ export function buildModel(data: ReviewData): ReviewModel {
     hunkNodes,
     languages: new Map(graph.files.map((f) => [f.path, f.language])),
     tiers: new Map(graph.files.map((f) => [f.path, f.capabilityTier])),
+    partialParses: new Set(graph.files.filter((f) => f.partialParse).map((f) => f.path)),
     coverage: hunkCoverage(graph, changeSet),
     links,
     evidence: new Map(graph.evidence.map((e) => [e.id, e])),
@@ -205,6 +208,10 @@ export const TIER_DESCRIPTIONS: Record<CapabilityTier, string> = {
     'Structural: parsed, but no language server answered, so relationships are possible at best',
   'git-only': 'Git only: not parsed, so it shows as a diff with no relationships',
 };
+
+/** What a partial parse means (#93), for its tooltip. */
+export const PARTIAL_PARSE_DESCRIPTION =
+  'Parsed partially: the file has syntax errors, and the code around them has no entity, so its hunks are on the file';
 
 /** A language server's status in words (spec D11), e.g. `no language server installed`. */
 export const LANGUAGE_STATUS: Record<LanguageCapability['status'], string> = {

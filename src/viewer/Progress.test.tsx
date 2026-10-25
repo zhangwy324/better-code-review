@@ -10,7 +10,13 @@ import type { ReviewFeedback } from '../schemas/feedback.ts';
 import { homeEveryNode } from '../planner/validate.ts';
 import { UNGROUPED_GROUP_ID, UNGROUPED_TITLE } from '../schemas/plan.ts';
 import type { ReviewData } from './data.ts';
-import { buildModel, groupHunkIds, hunkHeader, TIER_DESCRIPTIONS } from './model.ts';
+import {
+  buildModel,
+  groupHunkIds,
+  hunkHeader,
+  PARTIAL_PARSE_DESCRIPTION,
+  TIER_DESCRIPTIONS,
+} from './model.ts';
 import { embedded, renderEmbedded, signatureReview } from './testing.tsx';
 
 let data: ReviewData;
@@ -298,5 +304,21 @@ describe('coverage and analysis', () => {
     const file = pane('Files').querySelector(`article[data-path="${gitOnly.path}"] h3`)!;
     const tier = within(file as HTMLElement).getByText('git-only');
     expect(tier.title).toBe(TIER_DESCRIPTIONS['git-only']);
+  });
+
+  it('says which files parsed partially', () => {
+    const partial = data.graph.files.find((f) => f.capabilityTier === 'structural')!;
+    const graph = {
+      ...data.graph,
+      files: data.graph.files.map((f) => (f === partial ? { ...f, partialParse: true } : f)),
+    };
+    renderEmbedded(embedded({ ...data, graph }));
+    show('Files');
+    const heading = (path: string) =>
+      pane('Files').querySelector(`article[data-path="${path}"] h3`) as HTMLElement;
+    const label = within(heading(partial.path)).getByText('parsed partially');
+    expect(label.title).toBe(PARTIAL_PARSE_DESCRIPTION);
+    const other = data.graph.files.find((f) => f !== partial)!;
+    expect(heading(other.path).textContent).not.toContain('parsed partially');
   });
 });

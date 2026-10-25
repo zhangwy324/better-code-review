@@ -24,6 +24,11 @@ export const AnalyzedFile = z.strictObject({
   test: z.enum(['path-convention', 'declared-test-root', 'content']).nullable(),
   /** Why structural analysis was skipped. Skipped files get one file node (D2). */
   skipped: z.enum(['binary', 'too-large', 'generated', 'parse-error']).nullable(),
+  /**
+   * A side has syntax errors (#93). Entities overlapping them are left out, and hunks with no
+   * other owner are unattributed. Never true for a skipped file.
+   */
+  partialParse: z.boolean(),
 });
 
 export const EntityKind = z.enum([
