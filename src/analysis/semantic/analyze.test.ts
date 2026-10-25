@@ -1144,4 +1144,55 @@ describe('analyzeSemantics: language server answers', () => {
       'old calls viaMethod -> formatPrice @src/fmt.ts:10 text-search:candidate',
     ]);
   });
+
+  it('asks about every member of an overload set and merges the answers (#97)', async () => {
+    const out = (n: number) =>
+      lines(
+        'package shop;',
+        '',
+        'public class Out {',
+        `  public void append(String s) { int a = ${n}; }`,
+        `  public void append(char c) { int b = ${n}; }`,
+        '}',
+      );
+    const use = (n: number) =>
+      lines(
+        'package shop;',
+        '',
+        'public class Use {',
+        '  void run(Out out) {',
+        `    out.append('x'); int c = ${n};`,
+        '  }',
+        '}',
+      );
+    const run = (answer: (target: ReferenceTarget) => ReferencesResult) => {
+      const lsp = fakeLsp(answer);
+      const files = (n: number) => ({
+        'src/main/java/shop/Out.java': out(n),
+        'src/main/java/shop/Use.java': use(n),
+      });
+      return analyse(files(1), files(2), { lsp }).then((result) => ({ lsp, result }));
+    };
+    // Like jdtls: only the `char` overload, the second member, knows the call (jsoup #2321).
+    const call = site('src/main/java/shop/Use.java', 5, 9);
+    const { lsp, result } = await run((t) => (t.line === 5 ? ok(call) : ok()));
+    expect(lsp.asked.map((t) => [t.path, t.line, t.column])).toEqual([
+      ['src/main/java/shop/Out.java', 4, 15],
+      ['src/main/java/shop/Out.java', 5, 15],
+    ]);
+    expect(newSide(summary(result))).toEqual([
+      'new calls Use.run -> Out.append @src/main/java/shop/Use.java:5 text-search:candidate lsp:confirmed',
+    ]);
+
+    // A member the server could not answer about stops rejections, not confirmations.
+    const partial = await run((t) =>
+      t.line === 5 ? { status: 'unknown', reason: 'not ready' } : ok(),
+    );
+    expect(partial.result.evidence.records.filter((r) => r.method === 'lsp')).toEqual([]);
+    // Missing from every member's answer: rejected.
+    const none = await run(() => ok());
+    expect(newSide(summary(none.result))).toEqual([
+      'new calls Use.run -> Out.append @src/main/java/shop/Use.java:5 text-search:candidate lsp:rejected',
+    ]);
+  });
 });

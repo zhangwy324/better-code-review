@@ -51,7 +51,13 @@ import {
   type TargetKey,
 } from './imports.ts';
 import { rangeContains } from './normalise.ts';
-import type { FilePosition, LspSession, ProjectHealth, SessionCapability } from './session.ts';
+import type {
+  FilePosition,
+  LspSession,
+  ProjectHealth,
+  ReferencesResult,
+  SessionCapability,
+} from './session.ts';
 import { changeSetFiles, type SnapshotFiles } from './snapshot-files.ts';
 
 /** Source entities kept per (changed entity, relation); the rest is reported as a cap (D1). */
@@ -107,8 +113,12 @@ interface TargetSide {
   path: string;
   search: string;
   key: TargetKey;
-  /** The grammar and the name's position, for `references`. */
-  lsp: { language: string; line: number; column: number } | null;
+  /**
+   * The grammar and the name's positions, for `references`: one per member of an overload set,
+   * since a server such as jdtls answers each overload on its own (#97). A constructor has one,
+   * its class name.
+   */
+  lsp: { language: string; positions: { line: number; column: number }[] } | null;
   /**
    * For a method of a class with bases: the class and its bases. Calls through a base type are
    * not in its references, and a server may return its siblings' calls among them (#42), so a
@@ -326,8 +336,13 @@ async function lspTarget(
     constructor
       ? d.kind === 'class' && d.name === search && startsIn(d.range, facts.range)
       : d.kind === facts.kind && d.name === facts.name && within(d.range, facts.range);
-  const declaration = declarations(parsed).find(inside);
+  const found = declarations(parsed).filter(inside);
+  const declaration = found[0];
   if (!declaration) return { lsp: null, receiverTypes: null, baseMethods: [], ownerClass: null };
+  // Each member's own declaration, not one nested in it; a constructor is asked of its class.
+  const named = constructor
+    ? [declaration]
+    : facts.members.flatMap((m) => found.find((d) => within(d.range, m)) ?? []);
   let receiverTypes: string[] | null = null;
   let ownerClass: TargetSide['ownerClass'] = null;
   const baseMethods: FilePosition[] = [];
@@ -348,9 +363,12 @@ async function lspTarget(
       if (found) baseMethods.push(found);
     }
   }
-  const at = declaration.nameRange;
+  const positions = (named.length > 0 ? named : [declaration]).map(({ nameRange: at }) => ({
+    line: at.startLine,
+    column: at.startColumn ?? 1,
+  }));
   return {
-    lsp: { language: file.grammar, line: at.startLine, column: at.startColumn ?? 1 },
+    lsp: { language: file.grammar, positions },
     receiverTypes,
     baseMethods,
     ownerClass,
@@ -616,17 +634,23 @@ async function verify(pairs: Pair[], side: Side, lsp: ReferenceProvider): Promis
   for (const target of new Set(open.map((p) => p.target))) {
     const own = target.sides[side]!;
     const at = own.lsp!;
-    const result = await lsp.references({
-      language: at.language,
-      path: own.path,
-      line: at.line,
-      column: at.column,
-      kind: target.entity.kind,
-      ...(own.receiverTypes === null ? {} : { receiverTypes: own.receiverTypes }),
-      ...(own.baseMethods.length === 0 ? {} : { baseMethods: own.baseMethods }),
-      ...(own.ownerClass === null ? {} : { ownerClass: { path: own.path, ...own.ownerClass } }),
-    });
-    if (result.status !== 'ok') continue;
+    const answers: ReferencesResult[] = [];
+    for (const [index, position] of at.positions.entries()) {
+      answers.push(
+        await lsp.references({
+          language: at.language,
+          path: own.path,
+          ...position,
+          kind: target.entity.kind,
+          ...(own.receiverTypes === null ? {} : { receiverTypes: own.receiverTypes }),
+          // The base methods are the same for every member: asked about once.
+          ...(own.baseMethods.length === 0 || index > 0 ? {} : { baseMethods: own.baseMethods }),
+          ...(own.ownerClass === null ? {} : { ownerClass: { path: own.path, ...own.ownerClass } }),
+        }),
+      );
+    }
+    const result = mergeAnswers(answers);
+    if (result === null) continue;
     for (const pair of open.filter((p) => p.target === target)) {
       const isHit = (r: { path: string; range: SourceRange }) =>
         r.path === pair.file.path && rangeContains(r.range, pair.hit.line, pair.hit.column);
@@ -645,8 +669,10 @@ async function verify(pairs: Pair[], side: Side, lsp: ReferenceProvider): Promis
       // A method of a class with bases is not rejected for a missing call: calls through a base
       // method are not in its own references (#42). A call the server returned but whose
       // receiver's type is a sibling class is (#80); a subclass or a further ancestor is not.
-      const excluded = result.excluded.find(isHit);
-      if (excluded ? !excluded.sibling : own.receiverTypes !== null) continue;
+      // Excluded by several members' answers: rejected only if a sibling for each.
+      const excludedBy = result.excluded.filter(isHit);
+      const excluded = excludedBy[0];
+      if (excluded ? excludedBy.some((e) => !e.sibling) : own.receiverTypes !== null) continue;
       if (result.unresolved.some(isHit)) continue;
       const resolves =
         (await healthy(at.language, own.path)) && (await healthy(at.language, pair.file.path));
@@ -659,6 +685,23 @@ async function verify(pairs: Pair[], side: Side, lsp: ReferenceProvider): Promis
       };
     }
   }
+}
+
+/**
+ * The answers about each member of an overload set as one (#97): a site any member returned is
+ * returned. Null when no answer is `ok`; complete only when every answer is, so a member the
+ * server could not answer about stops rejections but not confirmations.
+ */
+function mergeAnswers(answers: ReferencesResult[]): (ReferencesResult & { status: 'ok' }) | null {
+  const ok = answers.filter((a) => a.status === 'ok');
+  if (ok.length === 0) return null;
+  return {
+    status: 'ok',
+    references: ok.flatMap((a) => a.references),
+    unresolved: ok.flatMap((a) => a.unresolved),
+    excluded: ok.flatMap((a) => a.excluded),
+    complete: ok.length === answers.length && ok.every((a) => a.complete),
+  };
 }
 
 /** Not yet rejected, and a server can be asked about it on its side. */

@@ -345,6 +345,7 @@ The model behaves as well as in the spike: 0 audited false accepts and 1 audited
 3. **Show the `new X() {` line for a method of an anonymous class**, and say in the dispatch rule that an implementation defined in a test or an anonymous class counts too. This would cover the 1 reasoning error. The prompt was not changed in #43.
    #96 did the first half. A changed method of an anonymous class now shows the line its class starts on, `new X() {` in Java or `class … {` for a TypeScript or JavaScript class expression, where a named class shows its header. The batch rules now also say that an implementation counts wherever it is defined, in a test or an anonymous class too. jsoup has not been re-scored yet; that is a live run.
 4. **Ask the server about every member of an overload set** (#16/#17). The 3 wrong truths came from asking about only the first.
+   #97 did this. Each member is asked about at its own name and the answers are merged. jsoup's truth has not been regenerated yet; that needs jdtls.
 
 **Cost and volume.**
 - **Decisions:** 249 were asked, against the spike's 636, because import resolution and the unambiguous rule now settle more edges before the AI step. On jsoup, 4 of its 98 settled edges are ones the server rejects; that is an import-resolution precision note.

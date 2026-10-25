@@ -1,5 +1,5 @@
 // The semantic analyzer with real language servers on the signature fixture (#17 acceptance:
-// "With LSP"). Each suite runs only when its server is installed, so CI without servers skips
+// "With LSP"), and on an overload set whose later members have callers (#97). Each suite runs only when its server is installed, so CI without servers skips
 // them. Servers are found by lsp-servers.test-helper.ts: on PATH, or in the directories
 // listed in BCR_LSP_TEST_PATH (the first one with a server is used), e.g.
 //   BCR_LSP_TEST_PATH=/a/node_modules/.bin npx vitest run analyze.integration
@@ -8,7 +8,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { checkoutRevision } from '../../git/checkout.ts';
-import { analyse, SIGNATURE_BASE, SIGNATURE_HEAD, summary } from './fixture.test-helper.ts';
+import {
+  analyse,
+  SIGNATURE_BASE,
+  SIGNATURE_HEAD,
+  summary,
+  type Files,
+} from './fixture.test-helper.ts';
 import { installedServers } from './lsp-servers.test-helper.ts';
 import { LspSession } from './session.ts';
 
@@ -83,6 +89,56 @@ for (const [language, label] of [
         } finally {
           for (const session of sessions) await session.close();
           rmSync(baseDir, { recursive: true, force: true });
+        }
+      },
+      TIMEOUT,
+    );
+  });
+}
+
+// Callers of the first and second members of an overload set, as in jsoup #2321 (#43): each
+// member is asked about, so none is rejected for reaching a later one. jdtls answers each Java
+// overload on its own; the TypeScript servers know the whole set, so this checks the merge.
+const overloads = (n: number): Files => ({
+  'tsconfig.json': SIGNATURE_BASE['tsconfig.json']!,
+  'src/out.ts': [
+    'export class Out {',
+    '  append(s: string): void;',
+    '  append(c: number): void;',
+    '  append(x: string | number): void {',
+    `    void x, ${n};`,
+    '  }',
+    '}',
+    '',
+  ].join('\n'),
+  'src/use.ts': [
+    "import type { Out } from './out.ts';",
+    '',
+    'export function both(out: Out): void {',
+    `  out.append('${n}');`,
+    `  out.append(${n});`,
+    '}',
+    '',
+  ].join('\n'),
+});
+
+for (const { searchPath, launch } of installedServers('typescript')) {
+  describe(`${launch.configuration ?? launch.name} on an overload set`, () => {
+    it(
+      'verifies callers of every overload',
+      async () => {
+        let session: LspSession | null = null;
+        try {
+          const result = await analyse(overloads(1), overloads(2), async (repo) => {
+            session = await LspSession.start(repo.path, ['typescript'], { searchPath, timeouts });
+            return { lsp: session };
+          });
+          expect(summary(result).filter((l) => l.startsWith('new '))).toEqual([
+            'new calls both -> Out.append @src/use.ts:4 text-search:candidate lsp:confirmed',
+            'new calls both -> Out.append @src/use.ts:5 text-search:candidate lsp:confirmed',
+          ]);
+        } finally {
+          await (session as LspSession | null)?.close();
         }
       },
       TIMEOUT,
