@@ -8,7 +8,7 @@ import type { ChangeNode } from '../schemas/graph.ts';
 import type { ReviewGroup } from '../schemas/plan.ts';
 import { count } from '../text/index.ts';
 import { GroupComments } from './Comments.tsx';
-import { Diff } from './Diff.tsx';
+import { Diff, Marked } from './Diff.tsx';
 import {
   filePath,
   groupHunkIds,
@@ -112,7 +112,10 @@ function NodeDetail({ node }: { node: ChangeNode }) {
           return (
             <li key={id}>
               <button type="button" className="link" onClick={() => select({ kind: 'hunk', id })}>
-                <code>{hunkHeader(entry.hunk)}</code> +{added} −{removed}
+                <code>
+                  <Marked text={hunkHeader(entry.hunk)} />
+                </code>{' '}
+                +{added} −{removed}
               </button>
             </li>
           );
@@ -247,7 +250,9 @@ function HunkDetail({ id }: { id: string }) {
   return (
     <>
       <h2>
-        <code>{hunkHeader(entry.hunk)}</code>
+        <code>
+          <Marked text={hunkHeader(entry.hunk)} />
+        </code>
       </h2>
       <p className="path">{filePath(entry.file)}</p>
       <NodeLinks ids={(model.hunkNodes.get(id) ?? []).map((n) => n.id)} />

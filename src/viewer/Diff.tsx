@@ -444,7 +444,7 @@ function LineText({ text, tokens }: { text: string; tokens: Token[] }) {
 }
 
 /** `text` exactly, with each bidirectional control and invisible character marked (`withMarks`). */
-function Marked({ text }: { text: string }) {
+export function Marked({ text }: { text: string }) {
   return withMarks(text, hiddenChars(text), 0, text.length);
 }
 

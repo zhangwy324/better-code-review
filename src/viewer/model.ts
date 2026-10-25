@@ -257,6 +257,10 @@ export function lineCounts(hunks: Iterable<DiffHunk>): { added: number; removed:
   return { added, removed };
 }
 
+/**
+ * The hunk's `@@` line as Git wrote it, with any function context after it: the line its diff
+ * shows, so the hunk reads the same everywhere (#108). Git leaves out a one-line range's `,1`.
+ */
 export function hunkHeader(hunk: DiffHunk): string {
-  return `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`;
+  return hunk.patch.split('\n', 1)[0]!;
 }
