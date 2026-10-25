@@ -30,7 +30,7 @@ The review directory then holds what §20 step 7 shows: `changes.json`, `graph.j
 
 - no element came from the data, and each data element reads back unchanged;
 - no element has a `src` or `href`, the styles have no `url(` or `@import`, and the policy names the script's hash and no host;
-- the notices list every bundled package;
+- the notices list exactly the packages with code in the bundle (its script and styles), each with its licence text (#112);
 - a second build and a second render give identical bytes, and so does a build whose `LICENSE` has CRLF line endings (#111).
 
 `src/cli/render.test.ts` is the end-to-end test (#34 acceptance): `generate --local` on the signature fixture's uncommitted change writes a `review.html` whose embedded documents pass the viewer's own load checks, then an agent plan with a homeless node is rendered with Ungrouped made. It also checks that `render` refuses an invalid plan and leaves the page alone, and that `--open` failures are only reported.
