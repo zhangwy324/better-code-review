@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { type DefaultTreeAdapterMap, parse } from 'parse5';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { renderReview, writeReview } from './render.ts';
-import { buildViewer } from './viewer.test-helper.ts';
+import { buildViewer, buildViewerWithModules } from './viewer.test-helper.ts';
 
 type Element = DefaultTreeAdapterMap['element'];
 type ParentNode = DefaultTreeAdapterMap['parentNode'];
@@ -24,10 +24,11 @@ const documents = {
 
 let tmp: string;
 let template: string;
+let bundled: string[];
 
 beforeAll(async () => {
   tmp = mkdtempSync(join(tmpdir(), 'bcr-render-'));
-  template = await buildViewer(join(tmp, 'viewer'));
+  ({ page: template, modules: bundled } = await buildViewerWithModules(join(tmp, 'viewer')));
 });
 
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
@@ -94,11 +95,23 @@ describe('renderReview', () => {
     expect(csp).not.toMatch(/https?:|\*/);
   });
 
-  it('carries the notices for the code bundled in it', () => {
-    const notices = /<!--\n(Better Code Review[\s\S]*?)\n-->/.exec(template)?.[1];
+  it('carries a notice, with its licence text, for each package bundled in it and no other', () => {
+    const notices = /<!--\n(Better Code Review[\s\S]*?)\n-->/.exec(template)?.[1] ?? '';
     expect(notices).toContain('Copyright (c) 2026 David Zhang');
-    for (const name of ['react', 'react-dom', 'react-resizable-panels', 'scheduler', 'zod']) {
-      expect(notices).toContain(`## ${name} - `);
+    // The package of each bundled module: the path after its last node_modules/ (#112).
+    const packages = new Set(
+      bundled.flatMap((id) => {
+        const match = /.*\/node_modules\/((?:@[^/]+\/)?[^/]+)\//.exec(id.replaceAll('\\', '/'));
+        return match ? [match[1]!] : [];
+      }),
+    );
+    expect(packages).toContain('react');
+    const sections = notices.split(/^## /m).slice(1);
+    const listed = sections.map((section) => section.slice(0, section.indexOf(' - ')));
+    expect([...listed].sort()).toEqual([...packages].sort());
+    for (const section of sections) {
+      const [heading, ...body] = section.trim().split('\n');
+      expect(body.join('\n').trim(), `licence text for ${heading}`).not.toBe('');
     }
   });
 
