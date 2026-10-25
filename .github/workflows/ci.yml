@@ -39,6 +39,7 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+      - run: node scripts/tmp-notices-hash.ts
       - run: npm test
 
   lsp:
