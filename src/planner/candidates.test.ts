@@ -240,6 +240,47 @@ describe('candidateBatches', () => {
     expect(batches.flatMap((b) => b.edgeIds).filter((id) => id === e.id)).toHaveLength(1);
   });
 
+  it('shows the `new X() {` line of an anonymous class as its owner (#96)', async () => {
+    // As in jsoup #2321: a test's anonymous Appendable, reached by dispatch from an Appendable.
+    const stub = (body: string) =>
+      lines(
+        'class PrinterTest {',
+        '  void broken() {',
+        '    Appendable stub = new Appendable() {',
+        `      public Appendable append(CharSequence s) { ${body} }`,
+        '    };',
+        '  }',
+        '}',
+      );
+    const printer = (arg: string) =>
+      lines(
+        'class Printer {',
+        '  void print(Appendable a, String s) throws java.io.IOException {',
+        `    a.append(${arg});`,
+        '  }',
+        '}',
+      );
+    const other = lines('class Other {', '  void append(String s) {}', '}');
+    const { structure, graph, files } = await setup(
+      {
+        'src/PrinterTest.java': stub('return this;'),
+        'src/Printer.java': printer('s'),
+        'src/Other.java': other,
+      },
+      {
+        'src/PrinterTest.java': stub('s.length(); return this;'),
+        'src/Printer.java': printer('s.trim()'),
+        'src/Other.java': other,
+      },
+    );
+    const { batches } = await candidateBatches(structure, graph, files);
+    const text = batches.map((b) => b.text).join('\n');
+    expect(text).toContain(
+      'new src/PrinterTest.java:3|     Appendable stub = new Appendable() {\nnew src/PrinterTest.java:4|       public Appendable append(',
+    );
+    expect(text).toContain(`- ${edge(graph, 'Printer.print', 'PrinterTest.broken.append').id} → `);
+  });
+
   it('shows the re-export line for a hit through an alias', async () => {
     const { structure, graph, files } = await setup(SIGNATURE_BASE, SIGNATURE_HEAD);
     // As if import resolution had not followed `export { formatPrice as fmt }`.

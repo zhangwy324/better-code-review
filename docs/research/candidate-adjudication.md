@@ -343,6 +343,7 @@ The model behaves as well as in the spike: 0 audited false accepts and 1 audited
 2. **Keep up to 3 hits per side for a test-file edge** in the evidence (#42's policy), not 1, so the batch can show them. This would cover the 2 click misses.
    #95 did this. The first 3 in file order would still all be line 421's test, so hits inside an entity that declares the target (the test whose nested `cli` it is) come before the rest. `generate --no-lsp` on click now shows lines 452, 456 and 463 for one edge and 421, 476 and 481 for the other. The test-file windows also show the `def test_…` line each hit is in. Batch 2 grew from about 7.9k to 10.2k characters; nothing else changed.
 3. **Show the `new X() {` line for a method of an anonymous class**, and say in the dispatch rule that an implementation defined in a test or an anonymous class counts too. This would cover the 1 reasoning error. The prompt was not changed in #43.
+   #96 did the first half. A changed method of an anonymous class now shows the line its class starts on, `new X() {` in Java or `class … {` for a TypeScript or JavaScript class expression, where a named class shows its header. The rule change waits for the recordings to be re-recorded, since the batch rules are in their compatibility hash.
 4. **Ask the server about every member of an overload set** (#16/#17). The 3 wrong truths came from asking about only the first.
 
 **Cost and volume.**
