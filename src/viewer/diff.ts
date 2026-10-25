@@ -63,6 +63,21 @@ export function contextSide(file: FileChange): Side | null {
   return null;
 }
 
+/**
+ * How many digits the largest line number the diff of `file` can show has, on either side: the
+ * gutter is that wide, so its columns can stay put when a long line scrolls the diff (#107).
+ */
+export function lineDigits(file: FileChange): number {
+  let max = 0;
+  for (const h of file.hunks) {
+    max = Math.max(max, h.oldStart + h.oldLines, h.newStart + h.newLines);
+  }
+  for (const content of [file.oldContent, file.newContent]) {
+    if (content !== null) max = Math.max(max, contentLines(content).length);
+  }
+  return String(max).length;
+}
+
 /** A file's lines, split on `\n` only, so a `\r` stays at the end of its line as in the patch. */
 export function contentLines(content: string): string[] {
   const lines = content.split('\n');

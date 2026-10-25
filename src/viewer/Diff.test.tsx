@@ -12,7 +12,7 @@ import { GitRepo, isolatedGitEnv } from '../../test/fixtures/repo.ts';
 import type { ChangeSet, FileChange } from '../schemas/changeset.ts';
 import type { ChangeGraph } from '../schemas/graph.ts';
 import { Diff } from './Diff.tsx';
-import { contentLines, hiddenChars } from './diff.ts';
+import { contentLines, hiddenChars, lineDigits } from './diff.ts';
 import { lineCounts } from './model.ts';
 import { generateReview } from './testing.tsx';
 
@@ -244,6 +244,22 @@ describe('Diff', () => {
     expect([...crs].every((cr) => cr.textContent === '\r')).toBe(true);
     // A line ending isn't trailing whitespace.
     expect(container.querySelector('.trailing-ws')).toBeNull();
+  });
+
+  it('sizes the gutter for the widest line number on either side', () => {
+    // The gutter is sticky (#107), so its columns have fixed widths, from the digits.
+    const f = file('src/tricky.ts');
+    expect(lineDigits(f)).toBe(String(contentLines(f.newContent!).length).length);
+    const { container } = renderDiff(f);
+    expect(
+      container.querySelector<HTMLElement>('.diff-table')!.style.getPropertyValue('--line-digits'),
+    ).toBe('3');
+    // An old file longer than every hunk and the new file still fits.
+    const shrunk = { ...f, oldContent: 'x\n'.repeat(12_345), hunks: f.hunks.slice(0, 1) };
+    expect(lineDigits(shrunk)).toBe(5);
+    expect(lineDigits({ ...f, oldContent: null, newContent: null })).toBe(
+      String(Math.max(...f.hunks.map((h) => h.newStart + h.newLines))).length,
+    );
   });
 
   it('says when context is unavailable, and shows the patch alone', () => {
