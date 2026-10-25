@@ -31,6 +31,7 @@ describe('checkoutRevision', () => {
 
   it('runs none of the repository hooks', async () => {
     const repo = new TestRepo();
+    repo.git('config', 'core.autocrlf', 'false');
     const head = repo.commit([], { 'a.ts': 'a\n' });
     // Git runs post-index-change for read-tree, even into another index file.
     const marker = join(out, 'hook-ran');
