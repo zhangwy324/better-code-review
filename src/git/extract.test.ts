@@ -601,6 +601,35 @@ describe('extractChangeSet: deletions, binary, non-UTF-8, huge and generated fil
     expect(byPath(uncapped, 'grows.txt').newContent).toBe(`small\n${big.repeat(3)}`);
   });
 
+  it('omits the content of the files past the cap for the whole change, in diff order', async () => {
+    // In diff order: app.min.js (9 bytes) and bom.txt (14, both sides) fit in 30. chmod.png (16),
+    // deleted.ts (23) and latin1.txt (13) would each take the total over it; deleted-empty.txt
+    // (0) still fits. chmod.png is binary, but only reading it would tell (see above).
+    const changes = await extractChangeSet(
+      repo.path,
+      { kind: 'commit', commit: head },
+      { maxContentBytes: 200, maxTotalContentBytes: 30 },
+    );
+    const omitted = changes.files.filter((f) => f.contentOmitted === 'too-large');
+    expect(omitted.map((f) => f.newPath ?? f.oldPath)).toEqual([
+      'chmod.png',
+      'deleted.ts',
+      'grows.txt',
+      'latin1.txt',
+      'shrinks.txt',
+    ]);
+    expect(byPath(changes, 'deleted.ts').hunks).toHaveLength(1);
+    expect(byPath(changes, 'app.min.js').newContent).toBe('var a=1;\n');
+    expect(byPath(changes, 'deleted-empty.txt').oldContent).toBe('');
+    expectGitHunks(repo, base, head, changes);
+  });
+
+  it('fails a diff over its cap, with what to do instead', async () => {
+    await expect(
+      extractChangeSet(repo.path, { kind: 'commit', commit: head }, { maxDiffBytes: 100 }),
+    ).rejects.toThrow(/^The diff is over 0 MiB, .*review a smaller change/);
+  });
+
   it('stores generated files like any other; the structural analyzer marks them', async () => {
     const changes = await extract();
     expect(byPath(changes, 'app.min.js')).toMatchObject({

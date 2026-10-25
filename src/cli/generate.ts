@@ -52,7 +52,7 @@ import {
   type ReviewRequest,
   type ReviewTarget,
 } from '../schemas/index.ts';
-import { count, occurrences, UNCHANGED_CALLERS_NOTE } from '../text/index.ts';
+import { count, occurrences, quotePath, UNCHANGED_CALLERS_NOTE } from '../text/index.ts';
 
 /** A ReviewRequest whose output directory may be left to the D9 default. */
 export type GenerateRequest = Omit<ReviewRequest, 'outputDirectory'> & {
@@ -314,7 +314,7 @@ export function summarise(
   );
   const tests = graph.files.filter((f) => f.test !== null);
   if (tests.length > 0) {
-    lines.push(`Tests     ${tests.map((f) => f.path).join(', ')}`);
+    lines.push(`Tests     ${tests.map((f) => quotePath(f.path)).join(', ')}`);
   }
 
   if (graph.languages.length > 0) {
@@ -338,7 +338,7 @@ export function summarise(
     const nodeOf = new Map(graph.nodes.map((n) => [n.entityId, n.displayName]));
     for (const cap of graph.caps) {
       const name = nodeOf.get(cap.entityId) ?? cap.entityId;
-      lines.push(`  ${name} ${cap.relation}: showing ${cap.shown} of ${cap.total}`);
+      lines.push(`  ${quotePath(name)} ${cap.relation}: showing ${cap.shown} of ${cap.total}`);
     }
   }
 

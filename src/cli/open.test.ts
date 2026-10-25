@@ -3,7 +3,7 @@
 import type { ChildProcess, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import { openFile } from './open.ts';
+import { openFile, windowsExplorer } from './open.ts';
 
 /** A `spawn` that records its call and, on the next tick, emits `event` from the child. */
 function fakeSpawn(event: 'spawn' | 'error') {
@@ -24,7 +24,7 @@ function fakeSpawn(event: 'spawn' | 'error') {
 describe('openFile', () => {
   it.each([
     ['darwin', 'open'],
-    ['win32', 'explorer.exe'],
+    ['win32', windowsExplorer()],
     ['linux', 'xdg-open'],
   ] as const)('on %s runs %s, detached, and does not wait for it', async (platform, command) => {
     const fake = fakeSpawn('spawn');

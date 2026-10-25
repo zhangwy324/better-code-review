@@ -2,7 +2,8 @@
 // each with its review progress (#32), its home nodes and the nodes it only references. The
 // Ungrouped / requires review group stands out (§13.2). Above the groups, what analysis the
 // review had: the capability tiers of the files and each language server's status, so a missing
-// analyzer is never hidden (design reference §10.8, §13.4; spec D11).
+// analyzer is never hidden (design reference §10.8, §13.4; spec D11). Below them, a reminder that
+// the page holds the code.
 import type { ReviewGroup } from '../schemas/plan.ts';
 import { count, occurrences } from '../text/index.ts';
 import {
@@ -29,9 +30,14 @@ export function Outline() {
           return group === undefined ? [] : [<GroupItem key={id} group={group} />];
         })}
       </ol>
+      <p className="hint">{SHARING_NOTE}</p>
     </nav>
   );
 }
+
+/** The page carries the code it reviews (spec D7), so sharing it shares the code (§19.5 Q6, #35). */
+export const SHARING_NOTE =
+  'This page contains the full text of every changed file. Share it only where that code may go.';
 
 /**
  * The analysis the review had: how many files got each capability tier, and each language's

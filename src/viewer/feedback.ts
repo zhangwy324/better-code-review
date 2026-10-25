@@ -15,7 +15,7 @@ import {
   ReviewFeedback,
 } from '../schemas/feedback.ts';
 import type { ChangeNode } from '../schemas/graph.ts';
-import { count } from '../text/index.ts';
+import { count, quoted, quotePath } from '../text/index.ts';
 import { type ReviewModel, targetLabel } from './model.ts';
 
 /** The file the export downloads as. */
@@ -138,13 +138,13 @@ export function commentLocation(model: ReviewModel, comment: ReviewComment): str
     const title = model.groups.get(comment.groupId)?.title;
     return title === undefined
       ? `Group ${comment.groupId}`
-      : `Group "${title}" (${comment.groupId})`;
+      : `Group ${quoted(title)} (${comment.groupId})`;
   }
   const { startLine, endLine } = comment.range;
   const lines = startLine === endLine ? `${startLine}` : `${startLine}-${endLine}`;
   const node = comment.nodeId === null ? undefined : model.nodes.get(comment.nodeId);
-  const where = node === undefined ? '' : `, in ${node.displayName}`;
-  return `${comment.path}:${lines} (${comment.side} side${where})`;
+  const where = node === undefined ? '' : `, in ${quotePath(node.displayName)}`;
+  return `${quotePath(comment.path)}:${lines} (${comment.side} side${where})`;
 }
 
 /** What the page keeps in `localStorage` for a snapshot. */

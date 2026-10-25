@@ -19,7 +19,7 @@ import { describeTarget } from '../git/describe.ts';
 import type { ChangeSet, DiffHunk, FileChange } from '../schemas/changeset.ts';
 import type { ChangeGraph, ChangeNode, CodeEdge, GraphFile } from '../schemas/graph.ts';
 import type { SourceRange } from '../schemas/common.ts';
-import { count, list, tally, UNCHANGED_CALLERS_NOTE } from '../text/index.ts';
+import { count, list, quotePath, tally, UNCHANGED_CALLERS_NOTE } from '../text/index.ts';
 import type { Candidates } from './candidates.ts';
 import { redactSecrets, sensitiveFile } from './secrets.ts';
 
@@ -151,8 +151,10 @@ export function plannerInput(
     if (withheld !== null) parts.push(`diffs not inlined: ${withheld}`);
     const { added, removed } = lineCounts(file.hunks);
     const from =
-      file.oldPath !== null && file.oldPath !== file.newPath ? ` (from ${file.oldPath})` : '';
-    head.push(`- ${filePath(file)}${from}: ${parts.join(', ')}, +${added} −${removed}`);
+      file.oldPath !== null && file.oldPath !== file.newPath
+        ? ` (from ${quotePath(file.oldPath)})`
+        : '';
+    head.push(`- ${quotePath(filePath(file))}${from}: ${parts.join(', ')}, +${added} −${removed}`);
   }
 
   head.push('', `## Nodes (${graph.nodes.length})`, '');
@@ -168,7 +170,7 @@ export function plannerInput(
       '`callee ← caller`. Only `verified` edges are proven; `possible` ones are candidates.',
     );
     head.push('');
-    const name = (id: string) => nodeById.get(id)?.displayName ?? id;
+    const name = (id: string) => quotePath(nodeById.get(id)?.displayName ?? id);
     for (const edge of graph.codeEdges) head.push(`- ${edgeLine(edge, name, graph)}`);
   }
   if (options.candidates) head.push('', ...candidateLines(options.candidates));
@@ -194,7 +196,8 @@ export function plannerInput(
     const withheld = withheldReason(file, g);
     for (const hunk of file.hunks) {
       const nodes = nodesOfHunk.get(hunk.id) ?? [];
-      const label = nodes.length > 0 ? ` (${list(nodes.map((n) => n.displayName))})` : '';
+      const label =
+        nodes.length > 0 ? ` (${list(nodes.map((n) => quotePath(n.displayName)))})` : '';
       const lines = hunk.patch.replace(/\n$/, '').split('\n');
       const body = lines.length - 1;
       const truncated = withheld === null && body > maxHunkLines;
@@ -226,7 +229,7 @@ export function plannerInput(
 
   const fileHeaders = changeSet.files
     .filter((f) => f.hunks.length > 0)
-    .map((f) => `\n### ${filePath(f)}\n`);
+    .map((f) => `\n### ${quotePath(filePath(f))}\n`);
   const fixed = [...head, '', '## Diffs', '', ...fileHeaders].join('\n');
   let remaining =
     tokenBudget -
@@ -248,7 +251,7 @@ export function plannerInput(
   const diffs: string[] = [];
   for (const file of changeSet.files) {
     if (file.hunks.length === 0) continue;
-    diffs.push('', `### ${filePath(file)}`, '');
+    diffs.push('', `### ${quotePath(filePath(file))}`, '');
     for (const e of entries.filter((x) => x.file === file)) {
       if (chosen.has(e)) {
         diffs.push(e.block!);
@@ -269,7 +272,7 @@ export function plannerInput(
     head.splice(
       at,
       0,
-      `- Redacted ${count(redactedKinds.length, 'secret')} (${tally(redactedKinds)}) in ${list([...redactedPaths])}.`,
+      `- Redacted ${count(redactedKinds.length, 'secret')} (${tally(redactedKinds)}) in ${list([...redactedPaths].map(quotePath))}.`,
     );
   }
   const intro =
@@ -332,12 +335,13 @@ function noteLines(changeSet: ChangeSet, graph: ChangeGraph): string[] {
   const name = new Map(graph.nodes.map((n) => [n.entityId, n.displayName]));
   for (const cap of graph.caps) {
     notes.push(
-      `Fan-out capped: ${name.get(cap.entityId) ?? cap.entityId} ${cap.relation}, ` +
+      `Fan-out capped: ${quotePath(name.get(cap.entityId) ?? cap.entityId)} ${cap.relation}, ` +
         `showing ${cap.shown} of ${cap.total}.`,
     );
   }
   if (changeSet.excludedUntrackedPaths.length > 0) {
-    notes.push(`Untracked files not included: ${changeSet.excludedUntrackedPaths.join(', ')}.`);
+    const paths = changeSet.excludedUntrackedPaths.map(quotePath);
+    notes.push(`Untracked files not included: ${paths.join(', ')}.`);
   }
   for (const warning of changeSet.warnings) notes.push(`Extraction warning: ${warning}.`);
   return notes;
@@ -352,26 +356,28 @@ export function nodeLine(node: ChangeNode): string {
       : r.startLine === r.endLine
         ? `:${r.startLine}`
         : `:${r.startLine}-${r.endLine}`;
-  const oldPath = node.oldPath ?? node.path;
+  const path = quotePath(node.path);
+  const oldPath = quotePath(node.oldPath ?? node.path);
   let where: string;
   if (node.newRange === null && node.oldRange !== null) {
     where = `${oldPath}${lines(node.oldRange)} (deleted)`;
   } else {
-    where = `${node.path}${lines(node.newRange)}`;
+    where = `${path}${lines(node.newRange)}`;
     const old = `${oldPath}${lines(node.oldRange)}`;
     if (node.oldRange !== null && old !== where) {
-      where += ` (was ${oldPath === node.path ? lines(node.oldRange).slice(1) : old})`;
+      where += ` (was ${oldPath === path ? lines(node.oldRange).slice(1) : old})`;
     } else if (node.oldRange === null && node.oldPath !== null) {
-      where += ` (from ${node.oldPath})`;
+      where += ` (from ${oldPath})`;
     }
   }
   const hunks = node.hunkIds.length === 0 ? 'no hunks' : node.hunkIds.join(' ');
-  return `${node.id} ${what} ${node.displayName} @ ${where}: ${hunks}`;
+  return `${node.id} ${what} ${quotePath(node.displayName)} @ ${where}: ${hunks}`;
 }
 
 /** One code edge as the planner input lists it. */
 export function edgeLine(edge: CodeEdge, name: (id: string) => string, graph: ChangeGraph): string {
-  const from = edge.granularity === 'entity' ? name(edge.from) : `${edge.fromPath} (test file)`;
+  const from =
+    edge.granularity === 'entity' ? name(edge.from) : `${quotePath(edge.fromPath)} (test file)`;
   const records = graph.evidence.filter((r) => edge.evidenceIds.includes(r.id));
   const sites = new Set(
     records.map((r) => `${r.location.side}:${r.location.path}:${r.location.range.startLine}`),
@@ -380,7 +386,7 @@ export function edgeLine(edge: CodeEdge, name: (id: string) => string, graph: Ch
   const methods = tally(records.map((r) => `${r.method} ${r.outcome}`));
   return (
     `${edge.id} ${name(edge.to)} ← ${from}: ${edge.relation}, ${edge.provenance}, ` +
-    `sides ${edge.sides}, ${count(sites.size, 'hit')} (first ${first.path}:${first.range.startLine} ${first.side}; ${methods})`
+    `sides ${edge.sides}, ${count(sites.size, 'hit')} (first ${quotePath(first.path)}:${first.range.startLine} ${first.side}; ${methods})`
   );
 }
 

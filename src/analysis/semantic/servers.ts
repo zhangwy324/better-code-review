@@ -8,6 +8,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSyn
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { resolveExecutable } from '../../git/run.ts';
 
 export type ServerId = 'typescript' | 'python' | 'java' | 'rust';
 
@@ -325,11 +326,12 @@ export function checkProjectPackages(root: string): string | null {
   // A checkout without `.git` (src/git/checkout.ts) only holds tracked files, and Git run there
   // would answer for whatever repository encloses the directory, if any.
   if (!existsSync(join(root, '.git'))) return 'node_modules was checked out from Git';
-  const tracked = spawnSync('git', ['ls-files', '-z', '--', 'node_modules'], {
-    cwd: root,
-    encoding: 'utf8',
-  });
-  if (tracked.error || tracked.status !== 0) {
+  const git = resolveExecutable('git');
+  const tracked =
+    git === null
+      ? null
+      : spawnSync(git, ['ls-files', '-z', '--', 'node_modules'], { cwd: root, encoding: 'utf8' });
+  if (tracked === null || tracked.error || tracked.status !== 0) {
     return 'could not check with Git whether node_modules is tracked';
   }
   if (tracked.stdout) return 'node_modules is tracked by Git';
@@ -392,7 +394,8 @@ function withPackagesNote(ctx: DiscoveryContext, found: Discovery): Discovery {
     : { launch: null, why: `${found.why}; ${note}` };
 }
 
-function isInside(path: string, dir: string): boolean {
+/** Whether `path` is `dir` or inside it, by name: `..x` is a name, `../x` is outside. */
+export function isInside(path: string, dir: string): boolean {
   const rel = relative(dir, path);
   return !isAbsolute(rel) && rel.split(sep)[0] !== '..';
 }

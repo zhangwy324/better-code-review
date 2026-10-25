@@ -73,7 +73,9 @@ What the reviewer has covered, what the artifact covers, and what analysis it ha
 
 ## Untrusted text
 
-Repository text (paths, code, PR titles) and model text (plan titles, descriptions, explanations) are rendered only as React text, so they are never HTML or script (spec invariant 6). ESLint enforces this in viewer code: `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write` and `createContextualFragment` are errors, and so is any `node:` import. `App.test.tsx` renders a plan and graph with `<img onerror>` and `<script>` in their text.
+Repository text (paths, code, PR titles) and model text (plan titles, descriptions, explanations) are rendered only as React text, so they are never HTML or script (spec invariant 6). ESLint enforces this in viewer code: `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write` and `createContextualFragment` are errors, and so is any `node:` import. `App.test.tsx` renders a plan and graph with `<img onerror>` and `<script>` in their text, and `Security.test.tsx` renders the `malicious-content` fixture with a hostile plan in every view (#35).
+
+A bidirectional control in a diff line (Trojan Source) is put in a span of its own, isolated so it reorders nothing around it and shown by its code point, without adding text. The outline ends with a note that the page contains every changed file's text. The whole checklist is [`SECURITY.md`](../../SECURITY.md).
 
 ## Building and developing
 

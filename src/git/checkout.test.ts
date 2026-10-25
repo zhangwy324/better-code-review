@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -27,5 +27,25 @@ describe('checkoutRevision', () => {
 
     expect(repo.git('ls-files', '--stage')).toBe(index);
     expect(repo.git('worktree', 'list').trim().split('\n')).toHaveLength(1);
+  });
+
+  it('runs none of the repository hooks', async () => {
+    const repo = new TestRepo();
+    repo.git('config', 'core.autocrlf', 'false');
+    const head = repo.commit([], { 'a.ts': 'a\n' });
+    // Git runs post-index-change for read-tree, even into another index file.
+    const marker = join(out, 'hook-ran');
+    for (const hook of ['post-index-change', 'post-checkout']) {
+      writeFileSync(
+        join(repo.path, '.git', 'hooks', hook),
+        `#!/bin/sh\necho ${hook} >> '${marker}'\n`,
+        {
+          mode: 0o755,
+        },
+      );
+    }
+    await checkoutRevision(repo.path, head, join(out, 'hooks'));
+    expect(readFileSync(join(out, 'hooks', 'a.ts'), 'utf8')).toBe('a\n');
+    expect(existsSync(marker)).toBe(false);
   });
 });

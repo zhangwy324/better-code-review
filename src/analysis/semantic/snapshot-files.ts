@@ -8,6 +8,7 @@
 // changed files.
 import type { ChangeSet, FileChange } from '../../schemas/changeset.ts';
 import type { Side } from '../../schemas/common.ts';
+import { MAX_CONTENT_BYTES } from '../../git/extract.ts';
 import { GitError, runGit } from '../../git/run.ts';
 
 export interface SnapshotFiles {
@@ -38,13 +39,7 @@ export function gitSnapshotFiles(repo: string, changeSet: ChangeSet): SnapshotFi
   const readUnchanged = (path: string): Promise<string | null> => {
     let content = cache.get(path);
     if (content === undefined) {
-      content =
-        revision === null
-          ? Promise.resolve(null)
-          : runGit(repo, ['cat-file', 'blob', `${revision}:${path}`]).then(
-              (out) => (out.includes(0) ? null : out.toString('utf8')),
-              () => null,
-            );
+      content = revision === null ? Promise.resolve(null) : readBlob(repo, `${revision}:${path}`);
       cache.set(path, content);
     }
     return content;
@@ -82,6 +77,17 @@ export function gitSnapshotFiles(repo: string, changeSet: ChangeSet): SnapshotFi
       return [...paths].sort();
     },
   };
+}
+
+/**
+ * A blob's text, or null when it is missing or binary, or over the content cap as a changed file
+ * would be: an import can name a file of any size (#35).
+ */
+function readBlob(repo: string, spec: string): Promise<string | null> {
+  return runGit(repo, ['cat-file', 'blob', spec], '', undefined, MAX_CONTENT_BYTES).then(
+    (out) => (out.includes(0) ? null : out.toString('utf8')),
+    () => null,
+  );
 }
 
 /** Each side's changed paths, with their content (null when omitted or binary). */

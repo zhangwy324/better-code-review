@@ -9,7 +9,8 @@
 // - Untracked files that .gitignore and the other exclude files don't ignore are added when
 //   `includeUntracked` is set. Otherwise they are listed as excluded, never dropped silently.
 // - Files tracked despite matching .gitignore stay tracked, as Git treats them.
-// - Clean filters and `core.autocrlf` apply, as they do for `git diff` and `git add`.
+// - Clean filters and `core.autocrlf` apply, as they do for `git diff` and `git add`. No hooks
+//   run (run.ts).
 //
 // The capture stages everything into a throwaway copy of the index (GIT_INDEX_FILE), so the
 // user's index is never touched. Git does write the blobs into the object database as loose

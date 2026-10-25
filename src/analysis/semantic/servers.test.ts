@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   checkProjectPackages,
   type DiscoveryContext,
+  isInside,
   type Launch,
   safeSearchPath,
   serverFor,
@@ -206,6 +207,16 @@ describe('safeSearchPath', () => {
       delimiter,
     );
     expect(safeSearchPath(path, root)).toBe(outside);
+  });
+});
+
+describe('isInside', () => {
+  it('tells a name starting with two dots from a parent directory', () => {
+    const root = join(dir, 'project');
+    expect(isInside(root, root)).toBe(true);
+    expect(isInside(join(root, '..x', 'a.ts'), root)).toBe(true);
+    expect(isInside(join(root, '..', 'a.ts'), root)).toBe(false);
+    expect(isInside(join(dir, 'project-2'), root)).toBe(false);
   });
 });
 
