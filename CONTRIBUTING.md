@@ -27,9 +27,9 @@ npm run check   # format check, lint, typecheck, build, tests: the same steps CI
 | `npm run licenses` | Checks production dependency and vendored grammar licences and writes `THIRD_PARTY_NOTICES` |
 | `npm run fixtures` | Lists the test fixture portfolio, or builds one fixture as a repository to try by hand ([`test/fixtures/README.md`](test/fixtures/README.md)) |
 | `npm run viewer` | Serves the viewer with a review directory's data, for development ([`src/viewer/README.md`](src/viewer/README.md)) |
-| `npm run eval` | Live, budget-capped runs of the AI steps. **Spends real AI usage**; never part of `check` or CI ([Testing AI steps](#testing-ai-steps)) |
+| `npm run eval:live` | Live, budget-capped runs of the AI steps. **Spends real AI usage**; never part of `check` or CI ([Testing AI steps](#testing-ai-steps)) |
 | `npm run eval:check-current` | Fails unless every recording is current: the gate before a milestone closes or a release is cut. Calls no model ([Milestones and releases](#milestones-and-releases)) |
-| `npm run score:adjudication` | Scores the caller verdicts of the runs `eval` kept against ground truth (#43). Reads files only ([Testing AI steps](#testing-ai-steps)) |
+| `npm run score:adjudication` | Scores the caller verdicts of the runs `eval:live` kept against ground truth (#43). Reads files only ([Testing AI steps](#testing-ai-steps)) |
 | `npm run grammars` | Re-vendors the built-in tree-sitter grammars from their pins ([`src/analysis/structural/README.md`](src/analysis/structural/README.md)) |
 
 ## Layout
@@ -63,7 +63,7 @@ The CLI makes no model calls ([MVP spec D8](docs/mvp-spec.md)). `plan.json` and 
 |---|---|---|
 | `stubRunner(outputs)` | Unit tests. Returns scripted outputs in order, e.g. a bad plan then a good one | No |
 | `replayRunner(dir)` | Replay tests, against a recorded real run in [`test/ai/recordings/`](test/ai/recordings/README.md) | No |
-| `liveRunner(caps)` | `npm run eval` only. Headless `claude -p --model <m> --max-turns <n> --max-budget-usd <usd> --output-format stream-json --verbose`, with only `Read`, `Write`, `Edit` and `Bash(better-code-review:*)` | Yes |
+| `liveRunner(caps)` | `npm run eval:live` only. Headless `claude -p --model <m> --max-turns <n> --max-budget-usd <usd> --output-format stream-json --verbose`, with only `Read`, `Write`, `Edit` and `Bash(better-code-review:*)` | Yes |
 
 - **What a run does.** The eval runs the skill itself (#25), not a copy of its instructions. [`test/ai/input.ts`](test/ai/input.ts) sets each run up:
   - it builds the fixture's repository and copies the skill's `SKILL.md` and planning references into its `.claude/skills/better-code-review/`
@@ -78,14 +78,14 @@ The CLI makes no model calls ([MVP spec D8](docs/mvp-spec.md)). `plan.json` and 
   A reference for another task, such as `feedback-workflow.md`, or for the steps after `validate`, where the prompt stops (`render-workflow.md`, #34), is marked `other`: it is neither installed nor hashed (#121). Keep what the planner needs before `validate` in `SKILL.md` or a `planning` reference. Replay never falls back to a live call. Re-recording after a prompt-side change is optional mid-milestone: do it when a pull request knowingly changes planning behaviour, and before the [milestone gate](#milestones-and-releases).
 - **Input size.** `test/ai/input.test.ts` estimates each fixture's input size (characters ÷ 4, no API call) and fails above a per-fixture ceiling, so input bloat fails a normal test.
 
-### `npm run eval`
+### `npm run eval:live`
 
 **This spends real AI usage. Ask before running it** (AGENTS.md), and say which model, fixtures and budget you plan to use.
 
 ```bash
-npm run eval                                 # smoke: claude-haiku-5-5 on signature, $0.25 cap
-npm run eval -- --fixture same-name --model claude-sonnet-5-5
-npm run eval -- --tier quality --max-budget-usd 2 --allow-large-budget
+npm run eval:live                            # smoke: claude-haiku-5-5 on signature, $0.25 cap
+npm run eval:live -- --fixture same-name --model claude-sonnet-5-5
+npm run eval:live -- --tier quality --max-budget-usd 2 --allow-large-budget
 ```
 
 | Tier | Model | Fixtures | Use |

@@ -1,4 +1,4 @@
-// `npm run eval` (#85): live, budget-capped runs of the skill (#25) on portfolio fixtures. It spends
+// `npm run eval:live` (#85): live, budget-capped runs of the skill (#25) on portfolio fixtures. It spends
 // real AI usage, so it is opt-in and never part of `npm run check` or CI (AGENTS.md: ask first).
 // Each run:
 // - passes `--max-budget-usd` to `claude -p`, always;
@@ -36,7 +36,7 @@ export const LARGE_BUDGET_USD = 1;
 /** The skill takes about ten tool calls (generate, read, write, validate, repair). */
 export const DEFAULT_MAX_TURNS = 30;
 
-export const EVAL_USAGE = `Usage: npm run eval -- [options]
+export const EVAL_USAGE = `Usage: npm run eval:live -- [options]
 
 Live runs of the better-code-review skill with claude -p. This spends real AI usage.
 
@@ -46,7 +46,7 @@ Options:
   --fixture <name>         Run this fixture instead (repeatable)
   --model <id>             Use this model instead of the tier's
   --max-budget-usd <usd>   Cap per run (default ${DEFAULT_BUDGET_USD}); always passed to claude
-  --allow-large-budget     Allow a cap above ${LARGE_BUDGET_USD} per run
+  --allow-large-budget     Allow a cap above $${LARGE_BUDGET_USD} per run
   --max-turns <n>          Cap per run (default ${DEFAULT_MAX_TURNS})
   --runs <n>               Runs per fixture, for consistency (default 1)
 `;

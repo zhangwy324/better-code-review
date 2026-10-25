@@ -1,5 +1,5 @@
 // The deterministic half of the planner evaluation (#26, design reference §17.3 M2): checks an
-// agent's plan.json on a portfolio fixture. `npm run eval` prints the checks for every live run,
+// agent's plan.json on a portfolio fixture. `npm run eval:live` prints the checks for every live run,
 // and replay.test.ts asserts them for every committed recording. What needs judgement (are the
 // summaries grounded, is the order useful to a person) is scored by hand in
 // docs/research/planner-eval.md.
@@ -131,7 +131,7 @@ function homes(plan: ReviewPlan): Map<string, Place> {
 
 const compare = (a: Place, b: Place) => a.rank - b.rank || a.index - b.index;
 
-/** One line per check, for `npm run eval`. */
+/** One line per check, for `npm run eval:live`. */
 export function formatScore({ checks, verdicts }: PlanScore): string {
   const passed = checks.filter((c) => c.ok).length;
   const lines = [

@@ -31,7 +31,7 @@
     "grammars": "node scripts/grammars.ts",
     "fixtures": "node scripts/fixtures.ts",
     "viewer": "node scripts/viewer.ts",
-    "eval": "node scripts/eval.ts",
+    "eval:live": "node scripts/eval.ts",
     "eval:check-current": "node scripts/check-recordings.ts",
     "score:adjudication": "node scripts/score-adjudication.ts",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm test",

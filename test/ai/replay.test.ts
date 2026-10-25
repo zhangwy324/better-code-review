@@ -25,7 +25,7 @@ const recordings = readRecordings(RECORDINGS_DIR).map((r, i) => ({ i, ...r }));
 const KNOWN_FAILS: Record<string, string[]> = {};
 
 describe('recordings', () => {
-  if (recordings.length === 0) it.skip('none yet; npm run eval records them', () => {});
+  if (recordings.length === 0) it.skip('none yet; npm run eval:live records them', () => {});
   else
     it.each(recordings)('$path is usable and scores as known', async ({ i, path, recording }) => {
       const { input, plan, current } = await replayRecording(
