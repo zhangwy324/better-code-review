@@ -9,12 +9,20 @@
 // hunk or run of context extends it to a range, and the comment shows below the range's last line.
 // The comments live in the provider (state.tsx), not here, so every view that shows a diff shows
 // the same ones. So does review progress (#32): each hunk's header has its "reviewed" checkbox.
-import { type CSSProperties, Fragment, type ReactNode, useMemo, useState } from 'react';
+import {
+  type ClipboardEvent,
+  type CSSProperties,
+  Fragment,
+  type ReactNode,
+  useMemo,
+  useState,
+} from 'react';
 import type { FileChange } from '../schemas/changeset.ts';
 import type { Side } from '../schemas/common.ts';
 import type { LineComment } from '../schemas/feedback.ts';
 import { count } from '../text/index.ts';
 import { CommentForm, CommentView } from './Comments.tsx';
+import { copiedCode } from './copy.ts';
 import {
   contentLines,
   contextRow,
@@ -203,14 +211,14 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
     }
     flushSkipped();
     emitted = true;
-    const { header, rows } = hunkRows(hunk);
+    const header = hunkHeader(hunk);
     parts.push(
       <tbody key={hunk.id} className="hunk" data-hunk-id={hunk.id}>
         <tr className="hunk-header">
           <td colSpan={3} className="gutter">
             <ReviewedCheckbox
               hunkIds={[hunk.id]}
-              label={`Mark ${path} ${hunkHeader(hunk)} reviewed`}
+              label={`Mark ${path} ${header} reviewed`}
               text=""
             />
           </td>
@@ -224,7 +232,7 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
             )}
           </td>
         </tr>
-        {rows.map((row, n) => renderRow(row, n, hunk.id, hunk.id))}
+        {hunkRows(hunk).map((row, n) => renderRow(row, n, hunk.id, hunk.id))}
       </tbody>,
     );
   }
@@ -244,6 +252,7 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
             className="diff-table"
             data-path={path}
             style={{ '--line-digits': Math.max(digits, 3) } as CSSProperties}
+            onCopy={copyOneSide}
           >
             {parts}
           </table>
@@ -251,6 +260,19 @@ export function Diff({ file, hunkIds, language, onSelectHunk }: Props) {
       )}
     </div>
   );
+}
+
+/**
+ * Copies only one side's code from a selection in the diff (`copiedCode()`, #109). A copy from a
+ * comment's text or form is left to the browser.
+ */
+function copyOneSide(event: ClipboardEvent<HTMLTableElement>) {
+  if (event.target instanceof Element && event.target.closest('.comment-row') !== null) return;
+  const selection = window.getSelection();
+  const text = selection === null ? null : copiedCode(event.currentTarget, selection);
+  if (text === null) return;
+  event.clipboardData.setData('text/plain', text);
+  event.preventDefault();
 }
 
 /** A gap's revealed lines, and the buttons that reveal more, from whichever end has a hunk. */
