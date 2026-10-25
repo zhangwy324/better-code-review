@@ -298,6 +298,17 @@ button {
   color: var(--fg-muted);
 }
 
+/* A bidirectional control (Diff.tsx): isolated, so it reorders nothing around it, and shown. */
+.bidi {
+  unicode-bidi: isolate;
+  background: var(--diff-trailing-ws);
+}
+
+.bidi::before {
+  content: attr(data-code);
+  font-size: 0.75em;
+}
+
 /* Comments (Comments.tsx, and in the diff). A comment stays at the diff's left edge when it
    scrolls sideways. */
 .num-button {
