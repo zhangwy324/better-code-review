@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { gitSync } from '../../../test/fixtures/repo.ts';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -154,8 +154,7 @@ describe('Python discovery', () => {
 
 describe('checkProjectPackages', () => {
   const project = () => join(dir, 'project');
-  const git = (...args: string[]) =>
-    execFileSync('git', ['-c', 'core.autocrlf=false', ...args], { cwd: project(), stdio: 'pipe' });
+  const git = (...args: string[]) => gitSync(project(), ['-c', 'core.autocrlf=false', ...args]);
   beforeEach(() => {
     mkdirSync(project());
     git('init', '-q');

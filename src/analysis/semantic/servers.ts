@@ -330,7 +330,13 @@ export function checkProjectPackages(root: string): string | null {
   const tracked =
     git === null
       ? null
-      : spawnSync(git, ['ls-files', '-z', '--', 'node_modules'], { cwd: root, encoding: 'utf8' });
+      : // Synchronous, so a git that never exits would hang the whole process; a timeout counts
+        // as a failure (#103).
+        spawnSync(git, ['ls-files', '-z', '--', 'node_modules'], {
+          cwd: root,
+          encoding: 'utf8',
+          timeout: 60_000,
+        });
   if (tracked === null || tracked.error || tracked.status !== 0) {
     return 'could not check with Git whether node_modules is tracked';
   }

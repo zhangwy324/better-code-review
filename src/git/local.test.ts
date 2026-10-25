@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -14,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ChangeSet } from '../schemas/index.ts';
 import { extractChangeSet } from './extract.ts';
 import { SnapshotChangedError } from './local.ts';
+import { gitSync } from '../../test/fixtures/repo.ts';
 import { ENV, ISOLATED_GIT_ENV } from './test-repo.test-helper.ts';
 
 // Real working trees this time: the local target reads files from disk. The extractor runs
@@ -40,11 +40,7 @@ class WorkTree {
   }
 
   git(...args: string[]): string {
-    return execFileSync('git', args, {
-      cwd: this.path,
-      env: ENV,
-      encoding: 'utf8',
-    });
+    return gitSync(this.path, args, { env: ENV });
   }
 
   write(files: Record<string, string | null>): void {
@@ -233,7 +229,7 @@ describe('extractChangeSet: local target edge cases', () => {
   it('refuses a bare repository', async () => {
     const bare = mkdtempSync(join(tmpdir(), 'bcr-bare-'));
     dirs.push(bare);
-    execFileSync('git', ['init', '-q', '--bare'], { cwd: bare });
+    gitSync(bare, ['init', '-q', '--bare']);
     await expect(extractChangeSet(bare, { kind: 'local', includeUntracked: true })).rejects.toThrow(
       /bare repository/,
     );

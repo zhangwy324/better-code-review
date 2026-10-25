@@ -4,7 +4,16 @@
 // takes tens of milliseconds to start on Windows, so a commit runs five, however many files it has
 // (#146).
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Fixture } from './fixture.ts';
 
@@ -28,6 +37,49 @@ export function isolatedGitEnv(globalConfig: string): Record<string, string> {
  * suite running. This leaves ample room for a slow Windows runner.
  */
 const GIT_TIMEOUT_MS = 60_000;
+
+/**
+ * Runs `git <args>` synchronously in `cwd` and returns its stdout. Tests use this for every
+ * synchronous git call: one blocks the test runner's own timeouts, so a stuck git would hang the
+ * whole run (#131). It fails after GIT_TIMEOUT_MS instead, naming the command.
+ *
+ * `input` goes to git as a file, not through `execFileSync`'s `input` option. On macOS, now and
+ * then, git never saw the end of a stdin that Node wrote that way: it sat in read() until the
+ * timeout, and that hung `npm test` on CI (#103). A file always ends.
+ */
+export function gitSync(
+  cwd: string,
+  args: readonly string[],
+  { env, input }: { env?: NodeJS.ProcessEnv; input?: string | Buffer | undefined } = {},
+): string {
+  const stdinDir = input === undefined ? undefined : mkdtempSync(join(tmpdir(), 'bcr-stdin-'));
+  let stdin: number | 'pipe' = 'pipe';
+  try {
+    if (stdinDir !== undefined && input !== undefined) {
+      const file = join(stdinDir, 'stdin');
+      writeFileSync(file, input);
+      stdin = openSync(file, 'r');
+    }
+    // stderr is piped too, so it ends up in the error rather than in the test output.
+    return execFileSync('git', args, {
+      cwd,
+      env,
+      encoding: 'utf8',
+      stdio: [stdin, 'pipe', 'pipe'],
+      timeout: GIT_TIMEOUT_MS,
+    });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
+      throw new Error(`git ${args.join(' ')} in ${cwd} took over ${GIT_TIMEOUT_MS / 1000}s`, {
+        cause: err,
+      });
+    }
+    throw err;
+  } finally {
+    if (typeof stdin === 'number') closeSync(stdin);
+    if (stdinDir !== undefined) rmSync(stdinDir, { recursive: true, force: true });
+  }
+}
 
 export type FileSpec =
   string | Buffer | null | { mode: '100755' | '120000'; content: string | Buffer };
@@ -57,25 +109,7 @@ export class GitRepo {
   }
 
   gitInput(input: string | Buffer | undefined, ...args: string[]): string {
-    try {
-      return execFileSync('git', args, {
-        cwd: this.path,
-        env: this.env,
-        input,
-        encoding: 'utf8',
-        timeout: GIT_TIMEOUT_MS,
-      });
-    } catch (err) {
-      // A synchronous call blocks the test runner's own timeouts, so a stuck git would hang the
-      // whole run (#131). Name the command instead.
-      if ((err as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
-        throw new Error(
-          `git ${args.join(' ')} in ${this.path} took over ${GIT_TIMEOUT_MS / 1000}s`,
-          { cause: err },
-        );
-      }
-      throw err;
-    }
+    return gitSync(this.path, args, { env: this.env, input });
   }
 
   /** Stages `files` (null deletes) on top of `parents[0]`, commits and returns the commit ID. */
