@@ -2,7 +2,8 @@
 // database itself, so the repository's own Git does the resolving and diffing. `runCommand` is
 // the process plumbing, shared with the GitHub CLI runner (pr.ts).
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
+import { delimiter, extname, isAbsolute, join } from 'node:path';
 
 export class GitError extends Error {
   readonly args: readonly string[];
@@ -96,8 +97,10 @@ export function runCommand(
   options: RunCommandOptions,
 ): Promise<CommandOutput> {
   const { input, env, maxOutputBytes = Infinity, notFound, failed } = options;
+  const file = resolveExecutable(command);
+  if (file === null) return Promise.reject(notFound(new Error(`${command} is not on PATH`)));
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = spawn(file, args, {
       cwd,
       env: env && { ...process.env, ...env },
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -134,6 +137,30 @@ export function runCommand(
     child.stdin.on('error', () => {});
     child.stdin.end(input);
   });
+}
+
+/**
+ * The file to run for `command`. On Windows, Node (libuv) looks a bare name up in the working
+ * directory before `PATH`, and we run Git in the repository under review, so a `git.exe` the
+ * change adds would run (#35, design reference §14.2). There a bare name is found on `PATH`'s
+ * absolute entries instead, trying `.com` then `.exe` as libuv does, and null means not found.
+ * Elsewhere, and for a name with a directory, it is `command` itself.
+ */
+export function resolveExecutable(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+  searchPath: string = process.env.PATH ?? '',
+): string | null {
+  if (platform !== 'win32' || /[\\/]/.test(command)) return command;
+  const names = extname(command) ? [command] : [`${command}.com`, `${command}.exe`];
+  for (const dir of searchPath.split(delimiter)) {
+    if (!isAbsolute(dir)) continue;
+    for (const name of names) {
+      const file = join(dir, name);
+      if (statSync(file, { throwIfNoEntry: false })?.isFile()) return file;
+    }
+  }
+  return null;
 }
 
 /** `runGit`, decoded as UTF-8 with the trailing newline removed. */
