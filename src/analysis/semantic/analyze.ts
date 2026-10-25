@@ -736,31 +736,33 @@ function carryOverRejections(pairs: Pair[]): void {
  * on each side, as examples for whoever judges the edge (#42, #95), so the edge still shows
  * whether the call was added, removed or kept, and notes how many there were. The most decided
  * come first, then hits inside an entity that declares the target (a test's nested function,
- * which only that test can call), then the file's order. The other hits stay visible in the diff.
+ * which only that test can call), then the file's order. Only the first hit's relation is kept,
+ * on both sides, so the kept hits make one edge, not one per relation. The other hits stay
+ * visible in the diff.
  */
 function collapseTestFiles(pairs: Pair[]): Pair[] {
   const groups = new Map<string, Pair[]>();
   for (const pair of pairs) {
     if (!pair.file.test) continue;
-    const key = JSON.stringify([pair.file.filePath, pair.target.entity.id, pair.file.side]);
+    const key = JSON.stringify([pair.file.filePath, pair.target.entity.id]);
     groups.set(key, [...(groups.get(key) ?? []), pair]);
   }
   const keep = new Set<Pair>();
   for (const group of groups.values()) {
-    // A stable sort, so ties keep the file's order. Only the first hit's relation, so the kept
-    // hits make one edge, not one per relation.
+    // A stable sort, so ties keep the analyzer's order: the new side first, then the file's.
     const sorted = [...group].sort(
       (a, b) => rank(a) - rank(b) || Number(declaresTarget(b)) - Number(declaresTarget(a)),
     );
-    const kept = sorted
-      .filter((p) => p.relation === sorted[0]!.relation)
-      .slice(0, MAX_TEST_FILE_HITS);
-    for (const pair of kept) keep.add(pair);
-    if (group.length > kept.length) {
-      const first = group.find((p) => keep.has(p))!;
-      first.notes.push(
-        `test file: ${kept.length} of ${group.length} ${first.file.side}-side hits kept`,
-      );
+    for (const side of ['new', 'old'] as const) {
+      const own = group.filter((p) => p.file.side === side);
+      const kept = sorted
+        .filter((p) => p.file.side === side && p.relation === sorted[0]!.relation)
+        .slice(0, MAX_TEST_FILE_HITS);
+      for (const pair of kept) keep.add(pair);
+      if (kept.length > 0 && own.length > kept.length) {
+        const first = own.find((p) => keep.has(p))!;
+        first.notes.push(`test file: ${kept.length} of ${own.length} ${side}-side hits kept`);
+      }
     }
   }
   return pairs.filter((p) => !p.file.test || keep.has(p));

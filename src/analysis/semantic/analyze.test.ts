@@ -600,7 +600,7 @@ describe('analyzeSemantics: test files and caps', () => {
     expect(oldSide(summary(result))).toHaveLength(3);
   });
 
-  it("keeps a test file's hits of one relation per side, so they make one edge", async () => {
+  it("keeps a test file's hits of one relation, so they make one edge", async () => {
     const test = (n: number) =>
       lines(
         "import { formatPrice } from '../src/price';",
@@ -615,6 +615,32 @@ describe('analyzeSemantics: test files and caps', () => {
       { 'src/price.ts': PRICE_HEAD, 'test/price.test.ts': test(2) },
     );
     expect(newSide(summary(result))).toEqual([
+      'new references formats -> formatPrice @test/price.test.ts:3 text-search:candidate import-resolution:confirmed',
+    ]);
+
+    // A call on the old side and a reference on the new: the new side's relation, on both.
+    const changed = await analyse(
+      {
+        'src/price.ts': PRICE_BASE,
+        'test/price.test.ts': lines(
+          "import { formatPrice } from '../src/price';",
+          "it('formats', () => {",
+          "  expect(formatPrice(1)).toBe('1');",
+          '});',
+        ),
+      },
+      {
+        'src/price.ts': PRICE_HEAD,
+        'test/price.test.ts': lines(
+          "import { formatPrice } from '../src/price';",
+          "it('formats', () => {",
+          '  const f = formatPrice;',
+          "  expect(f(1)).toBe('1');",
+          '});',
+        ),
+      },
+    );
+    expect(summary(changed)).toEqual([
       'new references formats -> formatPrice @test/price.test.ts:3 text-search:candidate import-resolution:confirmed',
     ]);
   });
