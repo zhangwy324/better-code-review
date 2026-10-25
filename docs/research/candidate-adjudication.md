@@ -307,14 +307,16 @@ The same base and head commits as above, staged as a local change. HEAD is the b
 | PR | Edges (no LSP) | Settled without AI | Asked | Scored | Yes ✓/✗ | No ✓/✗ | Unsure | Cost | Tokens in / out |
 |---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
 | date-fns | 11 | 10 | 1 | 1 | 0/0 | 1/0 | 0 | $0.167 | 154k / 3.9k |
-| hono | 0 | 0 | 0 | – | – | – | – | – | – |
+| hono¹ | 21 | 15 | 6 | 6 | 6/0 | 0/0 | 0 | $0.177 | 151k / 5.1k |
 | httpx | 20 | 18 | 2 | 2 | 0/0 | 2/0 | 0 | $0.203 | 131k / 3.3k |
 | click | 40 | 10 | 30 | 27 | 23/0 | 2/**2** | 0 | $0.433 | 568k / 13.2k |
 | gson | 19 | 15 | 4 | 4 | 4/0 | 0/0 | 0 | $0.198 | 131k / 2.7k |
 | jsoup | 304 | 98 | 206 | 134 | 74/**3** | 41/**16** | 0 | $1.460 | 2.13M / 52.2k |
-| **Total, raw** | 394 | 151 | **243** | 168 | 101/3 | 46/18 | 0 | **$2.46** | |
+| **Total, raw** | 415 | 166 | **249** | 174 | 107/3 | 46/18 | 0 | **$2.64** | |
 
-Raw scores against the servers: 97.1% precision, 84.9% recall, 15.1% false rejections.
+¹ Run after #93 fixed its parse error (see "hono: no edges" below), as a `--range b1335f9..efc8a46` target rather than a staged local change, so no dependencies were installed. The server still answered (`ok` on both sides) and verified all 21 edges.
+
+Raw scores against the servers: 97.3% precision, 85.6% recall, 14.4% false rejections. Without hono, as first run: 97.1%, 84.9%, 15.1%.
 
 **Audit.** As in the spike, every disagreement was checked by hand.
 - **The 3 jsoup "false accepts" are correct.**
@@ -342,14 +344,16 @@ The model behaves as well as in the spike: 0 audited false accepts and 1 audited
 4. **Ask the server about every member of an overload set** (#16/#17). The 3 wrong truths came from asking about only the first.
 
 **Cost and volume.**
-- **Decisions:** 243 were asked, against the spike's 636, because import resolution and the unambiguous rule now settle more edges before the AI step. On jsoup, 4 of its 98 settled edges are ones the server rejects; that is an import-resolution precision note.
-- **Cost:** $2.46 for the five pull requests and $1.57 for the fixtures, $4.03 in all. jsoup was $1.46: 6 batches, about 50k tokens of batch input on top of a 24k planner input.
+- **Decisions:** 249 were asked, against the spike's 636, because import resolution and the unambiguous rule now settle more edges before the AI step. On jsoup, 4 of its 98 settled edges are ones the server rejects; that is an import-resolution precision note.
+- **Cost:** $2.64 for the six pull requests (hono's $0.18 run came later, with #93) and $1.57 for the fixtures, $4.21 in all. jsoup was $1.46: 6 batches, about 50k tokens of batch input on top of a 24k planner input.
 - **Comparison with the spike's $1.59:** not like for like. These are whole skill runs with tool turns and cached context, and they plan the change as well as judge it.
 - **Consistency:** run-to-run consistency was measured on the fixtures only (17/17 identical, no yes↔no flips). Each pull request ran once.
 
 **hono: no edges.** The spike found 27 items there. Here, `src/context.ts` is skipped with `parse-error`, so it has no entities, so it gets no candidates. The structural analyzer (#15) treats a tree-sitter tree with errors as unparseable. A partial parse, keeping the entities outside the error regions, would recover most of this. This is a recall gap in candidate search, not in the AI step.
 
-#93 fixed it. The errors are a grammar gap, not bad code: `tree-sitter-typescript` 0.23.2 cannot parse a generic call signature (`<T>(…): R`) that follows another member on a new line with no `;` ([upstream #335](https://github.com/tree-sitter/tree-sitter-typescript/issues/335)), as in hono's `Get`, `Set`, `TextRespond`, `JSONRespond` and `HTMLRespond`. The analyzer now keeps the entities outside the error regions and marks the file `partialParse`. `generate --no-lsp` on the same range then finds 21 possible edges, among them `Context.text/json/html` calling `#newResponse`, referencing `ResponseInit` and `ResponseOrInit`, and called from `src/types.test.ts`; 6 go to the caller batch. The three changed hunks inside `TextRespond`, `JSONRespond` and `HTMLRespond` stay on the file node. The AI step was not rerun.
+#93 fixed it. The errors are a grammar gap, not bad code: `tree-sitter-typescript` 0.23.2 cannot parse a generic call signature (`<T>(…): R`) that follows another member on a new line with no `;` ([upstream #335](https://github.com/tree-sitter/tree-sitter-typescript/issues/335)), as in hono's `Get`, `Set`, `TextRespond`, `JSONRespond` and `HTMLRespond`. The analyzer now keeps the entities outside the error regions and marks the file `partialParse`. `generate --no-lsp` on the same range then finds 21 possible edges, among them `Context.text/json/html` calling `#newResponse`, referencing `ResponseInit` and `ResponseOrInit`, and called from `src/types.test.ts`; 6 go to the caller batch. The three changed hunks inside `TextRespond`, `JSONRespond` and `HTMLRespond` stay on the file node.
+
+The whole skill then ran once on Sonnet with a $0.50 cap (the hono row above): 10 turns, $0.177, and `validate` passed on the first try. It accepted all 6 batch edges (`Context.text/json/html` → `#newResponse`, and `src/types.test.ts` → `Context.text/json/html`), telling `c.text` apart from `c.req.text` and `c.html` from the `html` helper. typescript-language-server 6.0.2 verifies all 21 edges, so precision and recall are both 100% on 6 of 6. The audited figures above don't include hono; adding its 6 correct accepts gives 100% precision and 85.9% recall by edge. Two turns were wasted on harness details: the agent read `references/render-workflow.md`, which the eval does not install (#121), and Claude Code's Bash check refused writing `plan.json` with a heredoc, so it used Write instead.
 
 ## Post-MVP note
 
