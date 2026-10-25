@@ -28,6 +28,12 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      # The tests start thousands of git processes. Git for Windows' bin\git.exe on PATH is a
+      # launcher that starts ucrt64\bin\git.exe, and running that directly makes each start about
+      # 30% faster (#146). If the folder moves, git is found on PATH as before.
+      - if: runner.os == 'Windows'
+        run: |
+          'C:\Program Files\Git\ucrt64\bin' | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
       - run: npm ci
       - run: npm run format:check
       - run: npm run lint
