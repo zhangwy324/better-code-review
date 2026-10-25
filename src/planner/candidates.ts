@@ -15,8 +15,10 @@
 // side and the other definitions of its name in the snapshot ("NOT the changed entity"); then,
 // grouped by enclosing function, the function itself (or windows around its hits), its file's
 // imports, the declaration of each hit's receiver (parameter, local or field) and, for a hit
-// through an alias, the re-export line that names it. Up to `MAX_GROUPS_PER_BATCH` groups per
-// batch, within the planner input's token budget (#22).
+// through an alias, the re-export line that names it. A group is on the new side when its edges
+// have hits there; an edge whose old-side receiver is declared differently also shows its old
+// side (#94). Up to `MAX_GROUPS_PER_BATCH` groups per batch, within the planner input's token
+// budget (#22).
 //
 // Verdicts (plan.ts `EdgeVerdict`): `yes` is shown as `inferred`, `no` as `rejected`, and `unsure`
 // leaves the edge `possible`. Nothing is removed: every edge stays in graph.json, and
@@ -167,6 +169,8 @@ export interface CandidateOptions {
 interface Decision {
   edge: CodeEdge;
   hits: EvidenceRecord[];
+  /** Its old-side hits when `hits` are on the new side, shown when their context differs (#94). */
+  old: EvidenceRecord[];
 }
 
 /** The candidates of one enclosing function (or one test file and target) on one side. */
@@ -285,6 +289,7 @@ function groupCandidates(graph: ChangeGraph, open: CodeEdge[]): Group[] {
     // The new side when the edge has a hit there, else the old (a removed call, #66).
     const side: Side = hits.some((r) => r.location.side === 'new') ? 'new' : 'old';
     const shown = hits.filter((r) => r.location.side === side);
+    const old = side === 'new' ? hits.filter((r) => r.location.side === 'old') : [];
     const key =
       edge.granularity === 'entity'
         ? JSON.stringify([edge.from, side])
@@ -299,7 +304,7 @@ function groupCandidates(graph: ChangeGraph, open: CodeEdge[]): Group[] {
       };
       groups.set(key, group);
     }
-    group.decisions.push({ edge, hits: shown });
+    group.decisions.push({ edge, hits: shown, old });
   }
   return [...groups.values()];
 }
@@ -475,69 +480,130 @@ class Context {
     const nodes = new Map(this.#graph.nodes.map((n) => [n.id, n]));
     const label = quotePath(source?.displayName ?? path) + (source === null ? ' (test file)' : '');
     const out = ['', `### ${label} @ ${quotePath(path)} (${side} side)`];
-    const lines = await this.#lines(side, path);
-    if (lines === null) {
-      out.push('', 'Not shown: the file has no text on this side, or is withheld.');
-    } else {
-      const facts = await this.#factsOf(side, path);
-      const hitLines = new Set(
-        group.decisions.flatMap((d) => d.hits.map((h) => h.location.range.startLine)),
+    const shown = await this.#code(group, maxCodeLines, null);
+    out.push(...shown.text);
+    const old = await this.#differingOldSide(group);
+    if (old !== null) {
+      out.push(
+        `Old side of ${quotePath(old.path)}, where a receiver is declared differently. Answer \`yes\` if either side uses the changed entity, citing that side's line:`,
+        ...(await this.#code(old, maxCodeLines, shown.imports)).text,
       );
-
-      const range = source === null ? null : side === 'new' ? source.newRange : source.oldRange;
-      // A test file's windows also show the line naming each hit's entity, e.g. `def test_…` (#95).
-      const enclosing =
-        source !== null
-          ? []
-          : group.decisions.flatMap((d) =>
-              d.hits.flatMap((h) => {
-                const entity = this.#entities.get(h.sourceEntityId);
-                const r = side === 'new' ? entity?.newRange : entity?.oldRange;
-                if (!entity || entity.kind === 'module' || !r) return [];
-                return [declarationLine(facts, entity, r)];
-              }),
-            );
-      const wanted = codeLines(
-        source?.kind === 'symbol' ? range : null,
-        hitLines,
-        lines.length,
-        enclosing,
-      );
-      const shown = wanted.slice(0, maxCodeLines);
-      const more = wanted.length - shown.length;
-      const visible = new Set(shown);
-
-      const imports = (facts?.imports ?? []).flatMap((r) => between(r.start, r.end));
-      if (imports.length > 0) {
-        out.push('Imports:', fence(this.#numbered(lines, imports, new Set()), ''));
-      }
-
-      const elsewhere = [
-        ...(await this.#receiverDeclarations(group, lines, facts, visible, range)),
-        ...(await this.#reexports(group)),
-      ];
-      if (elsewhere.length > 0) {
-        out.push('Declarations the occurrences depend on:', fence(elsewhere.join('\n'), ''));
-      }
-
-      out.push('Code:', fence(this.#numbered(lines, shown, hitLines), ''));
-      if (more > 0) {
-        out.push(
-          `… ${count(more, 'more line')}: \`show --file ${quotePath(path)} --side ${side} --lines ${wanted[shown.length]}-${wanted.at(-1)}\``,
-        );
-      }
     }
 
     out.push('Decide:');
+    const at = (hits: EvidenceRecord[], relation: string) =>
+      hits.map((h) => `line ${h.location.range.startLine} (${h.detail ?? relation})`).join('; ');
     for (const { edge, hits } of group.decisions) {
       const to = nodes.get(edge.to)!;
-      const at = hits
-        .map((h) => `line ${h.location.range.startLine} (${h.detail ?? edge.relation})`)
-        .join('; ');
       const where = `${quotePath(to.displayName)} (${quotePath(to.path)})`;
-      out.push(`- ${edge.id} → ${where}: ${edge.relation}; ${at}`);
+      const older = old?.decisions.find((d) => d.edge === edge)?.hits ?? [];
+      const also = older.length > 0 ? `; old side: ${at(older, edge.relation)}` : '';
+      out.push(`- ${edge.id} → ${where}: ${edge.relation}; ${at(hits, edge.relation)}${also}`);
     }
     return out.join('\n');
+  }
+
+  /**
+   * An edge with hits on both sides is decided once, from the new side. When a receiver its
+   * old-side hits depend on is declared differently, the edge can be real on the old side only:
+   * jsoup's `Appendable accum` could dispatch to a test's `Appendable`, the new `QuietAppendable
+   * accum` cannot (#94). Then the old side of those edges is shown too; else null.
+   */
+  async #differingOldSide(group: Group): Promise<Group | null> {
+    const both = group.decisions.filter((d) => d.old.length > 0);
+    if (both.length === 0) return null;
+    const old: Group = {
+      side: 'old',
+      path: both[0]!.old[0]!.location.path,
+      source: group.source,
+      decisions: both.map((d) => ({ edge: d.edge, hits: d.old, old: [] })),
+    };
+    const declared = async (g: Group) => {
+      const lines = await this.#lines(g.side, g.path);
+      if (lines === null) return null;
+      const receivers = await this.#receiverLines(g, lines, await this.#factsOf(g.side, g.path));
+      // What each decision's receivers are declared as, ignoring indentation and line numbers.
+      return g.decisions.map((d) =>
+        JSON.stringify(
+          [...new Set(d.hits.map((h) => lines[(receivers.get(h) ?? 0) - 1]?.trim() ?? ''))].sort(),
+        ),
+      );
+    };
+    const [neu, before] = [await declared(group), await declared(old)];
+    if (neu === null || before === null) return null;
+    old.decisions = old.decisions.filter((_, i) => neu[i] !== before[i]);
+    return old.decisions.length > 0 ? old : null;
+  }
+
+  /**
+   * One side's imports, declarations and code for a group's hits. `imports` is the other side's
+   * imports, not repeated when they are the same.
+   */
+  async #code(
+    group: Group,
+    maxCodeLines: number,
+    imports: string | null,
+  ): Promise<{ text: string[]; imports: string | null }> {
+    const { side, path, source } = group;
+    const out: string[] = [];
+    const lines = await this.#lines(side, path);
+    if (lines === null) {
+      out.push('', 'Not shown: the file has no text on this side, or is withheld.');
+      return { text: out, imports: null };
+    }
+    const facts = await this.#factsOf(side, path);
+    const hitLines = new Set(
+      group.decisions.flatMap((d) => d.hits.map((h) => h.location.range.startLine)),
+    );
+
+    const range = source === null ? null : side === 'new' ? source.newRange : source.oldRange;
+    // A test file's windows also show the line naming each hit's entity, e.g. `def test_…` (#95).
+    const enclosing =
+      source !== null
+        ? []
+        : group.decisions.flatMap((d) =>
+            d.hits.flatMap((h) => {
+              const entity = this.#entities.get(h.sourceEntityId);
+              const r = side === 'new' ? entity?.newRange : entity?.oldRange;
+              if (!entity || entity.kind === 'module' || !r) return [];
+              return [declarationLine(facts, entity, r)];
+            }),
+          );
+    const wanted = codeLines(
+      source?.kind === 'symbol' ? range : null,
+      hitLines,
+      lines.length,
+      enclosing,
+    );
+    const shown = wanted.slice(0, maxCodeLines);
+    const more = wanted.length - shown.length;
+    const visible = new Set(shown);
+
+    const importLines = (facts?.imports ?? []).flatMap((r) => between(r.start, r.end));
+    const ownImports =
+      importLines.length > 0 ? fence(this.#numbered(lines, importLines, new Set()), '') : null;
+    if (ownImports !== null && ownImports === imports) out.push('Imports: as on the new side.');
+    else if (ownImports !== null) out.push('Imports:', ownImports);
+
+    const receivers = await this.#receiverLines(group, lines, facts);
+    const elsewhere = [
+      ...[...new Set(receivers.values())]
+        .filter((line) => !visible.has(line))
+        .sort((a, b) => a - b)
+        .map((line) => `${path}:${line}| ${this.#redact(lines[line - 1] ?? '')}`),
+      ...(await this.#reexports(group)),
+    ];
+    if (elsewhere.length > 0) {
+      out.push('Declarations the occurrences depend on:', fence(elsewhere.join('\n'), ''));
+    }
+
+    out.push('Code:', fence(this.#numbered(lines, shown, hitLines), ''));
+    if (more > 0) {
+      out.push(
+        `… ${count(more, 'more line')}: \`show --file ${quotePath(path)} --side ${side} --lines ${wanted[shown.length]}-${wanted.at(-1)}\``,
+      );
+    }
+    return { text: out, imports: ownImports };
   }
 
   /** `>>` marks hit lines; gaps between runs are shown as `…`. */
@@ -555,29 +621,30 @@ class Context {
   }
 
   /**
-   * The declaration of each hit's receiver (`f` in `f.formatPrice()`, `accum` in
-   * `this.accum.append()`) when the code shown does not hold it: the last one before the hit in
-   * the enclosing entity (a parameter or local), else the first in the file (a field, a
-   * top-level variable). #42: most `unsure` answers lacked a field's declaration.
+   * The line declaring each hit's receiver (`f` in `f.formatPrice()`, `accum` in
+   * `this.accum.append()`): the last one before the hit in the enclosing entity (a parameter or
+   * local), else the first in the file (a field, a top-level variable). Hits without a receiver,
+   * or whose receiver's declaration is not found, are left out. #42: most `unsure` answers lacked
+   * a field's declaration.
    */
-  async #receiverDeclarations(
+  async #receiverLines(
     group: Group,
     lines: string[],
     facts: FileFacts | null,
-    visible: Set<number>,
-    range: SourceRange | null,
-  ): Promise<string[]> {
+  ): Promise<Map<EvidenceRecord, number>> {
+    const { side, path, source } = group;
+    const range = source === null ? null : side === 'new' ? source.newRange : source.oldRange;
+    const found = new Map<EvidenceRecord, number>();
     const content = lines.join('\n');
-    const parsed = await this.#parser.parse(group.path, content);
+    const parsed = await this.#parser.parse(path, content);
     if (parsed.status !== 'parsed' || facts === null) {
       if (parsed.status === 'parsed') freeTrees(parsed);
-      return [];
+      return found;
     }
-    const found = new Map<number, string>();
     try {
-      const at = group.decisions.flatMap((d) => d.hits.map((h) => h.location));
+      const records = group.decisions.flatMap((d) => d.hits);
       const words = new Set(
-        at.map((l) =>
+        records.map(({ location: l }) =>
           lines[l.range.startLine - 1]!.slice(
             (l.range.startColumn ?? 1) - 1,
             (l.range.endColumn ?? 1) - 1,
@@ -585,17 +652,19 @@ class Context {
         ),
       );
       const hits = findHits(parsed, content, words).hits;
-      const receivers = new Map<string, number>();
-      for (const l of at) {
+      const receivers = new Map<EvidenceRecord, string>();
+      for (const record of records) {
+        const l = record.location;
         const hit = hits.find(
           (h) => h.line === l.range.startLine && h.column === l.range.startColumn,
         );
         const name = hit?.receiver == null ? null : receiverName(hit.receiver, hit.simpleReceiver);
-        if (name !== null && !receivers.has(name)) receivers.set(name, l.range.startLine);
+        if (name !== null) receivers.set(record, name);
       }
-      if (receivers.size === 0) return [];
-      const { declared } = findHits(parsed, content, receivers.keys());
-      for (const [name, hitLine] of receivers) {
+      if (receivers.size === 0) return found;
+      const { declared } = findHits(parsed, content, new Set(receivers.values()));
+      for (const [record, name] of receivers) {
+        const hitLine = record.location.range.startLine;
         const mine = declared.filter((d) => d.name === name);
         const inside = range === null ? [] : mine.filter((d) => within(d.line, range));
         let line =
@@ -603,19 +672,17 @@ class Context {
           mine.find((d) => range === null || !within(d.line, range))?.line ??
           null;
         // Python fields are assigned, not declared: `self.accum = …`.
-        if (line === null && detectLanguage(group.path) === 'python') {
+        if (line === null && detectLanguage(path) === 'python') {
           const assign = new RegExp(`\\bself\\.${name}\\s*(?::[^=]+)?=(?!=)`);
           const index = lines.findIndex((text) => assign.test(text));
           if (index >= 0) line = index + 1;
         }
-        if (line !== null && !visible.has(line)) {
-          found.set(line, `${group.path}:${line}| ${this.#redact(lines[line - 1] ?? '')}`);
-        }
+        if (line !== null) found.set(record, line);
       }
     } finally {
       freeTrees(parsed);
     }
-    return [...found].sort(([a], [b]) => a - b).map(([, text]) => text);
+    return found;
   }
 
   /**
