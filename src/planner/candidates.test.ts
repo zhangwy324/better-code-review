@@ -279,6 +279,7 @@ describe('candidateBatches', () => {
       'new src/PrinterTest.java:3|     Appendable stub = new Appendable() {\nnew src/PrinterTest.java:4|       public Appendable append(',
     );
     expect(text).toContain(`- ${edge(graph, 'Printer.print', 'PrinterTest.broken.append').id} → `);
+    expect(text).toContain('An implementation counts wherever it is defined, in a test or');
   });
 
   it('shows the re-export line for a hit through an alias', async () => {
