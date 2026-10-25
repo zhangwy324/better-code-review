@@ -7,8 +7,9 @@
 // Selection: a `possible` edge needs a verdict unless a deterministic step already accepted one of
 // its hits, by import-path resolution or the unambiguous rule (#17). `verified` edges are settled
 // by a language server, and the hits it or import resolution rejected made no edge (#18). Test
-// files are already one edge per (test file, changed entity) (D2). At most `MAX_ADJUDICATED_EDGES`
-// edges are asked about; the rest are "not adjudicated" and stay `possible`.
+// files are already one edge per (test file, changed entity), with up to 3 hits per side (D2).
+// At most `MAX_ADJUDICATED_EDGES` edges are asked about; the rest are "not adjudicated" and stay
+// `possible`.
 //
 // Context, per #42's policy: each changed entity once per batch, with its declaration line on each
 // side and the other definitions of its name in the snapshot ("NOT the changed entity"); then,
@@ -48,8 +49,6 @@ export const CANDIDATES_DIR = 'candidates';
 const MAX_WHOLE_ENTITY_LINES = 60;
 /** Lines either side of a hit in a window. */
 const HIT_CONTEXT = 4;
-/** Example hits shown for a test-file edge (#42). The graph keeps one per side (D2). */
-const MAX_TEST_FILE_HITS = 3;
 /** Same-name definitions listed per changed entity. */
 const MAX_DEFINITIONS_LISTED = 10;
 /** Re-export lines shown per alias. */
@@ -285,8 +284,7 @@ function groupCandidates(graph: ChangeGraph, open: CodeEdge[]): Group[] {
       .filter((r) => r.method === 'text-search');
     // The new side when the edge has a hit there, else the old (a removed call, #66).
     const side: Side = hits.some((r) => r.location.side === 'new') ? 'new' : 'old';
-    let shown = hits.filter((r) => r.location.side === side);
-    if (edge.granularity === 'test-file') shown = shown.slice(0, MAX_TEST_FILE_HITS);
+    const shown = hits.filter((r) => r.location.side === side);
     const key =
       edge.granularity === 'entity'
         ? JSON.stringify([edge.from, side])
@@ -487,7 +485,24 @@ class Context {
       );
 
       const range = source === null ? null : side === 'new' ? source.newRange : source.oldRange;
-      const wanted = codeLines(source?.kind === 'symbol' ? range : null, hitLines, lines.length);
+      // A test file's windows also show the line naming each hit's entity, e.g. `def test_…` (#95).
+      const enclosing =
+        source !== null
+          ? []
+          : group.decisions.flatMap((d) =>
+              d.hits.flatMap((h) => {
+                const entity = this.#entities.get(h.sourceEntityId);
+                const r = side === 'new' ? entity?.newRange : entity?.oldRange;
+                if (!entity || entity.kind === 'module' || !r) return [];
+                return [declarationLine(facts, entity, r)];
+              }),
+            );
+      const wanted = codeLines(
+        source?.kind === 'symbol' ? range : null,
+        hitLines,
+        lines.length,
+        enclosing,
+      );
       const shown = wanted.slice(0, maxCodeLines);
       const more = wanted.length - shown.length;
       const visible = new Set(shown);
@@ -640,14 +655,20 @@ class Context {
 
 /**
  * The code lines to show for a group: the whole entity when it is short, else its first line and
- * windows around the hits. `range` is null for a module or test-file group (windows only).
+ * windows around the hits. `range` is null for a module or test-file group (windows only), and
+ * `extra` adds lines to the windows, such as the declaration of each hit's entity.
  */
-function codeLines(range: SourceRange | null, hits: Set<number>, total: number): number[] {
+function codeLines(
+  range: SourceRange | null,
+  hits: Set<number>,
+  total: number,
+  extra: number[] = [],
+): number[] {
   let wanted: number[];
   if (range !== null && range.endLine - range.startLine + 1 <= MAX_WHOLE_ENTITY_LINES) {
     wanted = between(range.startLine, range.endLine);
   } else {
-    const set = new Set<number>(range === null ? [] : [range.startLine]);
+    const set = new Set<number>(range === null ? extra : [range.startLine, ...extra]);
     for (const line of hits) {
       for (const l of between(line - HIT_CONTEXT, line + HIT_CONTEXT)) set.add(l);
     }
