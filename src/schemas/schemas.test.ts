@@ -82,8 +82,8 @@ const structural: StructuralChangeSet = {
   schemaVersion: 1,
   snapshotId,
   files: [
-    { path: 'src/checkout.ts', language: 'typescript', tier: 'supported', test: null, skipped: null },
-    { path: 'assets/logo.png', language: null, tier: 'text-only', test: null, skipped: 'binary' },
+    { path: 'src/checkout.ts', language: 'typescript', tier: 'supported', test: null, skipped: null, partialParse: false },
+    { path: 'assets/logo.png', language: null, tier: 'text-only', test: null, skipped: 'binary', partialParse: false },
   ],
   entities: [
     {

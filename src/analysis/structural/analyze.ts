@@ -6,13 +6,17 @@
 // containing it (a method, not its class; both of two one-liners sharing a line), and a hunk is
 // attached to every entity one of its lines belongs to (MVP spec D2). Lines outside any entity
 // go to the file's `module` entity. Files without structure (no grammar, binary, too large,
-// generated, unparseable at a changed line) have no entities: their hunks are listed in
-// `unattributedHunkIds`, and the graph gives them a file node.
+// generated, not UTF-8) have no entities: their hunks are listed in `unattributedHunkIds`, and
+// the graph gives them a file node.
+//
+// Syntax errors (#93): tree-sitter's recovery can put code in the wrong entity, so an entity
+// overlapping an ERROR or MISSING node is dropped, on both sides. The rest of the file keeps its
+// entities and is marked `partialParse`. A changed line in an error or a dropped entity belongs
+// to nothing: if no other line of its hunk has an owner, the hunk is unattributed.
 import {
   GITLINK_MODE,
   SYMLINK_MODE,
   type ChangeSet,
-  type DiffHunk,
   type FileChange,
 } from '../../schemas/changeset.ts';
 import type { SourceRange } from '../../schemas/common.ts';
@@ -47,6 +51,18 @@ interface AnalysedFile {
   change: FileChange;
   old: FileFacts | null;
   new: FileFacts | null;
+  unparsed: Unparsed;
+}
+
+interface LineRange {
+  startLine: number;
+  endLine: number;
+}
+
+/** Each side's lines with no trusted entity: syntax errors and the entities dropped around them. */
+interface Unparsed {
+  old: LineRange[];
+  new: LineRange[];
 }
 
 export async function analyzeStructure(
@@ -75,9 +91,10 @@ export async function analyzeStructure(
         tier: result.language === null ? 'text-only' : 'supported',
         test: classifyTestFile(path, testRoots, content),
         skipped: result.skipped,
+        partialParse: result.partialParse,
       });
       if (result.facts === null) unattributedHunkIds.push(...change.hunks.map((h) => h.id));
-      else analysed.push({ index, change, ...result.facts });
+      else analysed.push({ index, change, ...result.facts, unparsed: result.unparsed });
     }
   } finally {
     parser.delete();
@@ -89,18 +106,20 @@ export async function analyzeStructure(
   for (const file of analysed) {
     for (const hunk of file.change.hunks) {
       let outside = false;
+      let owned = false;
       for (const line of hunkLines(hunk)) {
-        const owners =
-          line.kind === 'removed'
-            ? innermost(file.old?.entities ?? [], line.oldLine!)
-            : line.kind === 'added'
-              ? innermost(file.new?.entities ?? [], line.newLine!)
-              : null;
-        if (owners === null) continue;
-        if (owners.length === 0) outside = true;
+        if (line.kind === 'context') continue;
+        const side = line.kind === 'removed' ? 'old' : 'new';
+        const number = (line.kind === 'removed' ? line.oldLine : line.newLine)!;
+        const owners = innermost(file[side]?.entities ?? [], number);
         for (const e of owners) hunksOf.set(e, (hunksOf.get(e) ?? new Set()).add(hunk.id));
+        if (owners.length > 0) owned = true;
+        else if (!file.unparsed[side].some((r) => r.startLine <= number && number <= r.endLine)) {
+          outside = true;
+        }
       }
       if (outside) moduleHunks.set(file.index, [...(moduleHunks.get(file.index) ?? []), hunk.id]);
+      else if (!owned) unattributedHunkIds.push(hunk.id);
     }
   }
 
@@ -174,7 +193,7 @@ export async function analyzeStructure(
     snapshotId: changeSet.snapshotId,
     files,
     entities: entries.map((e) => e.entity),
-    unattributedHunkIds,
+    unattributedHunkIds: ordered(unattributedHunkIds),
   });
 }
 
@@ -186,8 +205,10 @@ function filePath(change: FileChange): string {
 interface FileResult {
   language: GrammarName | null;
   skipped: AnalyzedFile['skipped'];
+  partialParse: boolean;
   /** Null when the file has no structure; see the header. */
   facts: { old: FileFacts | null; new: FileFacts | null } | null;
+  unparsed: Unparsed;
 }
 
 async function analyseFile(
@@ -207,7 +228,9 @@ async function analyseFile(
   const none = (skipped: AnalyzedFile['skipped']): FileResult => ({
     language,
     skipped,
+    partialParse: false,
     facts: null,
+    unparsed: { old: [], new: [] },
   });
 
   if (change.binary) return none('binary');
@@ -226,8 +249,9 @@ async function analyseFile(
       old: parsed.old?.status === 'parsed' ? extractFacts(parsed.old) : null,
       new: parsed.new?.status === 'parsed' ? extractFacts(parsed.new) : null,
     };
-    if (changedLineHitsError(change.hunks, facts)) return none('parse-error');
-    return { language, skipped: null, facts };
+    const unparsed = dropErrorEntities(facts);
+    const partialParse = [facts.old, facts.new].some((f) => f !== null && f.errorLines.length > 0);
+    return { language, skipped: null, partialParse, facts, unparsed };
   } finally {
     freeTrees(parsed);
   }
@@ -249,24 +273,37 @@ function isGenerated(path: string, content: string): boolean {
 }
 
 /**
- * Whether a changed line falls inside a syntax error on its side. There, tree-sitter's recovery
- * can put code in the wrong entity, so the file is not analysed rather than misattributed.
+ * Drops the entities that overlap a syntax error, where tree-sitter's recovery can put code in
+ * the wrong entity (#93), and the entities of the same container, kind and name on the other
+ * side, so an error does not read as an added or deleted entity. A kept entity whose parent was
+ * dropped hangs from its nearest kept ancestor, so it still matches by name; its container is
+ * unchanged. Returns each side's lines left without an entity.
  */
-function changedLineHitsError(
-  hunks: DiffHunk[],
-  facts: { old: FileFacts | null; new: FileFacts | null },
-): boolean {
-  const hit = (side: FileFacts | null, line: number | null) =>
-    side !== null &&
-    line !== null &&
-    side.errorLines.some((r) => r.startLine <= line && line <= r.endLine);
-  return hunks.some((hunk) =>
-    hunkLines(hunk).some(
-      (l) =>
-        (l.kind === 'removed' && hit(facts.old, l.oldLine)) ||
-        (l.kind === 'added' && hit(facts.new, l.newLine)),
+function dropErrorEntities(facts: { old: FileFacts | null; new: FileFacts | null }): Unparsed {
+  const key = (e: Entity) => JSON.stringify([e.container, e.kind, e.name]);
+  const overlaps = (r: LineRange, s: LineRange) =>
+    r.startLine <= s.endLine && s.startLine <= r.endLine;
+  const dropped = new Set(
+    [facts.old, facts.new].flatMap((f) =>
+      f === null
+        ? []
+        : f.entities.filter((e) => f.errorLines.some((r) => overlaps(r, e.range))).map(key),
     ),
   );
+  const prune = (f: FileFacts | null): LineRange[] => {
+    if (f === null) return [];
+    const kept = f.entities.filter((e) => !dropped.has(key(e)));
+    const unparsed: LineRange[] = [...f.errorLines];
+    for (const e of f.entities) if (dropped.has(key(e))) unparsed.push(...e.members);
+    // Parents come before their children, so each parent is settled before it is used.
+    for (const e of kept) {
+      while (e.parent !== null && dropped.has(key(e.parent))) e.parent = e.parent.parent;
+      e.depth = e.parent === null ? 0 : e.parent.depth + 1;
+    }
+    f.entities = kept;
+    return unparsed;
+  };
+  return { old: prune(facts.old), new: prune(facts.new) };
 }
 
 /**

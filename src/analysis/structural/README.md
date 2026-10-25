@@ -74,9 +74,11 @@ Entities under 16 tokens only match by name, since empty bodies hash alike. A ma
 | `binary` | Git reported a binary diff |
 | `too-large` | either side is over `MAX_PARSE_BYTES` (1 MiB), or #13 omitted the content |
 | `generated` | `*.min.js`, `*.generated.*`, `*_pb2.py`; a `@generated`, `DO NOT EDIT` or `auto-generated` comment in the first five lines; or a line over 2,000 characters (minified) |
-| `parse-error` | a changed line is inside an ERROR or MISSING node, where tree-sitter's recovery could put it in the wrong entity; or a side is not valid UTF-8 (`contentOmitted: 'not-utf8'`) |
+| `parse-error` | a side is not valid UTF-8 (`contentOmitted: 'not-utf8'`), so there is no text to parse |
 
-A file without a built-in grammar on either side, a symlink or a submodule is `text-only` with `skipped: null`. Syntax errors away from the changed lines are tolerated.
+A file without a built-in grammar on either side, a symlink or a submodule is `text-only` with `skipped: null`.
+
+**Syntax errors** (#93) do not skip a file. Tree-sitter's recovery can put the code around an ERROR or MISSING node in the wrong entity, so an entity whose range overlaps one is dropped, and so are the entities with the same container, kind and name on the other side, so an error reads neither as an added nor a deleted entity. Every other entity is kept; one whose parent was dropped keeps its container and still matches by name. A changed line in an error or in a dropped entity belongs to nothing, not to the `module` entity, and a hunk with no other owner goes to `unattributedHunkIds`. The file is marked `partialParse: true`, which the planner input, `summary.txt` and the viewer show. Tree-sitter can be wrong about valid code: `tree-sitter-typescript` 0.23.2 fails on generic call signatures separated only by line breaks ([upstream #335](https://github.com/tree-sitter/tree-sitter-typescript/issues/335)), as in hono's `src/context.ts`.
 
 **Tiers.** Built-in languages are `supported` and everything else `text-only`. `community` (upstream `tags.scm`) is not produced in v0.1, which ships built-in languages only.
 
