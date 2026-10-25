@@ -250,6 +250,19 @@ describe('generate', () => {
     expect(summary).toContain('Analysis  2 git-only');
   });
 
+  it('says how many files parsed partially (#93)', async () => {
+    const repo = new TestRepo();
+    const base = repo.commit([], { 'a.ts': 'export const a = 1;\n' });
+    const head = repo.commit([base], { 'a.ts': 'export const a = (1;\n' });
+    const out = tempDir();
+    expect((await generate(repo.path, ['--commit', head, '--no-lsp', '--out', out])).exitCode).toBe(
+      0,
+    );
+    const { graph, summary } = readOutputs(out);
+    expect(graph.files.map((f) => [f.path, f.partialParse])).toEqual([['a.ts', true]]);
+    expect(summary).toContain('Analysis  1 structural (1 parsed partially)');
+  });
+
   it('checks the head out for language servers and cleans up after', async () => {
     const { repo, head } = signatureRepo();
     const out = tempDir();

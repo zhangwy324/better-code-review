@@ -2,12 +2,13 @@
 // fallback, auditability and completeness. It shows every file in changes.json with all its hunks,
 // straight from the change set, so every hunk is reachable here whatever the plan or graph say.
 // Selecting a change or hunk in any pane scrolls the view to its first hunk. Each file says which
-// capability tier it got (design reference §10.8) and how many of its hunks are reviewed (#32).
+// capability tier it got (design reference §10.8), whether it parsed only partially (#93), and how
+// many of its hunks are reviewed (#32).
 import { useRef } from 'react';
 import type { FileChange } from '../schemas/changeset.ts';
 import { count, list } from '../text/index.ts';
 import { Diff } from './Diff.tsx';
-import { filePath, lineCounts, TIER_DESCRIPTIONS } from './model.ts';
+import { filePath, lineCounts, PARTIAL_PARSE_DESCRIPTION, TIER_DESCRIPTIONS } from './model.ts';
 import { progressLabel, useProgress } from './Progress.tsx';
 import { useScrollToSelection } from './scroll.ts';
 import { useModel, useSelection } from './state.tsx';
@@ -77,6 +78,14 @@ function FileDiff({ file }: { file: FileChange }) {
               {' · '}
               <span className={`tier tier-${tier}`} title={TIER_DESCRIPTIONS[tier]}>
                 {tier}
+              </span>
+            </>
+          )}
+          {model.partialParses.has(path) && (
+            <>
+              {' · '}
+              <span className="tier" title={PARTIAL_PARSE_DESCRIPTION}>
+                parsed partially
               </span>
             </>
           )}
