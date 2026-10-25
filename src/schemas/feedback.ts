@@ -44,6 +44,11 @@ export const ReviewFeedback = z.strictObject({
   comments: z.array(ReviewComment),
   /** Hunks the reviewer marked reviewed (D5). Group progress is derived from these. */
   reviewedHunkIds: z.array(HunkId),
+  /**
+   * File changes with no hunks (binary, mode-only, pure renames and copies) the reviewer marked
+   * reviewed as a whole (#127), by `newPath ?? oldPath`. Group progress counts these too.
+   */
+  reviewedFilePaths: z.array(RepoPath),
 });
 
 export type LineComment = z.infer<typeof LineComment>;

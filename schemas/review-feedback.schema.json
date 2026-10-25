@@ -150,13 +150,22 @@
         "pattern": "^h_[0-9a-f]{16}$",
         "description": "Generated ID: \"h_\" + 16 hex characters"
       }
+    },
+    "reviewedFilePaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Repository-relative, \"/\"-separated path as Git reports it"
+      }
     }
   },
   "required": [
     "schemaVersion",
     "snapshotId",
     "comments",
-    "reviewedHunkIds"
+    "reviewedHunkIds",
+    "reviewedFilePaths"
   ],
   "additionalProperties": false,
   "title": "review-feedback v1",

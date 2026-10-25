@@ -1,36 +1,37 @@
 // The file view (design reference §6.1, §9.8; spec D3): the familiar file-by-file diff, for
 // fallback, auditability and completeness. It shows every file in changes.json with all its hunks,
 // straight from the change set, so every hunk is reachable here whatever the plan or graph say.
-// Selecting a change or hunk in any pane scrolls the view to its first hunk. Each file says which
-// capability tier it got (design reference §10.8), whether it parsed only partially (#93), and how
-// many of its hunks are reviewed (#32).
+// Selecting a change or hunk in any pane scrolls the view to its first hunk, or to the file of a
+// change with no hunks. Each file says which capability tier it got (design reference §10.8),
+// whether it parsed only partially (#93), and how many of its hunks are reviewed (#32); a file
+// change with no hunks (a binary file, a mode change, a pure rename) has its own checkbox (#127).
 import { useRef } from 'react';
 import type { FileChange } from '../schemas/changeset.ts';
 import { count, list } from '../text/index.ts';
 import { Diff } from './Diff.tsx';
-import { filePath, lineCounts, PARTIAL_PARSE_DESCRIPTION, TIER_DESCRIPTIONS } from './model.ts';
-import { progressLabel, useProgress } from './Progress.tsx';
+import {
+  filePath,
+  lineCounts,
+  PARTIAL_PARSE_DESCRIPTION,
+  reviewItemIds,
+  TIER_DESCRIPTIONS,
+} from './model.ts';
+import { progressLabel, ReviewedCheckbox, useProgress } from './Progress.tsx';
 import { useScrollToSelection } from './scroll.ts';
 import { useModel, useSelection } from './state.tsx';
-
-/** Why a file has no hunks, when it has none (FileChange `hunks`). */
-const NO_HUNKS: Partial<Record<FileChange['status'], string>> = {
-  renamed: 'Renamed with no content changes.',
-  copied: 'Copied with no content changes.',
-};
 
 export function Files() {
   const model = useModel();
   const { files, excludedUntrackedPaths } = model.changeSet;
   const pane = useRef<HTMLElement>(null);
   useScrollToSelection(pane, (selection) => {
-    const hunkId =
-      selection.kind === 'hunk'
-        ? selection.id
-        : selection.kind === 'node'
-          ? model.nodes.get(selection.id)?.hunkIds[0]
-          : undefined;
-    return hunkId === undefined ? null : `[data-hunk-id="${hunkId}"]`;
+    if (selection.kind === 'hunk') return `[data-hunk-id="${selection.id}"]`;
+    if (selection.kind !== 'node') return null;
+    const node = model.nodes.get(selection.id);
+    if (node === undefined) return null;
+    const hunkId = node.hunkIds[0];
+    // A change with no hunks scrolls to its file, which carries the node's ID (hex, safe here).
+    return hunkId === undefined ? `[data-node-id="${node.id}"]` : `[data-hunk-id="${hunkId}"]`;
   });
   const hunks = files.reduce((n, f) => n + f.hunks.length, 0);
   return (
@@ -62,9 +63,14 @@ function FileDiff({ file }: { file: FileChange }) {
       ? ` · mode ${file.oldMode} → ${file.newMode}`
       : '';
   const tier = model.tiers.get(path);
-  const p = useProgress(file.hunks.map((h) => h.id));
+  const itemIds = reviewItemIds(file);
+  const p = useProgress(itemIds);
+  const hunkless = file.hunks.length === 0;
+  const node = hunkless
+    ? model.graph.nodes.find((n) => n.kind === 'file' && n.path === path)
+    : undefined;
   return (
-    <article className="file" data-path={path}>
+    <article className="file" data-path={path} data-node-id={node?.id}>
       <h3>
         <span className="path">
           {file.oldPath !== null && file.oldPath !== path && `${file.oldPath} → `}
@@ -89,12 +95,15 @@ function FileDiff({ file }: { file: FileChange }) {
               </span>
             </>
           )}
-          {p.total > 0 && ` · ${progressLabel(p)}`}
+          {!hunkless && ` · ${progressLabel(p)}`}
         </span>
+        {hunkless && (
+          <>
+            {' '}
+            <ReviewedCheckbox itemIds={itemIds} label={`Mark ${path} reviewed`} />
+          </>
+        )}
       </h3>
-      {file.hunks.length === 0 && file.contentOmitted === null && (
-        <p className="note">{NO_HUNKS[file.status] ?? 'No content changes.'}</p>
-      )}
       <Diff
         file={file}
         language={model.languages.get(path) ?? null}

@@ -12,7 +12,7 @@ import { UNGROUPED_GROUP_ID, UNGROUPED_TITLE } from '../schemas/plan.ts';
 import type { ReviewData } from './data.ts';
 import {
   buildModel,
-  groupHunkIds,
+  groupItemIds,
   hunkHeader,
   PARTIAL_PARSE_DESCRIPTION,
   TIER_DESCRIPTIONS,
@@ -80,7 +80,7 @@ describe('review progress', () => {
     renderEmbedded(embedded(data));
     const model = buildModel(data);
     const group = data.plan.groups.find((g) => g.nodeIds.length > 1)!;
-    const groupHunks = groupHunkIds(model, group);
+    const groupHunks = groupItemIds(model, group);
     const node = data.graph.nodes.find((n) => n.id === group.nodeIds[0])!;
     const total = allHunks().length;
     const canvasGroup = () =>
@@ -147,7 +147,7 @@ describe('review progress', () => {
     fireEvent.click(checkbox(pane('Selected change'), `Mark group ${a!.title} reviewed`));
 
     const model = buildModel({ ...data, plan });
-    const homeHunks = groupHunkIds(model, a!).length;
+    const homeHunks = groupItemIds(model, a!).length;
     expect(outlineGroup(a!.title).textContent).toContain(`✓ ${homeHunks}/${homeHunks} reviewed`);
     expect(outlineGroup(b!.title).textContent).toContain('0/');
     const node = data.graph.nodes.find((n) => n.id === referenced)!;

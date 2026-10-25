@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { render } from '@testing-library/react';
+import type { Fixture } from '../../test/fixtures/fixture.ts';
 import { buildFixtureRepo } from '../../test/fixtures/repo.ts';
 import { signature } from '../../test/fixtures/signature.ts';
 import { dataScripts } from '../renderer/embed.ts';
@@ -39,9 +40,12 @@ export function generateReview(repo: string, commit: string, out: string): Revie
 }
 
 /** The signature fixture's review, generated in a temporary directory that `dispose` removes. */
-export function signatureReview(): { data: ReviewData; dispose: () => void } {
+export const signatureReview = () => fixtureReview(signature);
+
+/** `fixture`'s review, generated in a temporary directory that `dispose` removes. */
+export function fixtureReview(fixture: Fixture): { data: ReviewData; dispose: () => void } {
   const root = mkdtempSync(join(tmpdir(), 'bcr-viewer-'));
-  const { head } = buildFixtureRepo(join(root, 'repo'), signature);
+  const { head } = buildFixtureRepo(join(root, 'repo'), fixture);
   const data = generateReview(join(root, 'repo'), head, join(root, 'out'));
   return { data, dispose: () => rmSync(root, { recursive: true, force: true }) };
 }

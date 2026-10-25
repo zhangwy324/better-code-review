@@ -1,5 +1,6 @@
 // Indexes over the loaded review data, built once, for the views to look things up by ID, and
-// review progress, derived from the hunks marked reviewed (spec D5).
+// review progress, derived from the review items marked reviewed (spec D5): the hunks, and each
+// file change with no hunks as a whole (#127).
 import type { DiffHunk, FileChange } from '../schemas/changeset.ts';
 import type { CapabilityTier, ChangeNode, CodeEdge } from '../schemas/graph.ts';
 import {
@@ -11,10 +12,18 @@ import {
 import type { EvidenceRecord, LanguageCapability } from '../schemas/semantic.ts';
 import { hunkCoverage } from '../graph/validate.ts';
 import { homeEveryNode } from '../planner/validate.ts';
+import { count } from '../text/index.ts';
 import type { ReviewData } from './data.ts';
 
 export interface ReviewModel extends ReviewData {
   hunks: Map<string, { hunk: DiffHunk; file: FileChange }>;
+  /**
+   * The file changes with no hunks (binary, mode-only, pure renames and copies), by
+   * `newPath ?? oldPath`, in the change set's order. Each is one review item (#127).
+   */
+  hunkless: Map<string, FileChange>;
+  /** Every review item (`reviewItemIds()`), in the change set's order. */
+  reviewItems: string[];
   nodes: Map<string, ChangeNode>;
   groups: Map<string, ReviewGroup>;
   /** Each node's home group (spec D2). */
@@ -116,6 +125,10 @@ export function buildModel(data: ReviewData): ReviewModel {
     ...data,
     plan,
     hunks,
+    hunkless: new Map(
+      changeSet.files.filter((f) => f.hunks.length === 0).map((f) => [filePath(f), f] as const),
+    ),
+    reviewItems: changeSet.files.flatMap(reviewItemIds),
     nodes: new Map(graph.nodes.map((n) => [n.id, n])),
     groups: new Map(plan.groups.map((g) => [g.id, g])),
     homeGroup,
@@ -173,30 +186,80 @@ export function groupNodeIds(model: ReviewModel, group: ReviewGroup): string[] {
   ];
 }
 
-/** The hunks whose home is `group` or one of its child groups, each once. */
-export function groupHunkIds(model: ReviewModel, group: ReviewGroup): string[] {
-  const ids = groupNodeIds(model, group).flatMap((id) => model.nodes.get(id)?.hunkIds ?? []);
+const FILE_ITEM = 'file:';
+
+/**
+ * The review item of a file change with no hunks (#127), which is marked reviewed as a whole.
+ * Hunk IDs start with `h_`, so the two kinds of item never clash.
+ */
+export const fileItemId = (path: string) => `${FILE_ITEM}${path}`;
+
+/** Whether a review item is a file change with no hunks, not a hunk. */
+export const isFileItem = (id: string) => id.startsWith(FILE_ITEM);
+
+/** The file change a review item is in. */
+export function itemFile(model: ReviewModel, id: string): FileChange | undefined {
+  return isFileItem(id)
+    ? model.hunkless.get(id.slice(FILE_ITEM.length))
+    : model.hunks.get(id)?.file;
+}
+
+/** A file change's review items: its hunks, or the change itself when it has none. */
+export function reviewItemIds(file: FileChange): string[] {
+  return file.hunks.length > 0 ? file.hunks.map((h) => h.id) : [fileItemId(filePath(file))];
+}
+
+/** A node's review items: its hunks, or for the file node of a change with no hunks, the change. */
+export function nodeItemIds(model: ReviewModel, node: ChangeNode): string[] {
+  if (node.hunkIds.length > 0) return node.hunkIds;
+  return node.kind === 'file' && model.hunkless.has(node.path) ? [fileItemId(node.path)] : [];
+}
+
+/** The review items whose home is `group` or one of its child groups, each once. */
+export function groupItemIds(model: ReviewModel, group: ReviewGroup): string[] {
+  const ids = groupNodeIds(model, group).flatMap((id) => {
+    const node = model.nodes.get(id);
+    return node === undefined ? [] : nodeItemIds(model, node);
+  });
   return [...new Set(ids)];
 }
 
-/** How many of some hunks are marked reviewed (spec D5). */
+/**
+ * How many of some review items are marked reviewed (spec D5), and how many of the items are file
+ * changes with no hunks rather than hunks.
+ */
 export interface Progress {
   reviewed: number;
   total: number;
+  files: number;
 }
 
 /**
- * The progress of `hunkIds`, each counted once. A node, group or file is reviewed when all its
- * hunks are, so a group's progress is that of `groupHunkIds()`: its home hunks, not the hunks of
+ * The progress of `itemIds`, each counted once. A node, group or file is reviewed when all its
+ * items are, so a group's progress is that of `groupItemIds()`: its home items, not the items of
  * the nodes it only references.
  */
-export function progress(hunkIds: readonly string[], reviewed: ReadonlySet<string>): Progress {
-  const ids = new Set(hunkIds);
-  return { reviewed: [...ids].filter((id) => reviewed.has(id)).length, total: ids.size };
+export function progress(itemIds: readonly string[], reviewed: ReadonlySet<string>): Progress {
+  const ids = [...new Set(itemIds)];
+  return {
+    reviewed: ids.filter((id) => reviewed.has(id)).length,
+    total: ids.length,
+    files: ids.filter(isFileItem).length,
+  };
 }
 
-/** Whether `p` is complete. Something with no hunks has nothing to mark, so it never is. */
+/** Whether `p` is complete. Something with nothing to mark never is. */
 export const isReviewed = (p: Progress) => p.total > 0 && p.reviewed === p.total;
+
+/**
+ * What `p` counts: `3 hunks`, `1 file` when all are file changes with no hunks, or
+ * `4 hunks and files` when it holds both.
+ */
+export function itemsLabel(p: Progress): string {
+  if (p.files === 0) return count(p.total, 'hunk');
+  if (p.files === p.total) return count(p.total, 'file');
+  return `${p.total.toLocaleString('en')} hunks and files`;
+}
 
 /** Whether `group` is the Ungrouped / requires review group (spec D1). */
 export const isUngrouped = (group: ReviewGroup) => group.id === UNGROUPED_GROUP_ID;

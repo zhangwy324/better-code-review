@@ -8,9 +8,8 @@
 import { useRef } from 'react';
 import type { ChangeNode } from '../schemas/graph.ts';
 import type { ReviewGroup } from '../schemas/plan.ts';
-import { count } from '../text/index.ts';
 import { Diffs } from './Detail.tsx';
-import { groupHunkIds, isUngrouped } from './model.ts';
+import { groupItemIds, isUngrouped, itemsLabel, nodeItemIds } from './model.ts';
 import { progressLabel, ReviewedCheckbox, useProgress } from './Progress.tsx';
 import { useScrollToSelection } from './scroll.ts';
 import { useIsSelected, useModel, useSelection } from './state.tsx';
@@ -45,8 +44,8 @@ function GuidedGroup({ group, order }: { group: ReviewGroup; order: number | nul
     const node = model.nodes.get(id);
     return node === undefined ? [] : [node];
   });
-  const hunkIds = groupHunkIds(model, group);
-  const p = useProgress(hunkIds);
+  const itemIds = groupItemIds(model, group);
+  const p = useProgress(itemIds);
   return (
     <li
       className={isUngrouped(group) ? 'guided-group ungrouped' : 'guided-group'}
@@ -63,10 +62,10 @@ function GuidedGroup({ group, order }: { group: ReviewGroup; order: number | nul
           {group.title}
         </button>{' '}
         <span className="count">
-          {count(p.total, 'hunk')} · {progressLabel(p)}
+          {itemsLabel(p)} · {progressLabel(p)}
         </span>{' '}
         <ReviewedCheckbox
-          hunkIds={hunkIds}
+          itemIds={itemIds}
           label={`Mark group ${group.title} reviewed`}
           text="Group reviewed"
         />
@@ -109,6 +108,7 @@ function GuidedGroup({ group, order }: { group: ReviewGroup; order: number | nul
 function GuidedNode({ node }: { node: ChangeNode }) {
   const { select } = useSelection();
   const selected = useIsSelected('node', node.id);
+  const itemIds = nodeItemIds(useModel(), node);
   return (
     <article className="guided-node" data-node-id={node.id} aria-current={selected || undefined}>
       <h4>
@@ -120,9 +120,9 @@ function GuidedNode({ node }: { node: ChangeNode }) {
           {node.displayName}
         </button>{' '}
         <span className="path">{node.path}</span>{' '}
-        <ReviewedCheckbox hunkIds={node.hunkIds} label={`Mark ${node.displayName} reviewed`} />
+        <ReviewedCheckbox itemIds={itemIds} label={`Mark ${node.displayName} reviewed`} />
       </h4>
-      <Diffs hunkIds={node.hunkIds} />
+      <Diffs itemIds={itemIds} />
     </article>
   );
 }

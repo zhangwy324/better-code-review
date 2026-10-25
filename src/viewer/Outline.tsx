@@ -7,8 +7,10 @@
 import type { ReviewGroup } from '../schemas/plan.ts';
 import { count, occurrences } from '../text/index.ts';
 import {
-  groupHunkIds,
+  groupItemIds,
   isReviewed,
+  itemsLabel,
+  nodeItemIds,
   isUngrouped,
   LANGUAGE_STATUS,
   TIER_DESCRIPTIONS,
@@ -82,7 +84,7 @@ function GroupItem({ group }: { group: ReviewGroup }) {
   const model = useModel();
   const { select } = useSelection();
   const selected = useIsSelected('group', group.id);
-  const p = useProgress(groupHunkIds(model, group));
+  const p = useProgress(groupItemIds(model, group));
   return (
     <li className={isUngrouped(group) ? 'ungrouped' : undefined}>
       <button
@@ -94,7 +96,7 @@ function GroupItem({ group }: { group: ReviewGroup }) {
         <span>{group.title}</span>
         <span
           className={isReviewed(p) ? 'count done' : 'count'}
-          title={`${p.reviewed} of ${count(p.total, 'hunk')} reviewed`}
+          title={`${p.reviewed} of ${itemsLabel(p)} reviewed`}
         >
           {progressLabel(p)}
         </span>
@@ -120,10 +122,11 @@ function GroupItem({ group }: { group: ReviewGroup }) {
 }
 
 function NodeItem({ id, reference = false }: { id: string; reference?: boolean }) {
-  const node = useModel().nodes.get(id);
   const { select } = useSelection();
   const selected = useIsSelected('node', id);
-  const done = isReviewed(useProgress(node?.hunkIds ?? []));
+  const model = useModel();
+  const node = model.nodes.get(id);
+  const done = isReviewed(useProgress(node === undefined ? [] : nodeItemIds(model, node)));
   if (node === undefined) return null;
   return (
     <li>

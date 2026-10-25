@@ -14,7 +14,8 @@ How to act on the reviewer's feedback from `review.html`: the `review-feedback.j
       "body": "This hardcodes USD; use the customer's configured currency." },
     { "id": "c2", "kind": "group", "groupId": "pricing", "body": "Split the tests out." }
   ],
-  "reviewedHunkIds": []
+  "reviewedHunkIds": [],
+  "reviewedFilePaths": []
 }
 ```
 
@@ -23,6 +24,7 @@ How to act on the reviewer's feedback from `review.html`: the `review-feedback.j
 - **`side`:** `new` is the head of the change (the working tree for a `local` target), `old` its base. A comment on an `old` line is about code the change removed or replaced.
 - **`hunkId`** is the hunk the lines are in, or null for unchanged context the reviewer expanded. **`nodeId`** is the changed entity holding them, or null. Use them for context; they don't change where the lines are.
 - **Group comments** are about a group of `plan.json` (`groupId`), not a line: its title, its reading order or what belongs in it.
+- **`reviewedHunkIds`** and **`reviewedFilePaths`** are what the reviewer marked reviewed: hunks, and file changes with no hunks (a binary file, a mode change, a pure rename) by path: the new one, or the old one for a deletion. They record progress, not approval, and ask for nothing.
 - There is no resolved state. Every comment in the file is open.
 
 ## 1. Find the review
